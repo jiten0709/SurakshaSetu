@@ -1,0 +1,105 @@
+# Local infrastructure. `make up` starts the core profile. Every image is pinned to an exact tag.
+# Credentials default to dummy local values; override them in infra/.env (gitignored).
+name: surakshasetu
+
+x-healthcheck: &healthcheck
+  interval: 5s
+  timeout: 5s
+  retries: 30
+
+services:
+  postgres:
+    image: postgres:16.15-trixie
+    profiles: [core]
+    command: ["postgres", "-c", "wal_level=logical"] # Debezium CDC (Step 21)
+    environment:
+      POSTGRES_DB: surakshasetu
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-surakshasetu-dev}
+    ports: ["127.0.0.1:5432:5432"]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      <<: *healthcheck
+      # TCP, not the socket: the init-time server listens on the socket only.
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "postgres", "-d", "surakshasetu"]
+
+  valkey:
+    image: valkey/valkey:9.1.2-alpine3.24
+    profiles: [core]
+    ports: ["127.0.0.1:6379:6379"]
+    healthcheck:
+      <<: *healthcheck
+      test: ["CMD", "valkey-cli", "ping"]
+
+  qdrant:
+    image: qdrant/qdrant:v1.19.1
+    profiles: [core]
+    ports: ["127.0.0.1:6333:6333", "127.0.0.1:6334:6334"]
+    volumes:
+      - qdrant:/qdrant/storage
+    healthcheck:
+      <<: *healthcheck
+      # The image ships no HTTP client.
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/6333 && printf 'GET /readyz HTTP/1.0\\r\\n\\r\\n' >&3 && grep -q ' 200 ' <&3"]
+
+  minio:
+    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+    profiles: [core]
+    command: ["server", "/data"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-surakshasetu}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-surakshasetu-dev-minio}
+    ports: ["127.0.0.1:9000:9000"]
+    volumes:
+      - minio:/data
+    healthcheck:
+      <<: *healthcheck
+      test: ["CMD", "mc", "ready", "local"]
+
+  # One-shot: its exit code is its health. Fails if either bucket lacks object lock, which can
+  # only be enabled at bucket creation.
+  minio-init:
+    image: quay.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
+    profiles: [core]
+    depends_on:
+      minio: { condition: service_healthy }
+    environment:
+      MC_HOST_local: http://${MINIO_ROOT_USER:-surakshasetu}:${MINIO_ROOT_PASSWORD:-surakshasetu-dev-minio}@minio:9000
+    entrypoint: ["bash", "-euo", "pipefail", "-c"]
+    command:
+      - |
+        for bucket in audit-anchors audit-archive; do
+          mc mb --ignore-existing --with-lock "local/$$bucket"
+          [[ "$$(mc stat --json "local/$$bucket")" == *'"ObjectLock":{"enabled":"Enabled"'* ]] \
+            || { echo "$$bucket: object lock is not enabled" >&2; exit 1; }
+        done
+
+  domain-services:
+    build: ../domain-services
+    profiles: [core]
+    depends_on:
+      postgres: { condition: service_healthy }
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/surakshasetu
+      # ponytail: superuser until Step 2 creates the domain_rw role.
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-surakshasetu-dev}
+    ports: ["127.0.0.1:8080:8080"]
+    healthcheck:
+      <<: *healthcheck
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/actuator/health"]
+      start_period: 60s
+
+  stubs:
+    build: ../tools/stubs
+    profiles: [core]
+    ports: ["127.0.0.1:8090:8090"]
+    healthcheck:
+      <<: *healthcheck
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/healthz', timeout=3)"]
+
+volumes:
+  pgdata:
+  qdrant:
+  minio:
