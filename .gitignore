@@ -225,11 +225,12 @@ __marimo__/
 .claude-flow/sessions/
 
 # My stuff
-docs
+docs/
 CLAUDE.md 
 .claude-flow 
-.agents
-.claude
-.swarm
+.agents/
+.claude/
+.swarm/
 .mcp.json
 ruvector.db
+.github/
