@@ -234,3 +234,5 @@ CLAUDE.md
 .mcp.json
 ruvector.db
 .github/
+agentdb.rvf
+agentdb.rvf.lock
