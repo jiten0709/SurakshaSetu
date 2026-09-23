@@ -62,6 +62,13 @@
       <artifactId>testcontainers-postgresql</artifactId>
       <scope>test</scope>
     </dependency>
+    <!-- MigrationsIT drives infra/db/migrations through the Flyway API. Test scope and no Boot
+         Flyway starter: the service itself never migrates. -->
+    <dependency>
+      <groupId>org.flywaydb</groupId>
+      <artifactId>flyway-database-postgresql</artifactId>
+      <scope>test</scope>
+    </dependency>
   </dependencies>
 
   <build>

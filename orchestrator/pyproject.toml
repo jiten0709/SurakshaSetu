@@ -6,6 +6,7 @@ requires-python = ">=3.12,<3.13"
 dependencies = [
     "fastapi>=0.141.1",
     "httpx>=0.28.1",
+    "langgraph-checkpoint-postgres>=3.1.2",
     "psycopg[binary,pool]>=3",
     "pydantic>=2",
     "pydantic-settings>=2.15.0",

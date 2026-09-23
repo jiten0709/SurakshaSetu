@@ -75,6 +75,31 @@ services:
             || { echo "$$bucket: object lock is not enabled" >&2; exit 1; }
         done
 
+  # One-shot, like minio-init: its exit code is its health. `make db-migrate` runs it once per
+  # database by overriding FLYWAY_URL. Same Flyway version Spring Boot manages for MigrationsIT.
+  flyway:
+    image: flyway/flyway:12.4.0
+    profiles: [core]
+    depends_on:
+      postgres: { condition: service_healthy }
+    environment:
+      FLYWAY_URL: jdbc:postgresql://postgres:5432/surakshasetu
+      FLYWAY_USER: postgres
+      FLYWAY_PASSWORD: ${POSTGRES_PASSWORD:-surakshasetu-dev}
+      FLYWAY_LOCATIONS: filesystem:/flyway/sql
+      # Keeps the history table out of public, which must stay empty.
+      FLYWAY_DEFAULT_SCHEMA: flyway
+      REDGATE_DISABLE_TELEMETRY: "true"
+      FLYWAY_PLACEHOLDERS_APP_RW_PASSWORD: ${APP_RW_PASSWORD:-surakshasetu-dev-app-rw}
+      FLYWAY_PLACEHOLDERS_DOMAIN_RW_PASSWORD: ${DOMAIN_RW_PASSWORD:-surakshasetu-dev-domain-rw}
+      FLYWAY_PLACEHOLDERS_CATALOG_LOADER_PASSWORD: ${CATALOG_LOADER_PASSWORD:-surakshasetu-dev-catalog-loader}
+      FLYWAY_PLACEHOLDERS_ERASURE_RW_PASSWORD: ${ERASURE_RW_PASSWORD:-surakshasetu-dev-erasure-rw}
+      FLYWAY_PLACEHOLDERS_KEYVAULT_RW_PASSWORD: ${KEYVAULT_RW_PASSWORD:-surakshasetu-dev-keyvault-rw}
+      FLYWAY_PLACEHOLDERS_COMPLIANCE_RO_PASSWORD: ${COMPLIANCE_RO_PASSWORD:-surakshasetu-dev-compliance-ro}
+    volumes:
+      - ./db/migrations:/flyway/sql:ro
+    command: ["migrate"]
+
   domain-services:
     build: ../domain-services
     profiles: [core]
@@ -82,7 +107,8 @@ services:
       postgres: { condition: service_healthy }
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/surakshasetu
-      # ponytail: superuser until Step 2 creates the domain_rw role.
+      # ponytail: superuser until startup runs db-migrate before this service. domain_rw doesn't
+      # exist yet at `make up` on a fresh volume, so switching now fails the healthcheck.
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-surakshasetu-dev}
     ports: ["127.0.0.1:8080:8080"]
