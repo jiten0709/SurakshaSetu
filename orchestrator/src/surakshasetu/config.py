@@ -1,5 +1,6 @@
 """Runtime settings, read from SS_* environment variables and an optional .env file."""
 
+from pathlib import Path
 from typing import Literal, Self
 
 from pydantic import SecretStr, ValidationError, model_validator
@@ -29,6 +30,9 @@ class Settings(BaseSettings):
     domain_base_url: str = "http://127.0.0.1:8080"
     domain_token: SecretStr = SecretStr("surakshasetu-dev-domain-token")
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
+    # Opt-in local extras: per-subsystem JSON files, and a readable console instead of JSON.
+    log_dir: Path | None = None
+    log_format: Literal["json", "text"] = "json"
 
     @model_validator(mode="after")
     def _require_dependencies_outside_dev(self) -> Self:

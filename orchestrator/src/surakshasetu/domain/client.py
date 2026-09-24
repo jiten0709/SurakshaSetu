@@ -5,6 +5,8 @@ with the same idempotency key, which the domain tier answers with the original r
 """
 
 import asyncio
+import logging
+import time
 from collections.abc import Callable
 from datetime import datetime
 from types import TracebackType
@@ -46,6 +48,8 @@ from surakshasetu.domain.models import (
     SuitabilityResult,
     Versions,
 )
+
+logger = logging.getLogger(__name__)
 
 # Whole-call budgets: rule evaluations get 300 ms; keyed lookups and consent writes get 150 ms.
 DECISION_BUDGET_S = 0.300
@@ -108,6 +112,7 @@ class DomainClient:
 
     async def _call[T](
         self,
+        op: str,
         parse: Callable[[bytes], T],
         method: str,
         path: str,
@@ -121,26 +126,45 @@ class DomainClient:
         # this JSON.
         payload = None if body is None else body.model_dump(mode="json", exclude_unset=True)
         query = None if params is None else {k: v for k, v in params.items() if v is not None}
+        # Logs name the call by its contract operationId only: paths and queries carry pincodes,
+        # consent ids and customer text, and str(exc) of an httpx error embeds the URL.
+        started = time.perf_counter()
         try:
             async with asyncio.timeout(budget_s):
                 response = await self._http.request(
                     method, path, json=payload, params=query, headers=headers
                 )
         except TimeoutError as exc:
+            logger.warning("domain %s timed out after %d ms", op, budget_s * 1000)
             raise DomainError("TIMEOUT", None) from exc
         except httpx.TransportError as exc:
+            logger.warning("domain %s unavailable (%s)", op, type(exc).__name__)
             raise DomainError("UNAVAILABLE", None) from exc
+        elapsed_ms = (time.perf_counter() - started) * 1000
         if response.is_error:
-            raise _error(response)
+            error = _error(response)
+            logger.log(
+                logging.WARNING if response.status_code >= 500 else logging.INFO,
+                "domain %s -> %d %s in %.0f ms",
+                op,
+                response.status_code,
+                error.code,
+                elapsed_ms,
+            )
+            raise error
+        logger.debug("domain %s -> %d in %.0f ms", op, response.status_code, elapsed_ms)
         return parse(response.content)
 
     # --- meta -------------------------------------------------------------------------------
     async def get_versions(self) -> Versions:
-        return await self._call(Versions.model_validate_json, "GET", "/v1/meta/versions")
+        return await self._call(
+            "getVersions", Versions.model_validate_json, "GET", "/v1/meta/versions"
+        )
 
     # --- consent ----------------------------------------------------------------------------
     async def get_current_consent_notice(self, language: str) -> ConsentNotice:
         return await self._call(
+            "getCurrentConsentNotice",
             ConsentNotice.model_validate_json,
             "GET",
             "/v1/consent/notices/current",
@@ -149,13 +173,17 @@ class DomainClient:
 
     async def get_consent_notice(self, notice_version: str) -> ConsentNotice:
         return await self._call(
-            ConsentNotice.model_validate_json, "GET", f"/v1/consent/notices/{notice_version}"
+            "getConsentNotice",
+            ConsentNotice.model_validate_json,
+            "GET",
+            f"/v1/consent/notices/{notice_version}",
         )
 
     async def create_consent_record(
         self, record: ConsentRecordCreate, idempotency_key: str
     ) -> ConsentRecord:
         return await self._call(
+            "createConsentRecord",
             ConsentRecord.model_validate_json,
             "POST",
             "/v1/consent/records",
@@ -167,6 +195,7 @@ class DomainClient:
         self, consent_id: UUID, as_of: datetime | None = None
     ) -> ConsentRecord:
         return await self._call(
+            "getConsentRecord",
             ConsentRecord.model_validate_json,
             "GET",
             f"/v1/consent/records/{consent_id}",
@@ -175,6 +204,7 @@ class DomainClient:
 
     async def change_consent_purpose(self, consent_id: UUID, grant: PurposeGrant) -> ConsentRecord:
         return await self._call(
+            "changeConsentPurpose",
             ConsentRecord.model_validate_json,
             "POST",
             f"/v1/consent/records/{consent_id}/purposes",
@@ -185,6 +215,7 @@ class DomainClient:
         self, consent_id: UUID, withdrawal: ConsentWithdrawal
     ) -> ConsentRecord:
         return await self._call(
+            "withdrawConsent",
             ConsentRecord.model_validate_json,
             "POST",
             f"/v1/consent/records/{consent_id}/withdraw",
@@ -200,6 +231,7 @@ class DomainClient:
         as_of: datetime | None = None,
     ) -> list[Product]:
         return await self._call(
+            "listProducts",
             _PRODUCTS.validate_json,
             "GET",
             "/v1/catalog/products",
@@ -213,6 +245,7 @@ class DomainClient:
 
     async def get_product(self, uin: str, as_of: datetime | None = None) -> Product:
         return await self._call(
+            "getProduct",
             Product.model_validate_json,
             "GET",
             f"/v1/catalog/products/{uin}",
@@ -220,10 +253,13 @@ class DomainClient:
         )
 
     async def get_rider(self, uin: str) -> Rider:
-        return await self._call(Rider.model_validate_json, "GET", f"/v1/catalog/riders/{uin}")
+        return await self._call(
+            "getRider", Rider.model_validate_json, "GET", f"/v1/catalog/riders/{uin}"
+        )
 
     async def set_product_kill_switch(self, uin: str, kill_switch: KillSwitch) -> KillSwitchResult:
         return await self._call(
+            "setProductKillSwitch",
             KillSwitchResult.model_validate_json,
             "POST",
             f"/v1/catalog/products/{uin}/kill-switch",
@@ -235,6 +271,7 @@ class DomainClient:
         self, uin: str, channel: str, language: str, as_of: datetime | None = None
     ) -> DisclosureSet:
         return await self._call(
+            "getDisclosureSet",
             DisclosureSet.model_validate_json,
             "GET",
             f"/v1/disclosures/sets/{uin}",
@@ -245,6 +282,7 @@ class DomainClient:
         self, disclosure_id: str, language: str, as_of: datetime | None = None
     ) -> Disclosure:
         return await self._call(
+            "getDisclosure",
             Disclosure.model_validate_json,
             "GET",
             f"/v1/disclosures/{disclosure_id}",
@@ -254,17 +292,27 @@ class DomainClient:
     # --- reference --------------------------------------------------------------------------
     async def get_pincode(self, pincode: str) -> PincodeInfo:
         return await self._call(
-            PincodeInfo.model_validate_json, "GET", f"/v1/reference/pincodes/{pincode}"
+            "getPincode",
+            PincodeInfo.model_validate_json,
+            "GET",
+            f"/v1/reference/pincodes/{pincode}",
         )
 
     async def search_occupations(self, q: str | None = None) -> list[Occupation]:
         return await self._call(
-            _OCCUPATIONS.validate_json, "GET", "/v1/reference/occupations", params={"q": q}
+            "searchOccupations",
+            _OCCUPATIONS.validate_json,
+            "GET",
+            "/v1/reference/occupations",
+            params={"q": q},
         )
 
     async def get_occupation(self, code: str) -> Occupation:
         return await self._call(
-            Occupation.model_validate_json, "GET", f"/v1/reference/occupations/{code}"
+            "getOccupation",
+            Occupation.model_validate_json,
+            "GET",
+            f"/v1/reference/occupations/{code}",
         )
 
     # --- decisions --------------------------------------------------------------------------
@@ -272,6 +320,7 @@ class DomainClient:
         self, as_of: datetime | None = None
     ) -> list[RequiredAttribute]:
         return await self._call(
+            "getRequiredAttributes",
             _REQUIRED_ATTRIBUTES.validate_json,
             "GET",
             "/v1/eligibility/required-attributes",
@@ -280,6 +329,7 @@ class DomainClient:
 
     async def evaluate_eligibility(self, request: EligibilityRequest) -> EligibilityResult:
         return await self._call(
+            "evaluateEligibility",
             EligibilityResult.model_validate_json,
             "POST",
             "/v1/eligibility/evaluate",
@@ -289,6 +339,7 @@ class DomainClient:
 
     async def get_required_slots(self, rules: str) -> list[RequiredSlot]:
         return await self._call(
+            "getRequiredSlots",
             _REQUIRED_SLOTS.validate_json,
             "GET",
             "/v1/suitability/required-slots",
@@ -297,6 +348,7 @@ class DomainClient:
 
     async def evaluate_suitability(self, request: SuitabilityRequest) -> SuitabilityResult:
         return await self._call(
+            "evaluateSuitability",
             SuitabilityResult.model_validate_json,
             "POST",
             "/v1/suitability/evaluate",
@@ -306,6 +358,7 @@ class DomainClient:
 
     async def rank_options(self, request: RankingRequest) -> RankingResult:
         return await self._call(
+            "rankOptions",
             RankingResult.model_validate_json,
             "POST",
             "/v1/ranking/rank",
@@ -315,6 +368,7 @@ class DomainClient:
 
     async def create_quote(self, request: QuoteRequest) -> PremiumQuote:
         return await self._call(
+            "createQuote",
             PremiumQuote.model_validate_json,
             "POST",
             "/v1/quotes",
@@ -326,6 +380,7 @@ class DomainClient:
         self, request: QuoteAlternativesRequest
     ) -> list[QuoteAlternative]:
         return await self._call(
+            "createQuoteAlternatives",
             _ALTERNATIVES.validate_json,
             "POST",
             "/v1/quotes/alternatives",

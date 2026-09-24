@@ -23,3 +23,18 @@ def test_healthz_is_liveness_only() -> None:
 
     assert response.status_code == 200
     assert response.json() == {"status": "ok", "version": version("surakshasetu")}
+
+
+def test_every_response_carries_a_request_id_and_untrusted_ids_are_replaced() -> None:
+    client = TestClient(create_app(Settings(_env_file=None)))
+
+    fresh = client.get("/healthz").headers["X-Request-ID"]
+    echoed = client.get("/healthz", headers={"X-Request-ID": "req-abc.1_2"})
+    bad_values = ("x" * 65, "evil id; level=CRITICAL")
+    replaced = [client.get("/healthz", headers={"X-Request-ID": v}) for v in bad_values]
+
+    assert len(fresh) == 32
+    assert echoed.headers["X-Request-ID"] == "req-abc.1_2"
+    for value, response in zip(bad_values, replaced, strict=True):
+        assert response.headers["X-Request-ID"] not in (value, fresh)
+        assert len(response.headers["X-Request-ID"]) == 32

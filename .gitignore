@@ -226,6 +226,7 @@ __marimo__/
 
 # My stuff
 docs/
+logs/
 CLAUDE.md 
 .claude-flow 
 .agents/
