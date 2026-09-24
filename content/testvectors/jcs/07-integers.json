@@ -1,0 +1,11 @@
+{
+  "description": "Integers, including zero, negatives and 2^53 - 1.",
+  "input": {
+    "age_years": 34,
+    "zero": 0,
+    "negative": -5,
+    "max_safe": 9007199254740991
+  },
+  "jcs_utf8_hex": "7b226167655f7965617273223a33342c226d61785f73616665223a393030373139393235343734303939312c226e65676174697665223a2d352c227a65726f223a307d",
+  "sha256_hex": "2d8775f229ed90b329c1a5b66daddce412e5929bcc9fff0613f7bd47fdd39a02"
+}

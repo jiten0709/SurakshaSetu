@@ -42,6 +42,20 @@ def test_empty_value_counts_as_missing(monkeypatch: pytest.MonkeyPatch) -> None:
         load_settings()
 
 
+def test_dev_domain_token_default_is_refused_outside_dev(monkeypatch: pytest.MonkeyPatch) -> None:
+    assert load_settings().domain_token.get_secret_value()
+
+    monkeypatch.setenv("SS_ENV", "pilot")
+    monkeypatch.setenv("SS_PG_DSN_APP", "postgresql://app_rw:x@postgres:5432/surakshasetu")
+    monkeypatch.setenv("SS_REDIS_URL", "redis://valkey:6379/0")
+
+    with pytest.raises(ConfigError, match="requires SS_DOMAIN_TOKEN$"):
+        load_settings()
+
+    monkeypatch.setenv("SS_DOMAIN_TOKEN", "pilot-token")
+    assert load_settings().domain_token.get_secret_value() == "pilot-token"
+
+
 def test_invalid_env_names_the_variable(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SS_ENV", "staging")
 

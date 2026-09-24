@@ -1,0 +1,11 @@
+{
+  "description": "U+1F600 sorts before U+FB33 because its UTF-16 lead surrogate (0xD83D) is lower; code-point order would put it last.",
+  "input": {
+    "דּ": "hebrew",
+    "😀": "emoji",
+    "€": "euro",
+    "é": "latin"
+  },
+  "jcs_utf8_hex": "7b22c3a9223a226c6174696e222c22e282ac223a226575726f222c22f09f9880223a22656d6f6a69222c22efacb3223a22686562726577227d",
+  "sha256_hex": "850c73bddc965a3760646bb6b8290255b8a37a013f3e4ab6a89f4c176961a875"
+}

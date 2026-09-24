@@ -6,8 +6,8 @@ from pydantic import SecretStr, ValidationError, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ENV_PREFIX = "SS_"
-# Dependencies with no safe default outside a developer machine.
-REQUIRED_OUTSIDE_DEV = ("pg_dsn_app", "redis_url")
+# Settings with no safe default outside a developer machine: pilot and prod must set them.
+REQUIRED_OUTSIDE_DEV = ("pg_dsn_app", "redis_url", "domain_token")
 
 
 class ConfigError(RuntimeError):
@@ -26,6 +26,8 @@ class Settings(BaseSettings):
     env: Literal["dev", "test", "pilot", "prod"] = "dev"
     pg_dsn_app: SecretStr | None = None
     redis_url: SecretStr | None = None
+    domain_base_url: str = "http://127.0.0.1:8080"
+    domain_token: SecretStr = SecretStr("surakshasetu-dev-domain-token")
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
 
     @model_validator(mode="after")
@@ -34,7 +36,7 @@ class Settings(BaseSettings):
             missing = [
                 f"{ENV_PREFIX}{name.upper()}"
                 for name in REQUIRED_OUTSIDE_DEV
-                if getattr(self, name) is None
+                if name not in self.model_fields_set or getattr(self, name) is None
             ]
             if missing:
                 raise ValueError(f"env={self.env} requires {', '.join(missing)}")

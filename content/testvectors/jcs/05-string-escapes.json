@@ -1,0 +1,8 @@
+{
+  "description": "Only \\b \\t \\n \\f \\r, the quote and the backslash use short escapes; other controls use lowercase \\u00XX; '/', DEL and non-ASCII are not escaped.",
+  "input": {
+    "s": "a\"b\\c/d\be\tf\ng\fh\ri\u0000j\u001fkl é € 😀"
+  },
+  "jcs_utf8_hex": "7b2273223a22615c22625c5c632f645c62655c74665c6e675c66685c72695c75303030306a5c75303031666b7f6c20c3a920e282ac20f09f9880227d",
+  "sha256_hex": "3a6dab5059970434bd65a91f9a2ca274b4ade963e7152b8abc5ea41d0988e2a9"
+}

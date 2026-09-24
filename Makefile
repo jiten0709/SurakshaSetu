@@ -2,7 +2,9 @@
 COMPOSE := docker compose -f infra/compose.yaml --profile core
 PYTEST_MARKERS := not stack and not golden and not redteam and not live and not db
 PLACEHOLDERS := seed-catalog kb-ingest seed-eval test-invariants e2e-scripted \
-	verify-audit verify-release-gate eval eval-live contracts contract-test local-setup
+	verify-audit verify-release-gate eval eval-live contract-test local-setup
+SPEC := contracts/openapi/domain-services.v1.yaml
+MODELS := src/surakshasetu/domain/models.py
 
 # Host-side database steps use the same passwords as compose: infra/.env when present, otherwise
 # the dummy defaults from infra/.env.example.
@@ -11,7 +13,8 @@ POSTGRES_PASSWORD ?= surakshasetu-dev
 APP_RW_PASSWORD ?= surakshasetu-dev-app-rw
 DATABASES := surakshasetu surakshasetu_test
 
-.PHONY: up down logs check check-py check-java check-stubs check-db db-migrate $(PLACEHOLDERS)
+.PHONY: up down logs check check-py check-java check-stubs check-db check-contracts db-migrate \
+	contracts contracts-lint $(PLACEHOLDERS)
 
 # `up --wait` treats an exited one-shot as a failure, so the one-shots run on their own.
 up:
@@ -26,9 +29,24 @@ logs:
 
 check: check-py check-java check-stubs
 
-check-py:
+check-py: check-contracts
 	cd orchestrator && uv run --locked ruff check && uv run --locked ruff format --check \
 		&& uv run --locked mypy src && uv run --locked pytest -m "$(PYTEST_MARKERS)"
+
+contracts-lint:
+	cd orchestrator && uv run --locked openapi-spec-validator ../$(SPEC)
+
+# Regenerate the committed Python models; options live in orchestrator/pyproject.toml. The Java
+# side regenerates on every Maven build, so only Python needs this.
+contracts: contracts-lint
+	cd orchestrator && uv run --locked datamodel-codegen --output $(MODELS)
+
+# Drift check: regenerate to a temp file and diff it against the committed models. Generating
+# to stdout keeps ruff on orchestrator's config wherever the temp file lives.
+check-contracts: contracts-lint
+	@cd orchestrator && tmp=$$(mktemp) && trap 'rm -f "$$tmp"' EXIT \
+		&& uv run --locked datamodel-codegen > "$$tmp" && diff -u $(MODELS) "$$tmp" \
+		|| { echo "check-contracts: $(MODELS) differs from $(SPEC); run make contracts" >&2; exit 1; }
 
 check-java:
 	cd domain-services && ./mvnw -B verify

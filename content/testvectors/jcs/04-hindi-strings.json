@@ -1,0 +1,11 @@
+{
+  "description": "Devanagari values and keys pass through as raw UTF-8; keys still sort by UTF-16 code unit.",
+  "input": {
+    "name": "सुरक्षा टर्म शील्ड",
+    "greeting": "नमस्ते, मैं सुरक्षासेतु हूँ",
+    "नाम": "बीमा",
+    "Name": "Suraksha"
+  },
+  "jcs_utf8_hex": "7b224e616d65223a22537572616b736861222c226772656574696e67223a22e0a4a8e0a4aee0a4b8e0a58de0a4a4e0a5872c20e0a4aee0a588e0a48220e0a4b8e0a581e0a4b0e0a495e0a58de0a4b7e0a4bee0a4b8e0a587e0a4a4e0a58120e0a4b9e0a582e0a481222c226e616d65223a22e0a4b8e0a581e0a4b0e0a495e0a58de0a4b7e0a4be20e0a49fe0a4b0e0a58de0a4ae20e0a4b6e0a580e0a4b2e0a58de0a4a1222c22e0a4a8e0a4bee0a4ae223a22e0a4ace0a580e0a4aee0a4be227d",
+  "sha256_hex": "9172453c375ff7aaead06827f6b388248371d3540d2ba08e25579fd9b36abb5e"
+}

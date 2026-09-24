@@ -1,0 +1,1169 @@
+openapi: 3.1.0
+info:
+  title: SurakshaSetu domain services
+  version: 1.0.0
+  description: |
+    The tier contract between the orchestrator (Python) and the domain services (Java). It is the
+    single source of truth: Java interfaces and models and Python models are generated from it.
+    Model shapes follow the TDD (§3.5–§3.8) where it defines them.
+
+    ## Conventions
+    - **Money** is a decimal string of rupees (`^\d+(\.\d{1,2})?$`), never a JSON number.
+    - **Dates** are ISO 8601 (`date` or `date-time`); date-times are UTC.
+    - **Errors** are `application/problem+json` with `type`, `title`, `status`, `detail` and a
+      machine-readable `code`.
+    - **Auth**: a bearer token (a shared dev token locally; mTLS in production).
+    - **Decisions** (`POST` eligibility, suitability, ranking and quotes): the request carries
+      `pins.rules` and the service evaluates exactly that version, or answers 409
+      `RULES_VERSION_UNKNOWN`. The response carries `decision_id`, the version it used
+      (`rules_version`, `ranker_version` or `rating_version`), `inputs_sha256` and `reason_codes`.
+    - Commission, margin, incentive, campaign and payout fields never appear in this contract.
+
+    ## Problem codes
+    | Status | code | When |
+    | --- | --- | --- |
+    | 404 | `NOT_FOUND` | Unknown UIN, consent id, notice, disclosure, pincode or occupation. |
+    | 409 | `RULES_VERSION_UNKNOWN` | `pins.rules` names a version the service has not loaded. |
+    | 409 | `IDEMPOTENCY_KEY_REUSED` | The same Idempotency-Key arrives with a different body. |
+    | 409 | `PRODUCT_WITHDRAWN` | A quote for a withdrawn product. |
+    | 422 | `NOTICE_MISMATCH` | The notice version is not in force, or `notice_sha256` does not match it. |
+    | 422 | `P1_REQUIRED` | A consent record without the P1 purpose. |
+    | 422 | `TOBACCO_UNDISCLOSED` | A quote with `tobacco_12m` null; premiums are withheld upstream. |
+    | 422 | `QUOTE_OUT_OF_BOUNDS` | Cover, term, age or rider outside the product's limits; the problem carries `allowed_min` and `allowed_max`. |
+    | 500 | `REGISTRY_INTEGRITY` | A stored disclosure set fails its hash check; it is never served. |
+    | 501 | `NOT_IMPLEMENTED` | The operation is not implemented yet. |
+
+    ## Hashing
+    Every hash is the lowercase hex SHA-256. JSON is canonicalised with RFC 8785 (JCS); shared
+    test vectors live in `content/testvectors/jcs/`.
+    - `body_sha256` = SHA-256(UTF-8(NFC(body))), for consent-notice and disclosure bodies.
+    - `set_sha256` = SHA-256(JCS({registry_version, uin, channel, language,
+      items: [{disclosure_id, body_sha256}]})), items in set order.
+    - `inputs_sha256` = SHA-256(JCS(request body)), over the JSON exactly as sent, never over a
+      re-serialisation with defaults filled in. Quotes the service builds itself (inside ranking
+      options and alternatives) hash the quote request it built.
+    - Exception, `POST /v1/suitability/evaluate`: `inputs_sha256` = SHA-256(JCS(needs)), where
+      `needs` is the request's `needs` object with its `slots_sha256` member removed. The
+      orchestrator computes the same value when the customer confirms the needs summary and
+      stores it as `needs.slots_sha256`; invariant I2 requires the two to match.
+servers:
+  - url: http://127.0.0.1:8080
+security:
+  - bearerAuth: []
+tags:
+  - name: meta
+  - name: consent
+  - name: catalog
+  - name: disclosure
+  - name: reference
+  - name: eligibility
+  - name: suitability
+  - name: ranking
+  - name: quotes
+
+paths:
+  /v1/meta/versions:
+    get:
+      tags: [meta]
+      operationId: getVersions
+      summary: Versions currently active in the domain tier.
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Versions'}
+        default: {$ref: '#/components/responses/Problem'}
+
+  /v1/consent/notices/current:
+    get:
+      tags: [consent]
+      operationId: getCurrentConsentNotice
+      summary: The approved consent notice currently in force for a language.
+      parameters:
+        - $ref: '#/components/parameters/Language'
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ConsentNotice'}
+        default: {$ref: '#/components/responses/Problem'}
+  /v1/consent/notices/{notice_version}:
+    get:
+      tags: [consent]
+      operationId: getConsentNotice
+      parameters:
+        - name: notice_version
+          in: path
+          required: true
+          schema: {type: string}
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ConsentNotice'}
+        default: {$ref: '#/components/responses/Problem'}
+  /v1/consent/records:
+    post:
+      tags: [consent]
+      operationId: createConsentRecord
+      summary: Record consent. Replaying the same Idempotency-Key returns the original record.
+      description: >-
+        `captured_at` is taken from the server clock; any client value is ignored. Reusing an
+        Idempotency-Key with a different body is rejected with 409 `IDEMPOTENCY_KEY_REUSED`.
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: {type: string, minLength: 1}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ConsentRecordCreate'}
+      responses:
+        '200':
+          description: A replay of the same Idempotency-Key; the original record.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ConsentRecord'}
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ConsentRecord'}
+        default: {$ref: '#/components/responses/Problem'}
+  /v1/consent/records/{consent_id}:
+    get:
+      tags: [consent]
+      operationId: getConsentRecord
+      summary: A consent record, with valid_p1 recomputed as of the given instant.
+      parameters:
+        - $ref: '#/components/parameters/ConsentId'
+        - $ref: '#/components/parameters/AsOf'
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ConsentRecord'}
+        default: {$ref: '#/components/responses/Problem'}
+  /v1/consent/records/{consent_id}/purposes:
+    post:
+      tags: [consent]
+      operationId: changeConsentPurpose
+      summary: Grant or revoke one purpose. Appends to the purpose history.
+      parameters:
+        - $ref: '#/components/parameters/ConsentId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/PurposeGrant'}
+      responses:
+        '200':
+          description: The record after the change.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ConsentRecord'}
+        default: {$ref: '#/components/responses/Problem'}
+  /v1/consent/records/{consent_id}/withdraw:
+    post:
+      tags: [consent]
+      operationId: withdrawConsent
+      summary: Withdraw consent (invariant I5).
+      parameters:
+        - $ref: '#/components/parameters/ConsentId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ConsentWithdrawal'}
+      responses:
+        '200':
+          description: The record after withdrawal.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ConsentRecord'}
+        default: {$ref: '#/components/responses/Problem'}
+
+  /v1/catalog/products:
+    get:
+      tags: [catalog]
+      operationId: listProducts
+      parameters:
+        - name: status
+          in: query
+          schema: {$ref: '#/components/schemas/ProductStatus'}
+        - name: category
+          in: query
+          schema: {$ref: '#/components/schemas/ProductType'}
+        - name: launch_enabled
+          in: query
+          schema: {type: boolean}
+        - $ref: '#/components/parameters/AsOf'
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/Product'}
+        default: {$ref: '#/components/responses/Problem'}
+  /v1/catalog/products/{uin}:
+    get:
+      tags: [catalog]
+      operationId: getProduct
+      summary: A product with its riders and documents. A withdrawn product is served only for an as_of before its effective_to.
+      parameters:
+        - $ref: '#/components/parameters/Uin'
+        - $ref: '#/components/parameters/AsOf'
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Product'}
+        default: {$ref: '#/components/responses/Problem'}
+  /v1/catalog/riders/{uin}:
+    get:
+      tags: [catalog]
+      operationId: getRider
+      parameters:
+        - $ref: '#/components/parameters/Uin'
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Rider'}
+        default: {$ref: '#/components/responses/Problem'}
+  /v1/catalog/products/{uin}/kill-switch:
+    post:
+      tags: [catalog]
+      operationId: setProductKillSwitch
+      summary: Withdraw a product from sale immediately. Internal scope.
+      parameters:
+        - $ref: '#/components/parameters/Uin'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/KillSwitch'}
+      responses:
+        '200':
+          description: Kill switch set; the product's new status.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/KillSwitchResult'}
+        default: {$ref: '#/components/responses/Problem'}
+
+  /v1/disclosures/sets/{uin}:
+    get:
+      tags: [disclosure]
+      operationId: getDisclosureSet
+      summary: The ordered disclosure set for a product, channel and language.
+      parameters:
+        - $ref: '#/components/parameters/Uin'
+        - $ref: '#/components/parameters/Channel'
+        - $ref: '#/components/parameters/Language'
+        - $ref: '#/components/parameters/AsOf'
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/DisclosureSet'}
+        default: {$ref: '#/components/responses/Problem'}
+  /v1/disclosures/{disclosure_id}:
+    get:
+      tags: [disclosure]
+      operationId: getDisclosure
+      summary: One disclosure, e.g. the global items DISC-GLOBAL-AI-06, -QUOTE-02 and -TAX-05.
+      parameters:
+        - name: disclosure_id
+          in: path
+          required: true
+          schema: {type: string}
+        - $ref: '#/components/parameters/Language'
+        - $ref: '#/components/parameters/AsOf'
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Disclosure'}
+        default: {$ref: '#/components/responses/Problem'}
+
+  /v1/reference/pincodes/{pincode}:
+    get:
+      tags: [reference]
+      operationId: getPincode
+      parameters:
+        - name: pincode
+          in: path
+          required: true
+          schema: {$ref: '#/components/schemas/Pincode'}
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PincodeInfo'}
+        default: {$ref: '#/components/responses/Problem'}
+  /v1/reference/occupations:
+    get:
+      tags: [reference]
+      operationId: searchOccupations
+      parameters:
+        - name: q
+          in: query
+          description: Case-insensitive search over code and label.
+          schema: {type: string}
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/Occupation'}
+        default: {$ref: '#/components/responses/Problem'}
+  /v1/reference/occupations/{code}:
+    get:
+      tags: [reference]
+      operationId: getOccupation
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema: {type: string}
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Occupation'}
+        default: {$ref: '#/components/responses/Problem'}
+
+  /v1/eligibility/required-attributes:
+    get:
+      tags: [eligibility]
+      operationId: getRequiredAttributes
+      summary: The attributes S1 must ask for, in order.
+      parameters:
+        - $ref: '#/components/parameters/AsOf'
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/RequiredAttribute'}
+        default: {$ref: '#/components/responses/Problem'}
+  /v1/eligibility/evaluate:
+    post:
+      tags: [eligibility]
+      operationId: evaluateEligibility
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/EligibilityRequest'}
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/EligibilityResult'}
+        default: {$ref: '#/components/responses/Problem'}
+
+  /v1/suitability/required-slots:
+    get:
+      tags: [suitability]
+      operationId: getRequiredSlots
+      summary: The slots S2 must ask for, in order, with their profile_sufficiency weights.
+      parameters:
+        - name: pins.rules
+          in: query
+          required: true
+          schema: {type: string}
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/RequiredSlot'}
+        default: {$ref: '#/components/responses/Problem'}
+  /v1/suitability/evaluate:
+    post:
+      tags: [suitability]
+      operationId: evaluateSuitability
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/SuitabilityRequest'}
+      responses:
+        '200':
+          description: OK. inputs_sha256 is taken over `needs` (see the hashing rules).
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/SuitabilityResult'}
+        default: {$ref: '#/components/responses/Problem'}
+
+  /v1/ranking/rank:
+    post:
+      tags: [ranking]
+      operationId: rankOptions
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/RankingRequest'}
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/RankingResult'}
+        default: {$ref: '#/components/responses/Problem'}
+
+  /v1/quotes:
+    post:
+      tags: [quotes]
+      operationId: createQuote
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/QuoteRequest'}
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PremiumQuote'}
+        default: {$ref: '#/components/responses/Problem'}
+  /v1/quotes/alternatives:
+    post:
+      tags: [quotes]
+      operationId: createQuoteAlternatives
+      summary: Cheaper alternatives to a quote, each with its protection gap.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/QuoteAlternativesRequest'}
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/QuoteAlternative'}
+        default: {$ref: '#/components/responses/Problem'}
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+
+  parameters:
+    Language:
+      name: language
+      in: query
+      required: true
+      schema: {type: string}
+      example: en-IN
+    Channel:
+      name: channel
+      in: query
+      required: true
+      schema: {type: string}
+      example: web
+    AsOf:
+      name: as_of
+      in: query
+      description: Evaluate as of this instant. Defaults to now.
+      schema: {type: string, format: date-time}
+    Uin:
+      name: uin
+      in: path
+      required: true
+      schema: {$ref: '#/components/schemas/Uin'}
+    ConsentId:
+      name: consent_id
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+
+  responses:
+    Problem:
+      description: Error, as RFC 9457 problem details.
+      content:
+        application/problem+json:
+          schema: {$ref: '#/components/schemas/Problem'}
+
+  schemas:
+    # --- Shared -----------------------------------------------------------------------------
+    Problem:
+      type: object
+      required: [title, status, code]
+      properties:
+        type: {type: string, default: 'about:blank', description: 'RFC 9457: absent means about:blank.'}
+        title: {type: string}
+        status: {type: integer}
+        detail: {type: string}
+        code:
+          type: string
+          description: Machine-readable error code; the table in the API description lists them.
+    Money:
+      type: string
+      description: Rupees as a decimal string.
+      pattern: &money '^\d+(\.\d{1,2})?$'
+    SignedMoney:
+      type: string
+      description: Rupees as a decimal string that may be negative.
+      pattern: '^-?\d+(\.\d{1,2})?$'
+    Sha256Hex:
+      type: string
+      pattern: '^[0-9a-f]{64}$'
+    Uin:
+      type: string
+      description: IRDAI unique identification number, e.g. 999N001V02 (product) or 999A007V01 (rider).
+      pattern: '^[0-9]{3}[A-Z][0-9]{3}V[0-9]{2}$'
+    Pincode:
+      type: string
+      pattern: '^[1-9][0-9]{5}$'
+    Pins:
+      type: object
+      description: Session version pins (TDD §3.3 VersionPins). The domain tier reads `rules`.
+      required: [rules]
+      properties:
+        rules: {type: string, description: DMN release pinned for the session.}
+    Gender:
+      type: string
+      enum: [male, female, transgender]
+    ProductType:
+      type: string
+      enum: [TERM, TERM_ROP, NON_PAR_SAVINGS, PAR, ULIP]
+
+    # --- Meta -------------------------------------------------------------------------------
+    Versions:
+      type: object
+      required: [rules_version, params_version, ranker_version, registry_version, rating_version,
+                 active_rules_versions]
+      properties:
+        rules_version: {type: string}
+        params_version: {type: string}
+        ranker_version: {type: string}
+        registry_version: {type: string}
+        rating_version: {type: string}
+        active_rules_versions:
+          type: array
+          description: Every rules version a session may still be pinned to.
+          items: {type: string}
+
+    # --- Consent (TDD §3.5) -----------------------------------------------------------------
+    ConsentNotice:
+      type: object
+      required: [notice_version, language, body, body_sha256, is_dummy]
+      properties:
+        notice_version: {type: string, examples: [2026.09.1-en]}
+        language: {type: string}
+        body: {type: string}
+        body_sha256: {$ref: '#/components/schemas/Sha256Hex'}
+        is_dummy: {type: boolean}
+    PurposeId:
+      type: string
+      enum: [P1_NEEDS_RECO, P2_ADVISOR_CONTACT, P3_MARKETING]
+    PurposeGrant:
+      type: object
+      required: [purpose_id, granted]
+      properties:
+        purpose_id: {$ref: '#/components/schemas/PurposeId'}
+        granted: {type: boolean}
+    ConsentMethod:
+      type: string
+      description: >-
+        How consent was captured. TDD §3.5 says typed_affirmation; the DDL (§7.2) says
+        parsed_affirmation, which is used everywhere.
+      enum: [structured_action, parsed_affirmation]
+    ConsentRecordCreate:
+      type: object
+      required: [session_id, subject_ref, notice_version, notice_sha256, language,
+                 ai_disclosure_version, purposes, age_18_plus_declared, method]
+      properties:
+        session_id: {type: string, format: uuid}
+        subject_ref: {type: string, format: uuid, description: Pseudonymous subject reference.}
+        notice_version: {type: string}
+        notice_sha256: {$ref: '#/components/schemas/Sha256Hex'}
+        language: {type: string, description: The language the notice was shown in.}
+        ai_disclosure_version: {type: string}
+        purposes:
+          type: array
+          items: {$ref: '#/components/schemas/PurposeGrant'}
+        age_18_plus_declared: {type: boolean}
+        method: {$ref: '#/components/schemas/ConsentMethod'}
+    ConsentRecord:
+      type: object
+      required: [consent_id, notice_version, notice_sha256, notice_language, ai_disclosure_version,
+                 purposes, age_18_plus_declared, method, captured_at, valid_p1, valid_reasons]
+      properties:
+        consent_id: {type: string, format: uuid}
+        notice_version: {type: string}
+        notice_sha256: {$ref: '#/components/schemas/Sha256Hex'}
+        notice_language: {type: string}
+        ai_disclosure_version: {type: string}
+        purposes:
+          type: array
+          description: Current state, one grant per purpose. The history stays in the domain tier.
+          items: {$ref: '#/components/schemas/PurposeGrant'}
+        age_18_plus_declared: {type: boolean}
+        method: {$ref: '#/components/schemas/ConsentMethod'}
+        captured_at: {type: string, format: date-time, description: 'Server clock, UTC.'}
+        withdrawn_at: {type: [string, 'null'], format: date-time}
+        valid_p1:
+          type: boolean
+          description: >-
+            P1 granted, not withdrawn, 18+ declared, notice not superseded and within the consent
+            TTL, as of the request's as_of.
+        valid_reasons:
+          type: array
+          description: Why valid_p1 is false; empty when it is true.
+          items: {type: string}
+    ConsentWithdrawal:
+      type: object
+      properties:
+        reason: {type: string}
+
+    # --- Catalog (TDD §7.2, §7.3) -----------------------------------------------------------
+    ProductStatus:
+      type: string
+      enum: [in_force, withdrawn]
+    PptOption:
+      type: string
+      description: Premium-paying term option.
+      enum: [regular, limited_10, single]
+    Product:
+      type: object
+      required: [uin, name, category, status, entry_age_min, entry_age_max, maturity_age_max,
+                 sa_min_inr, sa_max_inr, term_years_min, term_years_max, ppt_options,
+                 benefit_payment_options, rider_uins, effective_from, effective_to, launch_enabled,
+                 is_dummy, riders, documents]
+      properties:
+        uin: {$ref: '#/components/schemas/Uin'}
+        name: {type: string}
+        category: {$ref: '#/components/schemas/ProductType'}
+        status: {$ref: '#/components/schemas/ProductStatus'}
+        entry_age_min: {type: integer}
+        entry_age_max: {type: integer}
+        maturity_age_max: {type: integer}
+        sa_min_inr: {$ref: '#/components/schemas/Money'}
+        sa_max_inr:
+          anyOf:
+            - $ref: '#/components/schemas/Money'
+            - type: 'null'
+        term_years_min: {type: integer, description: Lower bound of catalog.product.term_years.}
+        term_years_max: {type: integer, description: Upper bound of catalog.product.term_years.}
+        ppt_options:
+          type: array
+          items: {$ref: '#/components/schemas/PptOption'}
+        benefit_payment_options:
+          type: array
+          description: >-
+            How the benefit is paid, e.g. lumpsum or monthly_income (catalog.product.payout_options,
+            renamed so the contract carries no payout field).
+          items: {type: string}
+        rider_uins:
+          type: array
+          items: {$ref: '#/components/schemas/Uin'}
+        effective_from: {type: string, format: date}
+        effective_to: {type: [string, 'null'], format: date}
+        launch_enabled: {type: boolean}
+        is_dummy: {type: boolean}
+        riders:
+          type: array
+          items: {$ref: '#/components/schemas/Rider'}
+        documents:
+          type: array
+          items: {$ref: '#/components/schemas/ProductDocument'}
+    Rider:
+      type: object
+      required: [uin, name, attaches_to, sa_max_inr, is_dummy]
+      properties:
+        uin: {$ref: '#/components/schemas/Uin'}
+        name: {type: string}
+        attaches_to:
+          type: array
+          description: Base product UINs.
+          items: {$ref: '#/components/schemas/Uin'}
+        sa_max_inr:
+          anyOf:
+            - $ref: '#/components/schemas/Money'
+            - type: 'null'
+        is_dummy: {type: boolean}
+    ProductDocument:
+      type: object
+      required: [kind, version, language, uri, sha256]
+      properties:
+        kind:
+          type: string
+          enum: [CIS, BI, POLICY_WORDING]
+        version: {type: string}
+        language: {type: string}
+        uri: {type: string}
+        sha256: {$ref: '#/components/schemas/Sha256Hex'}
+    KillSwitch:
+      type: object
+      required: [reason, actor]
+      properties:
+        reason: {type: string}
+        actor: {type: string}
+    KillSwitchResult:
+      type: object
+      required: [uin, status]
+      properties:
+        uin: {$ref: '#/components/schemas/Uin'}
+        status: {$ref: '#/components/schemas/ProductStatus'}
+
+    # --- Disclosure (TDD §3.8, §7.2) --------------------------------------------------------
+    DisclosureItem:
+      type: object
+      required: [disclosure_id, body, body_sha256]
+      properties:
+        disclosure_id: {type: string, examples: [DISC-GLOBAL-SOLICIT-01]}
+        body: {type: string, description: Verbatim approved text.}
+        body_sha256: {$ref: '#/components/schemas/Sha256Hex'}
+    DisclosureSet:
+      type: object
+      required: [uin, channel, language, registry_version, items, set_sha256, is_dummy]
+      properties:
+        uin: {$ref: '#/components/schemas/Uin'}
+        channel: {type: string}
+        language: {type: string}
+        registry_version: {type: string}
+        items:
+          type: array
+          description: In the order they must be shown.
+          items: {$ref: '#/components/schemas/DisclosureItem'}
+        set_sha256: {$ref: '#/components/schemas/Sha256Hex'}
+        is_dummy: {type: boolean}
+    Disclosure:
+      type: object
+      required: [disclosure_id, language, body, body_sha256, is_dummy]
+      properties:
+        disclosure_id: {type: string}
+        language: {type: string}
+        body: {type: string, description: Verbatim approved text.}
+        body_sha256: {$ref: '#/components/schemas/Sha256Hex'}
+        is_dummy: {type: boolean}
+
+    # --- Reference --------------------------------------------------------------------------
+    PincodeInfo:
+      type: object
+      required: [pincode, district, state, serviceable, is_dummy]
+      properties:
+        pincode: {$ref: '#/components/schemas/Pincode'}
+        district: {type: string}
+        state: {type: string}
+        serviceable: {type: boolean}
+        is_dummy: {type: boolean}
+    Occupation:
+      type: object
+      required: [code, label, risk_class, is_dummy]
+      properties:
+        code: {type: string}
+        label: {type: string}
+        risk_class: {type: integer, minimum: 1, maximum: 4}
+        is_dummy: {type: boolean}
+
+    # --- Eligibility (TDD §3.6) -------------------------------------------------------------
+    RequiredAttribute:
+      type: object
+      required: [attribute, reason_line_id]
+      properties:
+        attribute: {type: string, examples: [gender]}
+        reason_line_id: {type: string, description: Approved one-line reason for asking.}
+        asked_if:
+          type: string
+          description: Condition for asking, e.g. only when the rating basis uses gender.
+    Residency:
+      type: string
+      enum: [resident, nri, oci_pio]
+    Proposer:
+      type: object
+      required: [is_life_assured]
+      properties:
+        is_life_assured: {type: boolean}
+        relationship: {type: string, description: Proposer's relationship to the life assured.}
+        la_age: {type: integer, minimum: 0, description: Age of the life assured.}
+        business_cover: {type: boolean}
+    EligibilityRequest:
+      type: object
+      required: [pins, age_years, residency, pincode, tobacco_12m, occupation_code, health_flags,
+                 proposer]
+      properties:
+        pins: {$ref: '#/components/schemas/Pins'}
+        age_years:
+          type: integer
+          minimum: 0
+          description: >-
+            Not bounded to 18–75 here: the engine itself routes under-18 (E-03) and over-65 (E-04).
+        dob: {type: string, format: date}
+        gender: {$ref: '#/components/schemas/Gender'}
+        residency: {$ref: '#/components/schemas/Residency'}
+        pincode: {$ref: '#/components/schemas/Pincode'}
+        tobacco_12m:
+          type: [boolean, 'null']
+          description: null means the customer declined to answer.
+        occupation_code:
+          type: [string, 'null']
+          description: Occupation master code; null when declined or unknown (E-06).
+        health_flags:
+          type: object
+          description: Screening question id to answer; null means declined.
+          additionalProperties: {type: [boolean, 'null']}
+        proposer: {$ref: '#/components/schemas/Proposer'}
+    EligibilityResult:
+      type: object
+      required: [decision_id, outcome, eligible_uins, uw_path, flags, rule_ids, reason_codes,
+                 rules_version, params_version, inputs_sha256]
+      properties:
+        decision_id: {type: string, format: uuid}
+        outcome:
+          type: string
+          enum: [ELIGIBLE, NOT_ELIGIBLE, HUMAN_ESCALATION, DATA_ERASURE_EXIT, RE_ASK]
+        eligible_uins:
+          type: array
+          items: {$ref: '#/components/schemas/Uin'}
+        uw_path:
+          type: string
+          enum: [standard, manual]
+        flags:
+          type: array
+          items: {type: string}
+        escalation_reason: {type: string}
+        rule_ids:
+          type: array
+          description: Rules that fired.
+          items: {type: string, examples: [E-01]}
+        reason_codes:
+          type: array
+          items: {type: string}
+        rules_version: {type: string}
+        params_version: {type: string}
+        inputs_sha256: {$ref: '#/components/schemas/Sha256Hex'}
+
+    # --- Suitability (TDD §3.7) -------------------------------------------------------------
+    RequiredSlot:
+      type: object
+      required: [slot, weight, reason_line_id]
+      properties:
+        slot: {type: string}
+        weight: {type: number, minimum: 0}
+        reason_line_id: {type: string}
+    Goal:
+      type: string
+      description: Ranked goals slot (TDD §3.7 slot table).
+      enum: [income_protection, loan_cover, child_education, retirement, savings]
+    IncomeType:
+      type: string
+      description: Income type slot (TDD §3.7 slot table).
+      enum: [salaried, self_employed, homemaker, student, retired]
+    RiskProfile:
+      type: string
+      description: Savings goals only; unused while phase 1 launches term plans only.
+      enum: [conservative, moderate, aggressive]
+    Dependant:
+      type: object
+      required: [relation, age]
+      properties:
+        relation:
+          type: string
+          enum: [spouse, child, parent, other]
+        age: {type: integer, minimum: 0, maximum: 110}
+    Liability:
+      type: object
+      required: [kind, outstanding_inr, years_left]
+      properties:
+        kind:
+          type: string
+          enum: [home, vehicle, education, personal, business, other]
+        outstanding_inr: {$ref: '#/components/schemas/Money'}
+        years_left: {type: integer, minimum: 0, maximum: 40}
+    NeedsPayload:
+      type: object
+      required: [goals, annual_income_inr, income_type, existing_annual_premium_inr,
+                 financial_distress, comprehension_difficulty_count]
+      properties:
+        goals:
+          type: array
+          description: Ranked.
+          items: {$ref: '#/components/schemas/Goal'}
+        annual_income_inr:
+          description: null means the customer declined to answer.
+          anyOf:
+            - $ref: '#/components/schemas/Money'
+            - type: 'null'
+        income_type: {$ref: '#/components/schemas/IncomeType'}
+        dependants:
+          type: array
+          default: []
+          items: {$ref: '#/components/schemas/Dependant'}
+        liabilities:
+          type: array
+          default: []
+          items: {$ref: '#/components/schemas/Liability'}
+        # Money written inline: openapi-generator 7.25 drops the quotes from a default set next
+        # to a $ref, and the Java model stops compiling.
+        existing_cover_inr: {type: string, pattern: *money, default: '0'}
+        employer_cover_inr:
+          type: string
+          pattern: *money
+          default: '0'
+          description: Counted per underwriting rules.
+        earmarked_assets_inr:
+          anyOf:
+            - $ref: '#/components/schemas/Money'
+            - type: 'null'
+        premium_budget_inr_pa:
+          anyOf:
+            - $ref: '#/components/schemas/Money'
+            - type: 'null'
+        cover_to_age: {type: integer, default: 60, minimum: 40, maximum: 85}
+        risk_profile:
+          anyOf:
+            - $ref: '#/components/schemas/RiskProfile'
+            - type: 'null'
+        horizon_years: {type: [integer, 'null']}
+        confirmed_at: {type: [string, 'null'], format: date-time}
+        slots_sha256:
+          description: Bound at confirmation (I2). Excluded from the inputs_sha256 preimage.
+          anyOf:
+            - $ref: '#/components/schemas/Sha256Hex'
+            - type: 'null'
+        existing_annual_premium_inr:
+          description: Premiums already paid on existing policies, for affordability.
+          allOf: [{$ref: '#/components/schemas/Money'}]
+        financial_distress: {type: boolean, description: Stated financial distress (vulnerability).}
+        comprehension_difficulty_count:
+          type: integer
+          minimum: 0
+          description: Repeated comprehension difficulty (vulnerability).
+    EligibilitySnapshot:
+      type: object
+      required: [age_years, eligible_uins, flags]
+      properties:
+        age_years: {type: integer, minimum: 0}
+        eligible_uins:
+          type: array
+          items: {$ref: '#/components/schemas/Uin'}
+        flags:
+          type: array
+          items: {type: string}
+    SuitabilityRequest:
+      type: object
+      required: [pins, eligibility, needs]
+      properties:
+        pins: {$ref: '#/components/schemas/Pins'}
+        eligibility: {$ref: '#/components/schemas/EligibilitySnapshot'}
+        needs: {$ref: '#/components/schemas/NeedsPayload'}
+    SuitabilityResult:
+      type: object
+      required: [decision_id, outcome, profile_sufficiency, fit_types, excluded, need_inr,
+                 recommended_cover_inr, uw_cap_inr, term_years, affordability, vulnerability_flags,
+                 rule_ids, reason_codes, params_version, rules_version, inputs_sha256]
+      properties:
+        decision_id: {type: string, format: uuid}
+        outcome:
+          type: string
+          description: NO_GAP is the need <= 0 case, which exits to advisory.
+          enum: [FIT, NO_GAP, ESCALATE]
+        escalation_reason: {type: string}
+        profile_sufficiency:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: Weighted share of S2 slots answered; S3 needs 0.7 or an explicit election.
+        affordability_premium_estimate_inr: {$ref: '#/components/schemas/Money'}
+        fit_types:
+          type: array
+          items: {$ref: '#/components/schemas/ProductType'}
+        excluded:
+          type: object
+          description: Product type to reason codes.
+          propertyNames: {$ref: '#/components/schemas/ProductType'}
+          additionalProperties:
+            type: array
+            items: {type: string}
+        need_inr:
+          description: The computed need N; zero or negative when existing cover suffices.
+          allOf: [{$ref: '#/components/schemas/SignedMoney'}]
+        recommended_cover_inr: {$ref: '#/components/schemas/Money'}
+        uw_cap_inr:
+          description: null when income was declined.
+          anyOf:
+            - $ref: '#/components/schemas/Money'
+            - type: 'null'
+        term_years: {type: integer}
+        affordability:
+          type: string
+          enum: [green, amber, red, unknown]
+        vulnerability_flags:
+          type: array
+          items: {type: string}
+        rule_ids:
+          type: array
+          description: Rules that fired.
+          items: {type: string}
+        reason_codes:
+          type: array
+          items: {type: string}
+        params_version: {type: string, description: Actuarial assumptions.}
+        rules_version: {type: string}
+        inputs_sha256:
+          description: SHA-256(JCS(needs without slots_sha256)); must equal needs.slots_sha256 (I2).
+          allOf: [{$ref: '#/components/schemas/Sha256Hex'}]
+
+    # --- Ranking (TDD §3.8) -----------------------------------------------------------------
+    RankingRequest:
+      type: object
+      required: [pins, eligible_uins, suitability, excluded_uins, channel, language, as_of,
+                 tobacco_12m, age_years]
+      properties:
+        pins: {$ref: '#/components/schemas/Pins'}
+        eligible_uins:
+          type: array
+          items: {$ref: '#/components/schemas/Uin'}
+        suitability: {$ref: '#/components/schemas/SuitabilityResult'}
+        excluded_uins:
+          type: array
+          description: Withdrawn or kill-switched products to leave out.
+          items: {$ref: '#/components/schemas/Uin'}
+        channel: {type: string}
+        language: {type: string}
+        as_of: {type: string, format: date-time}
+        tobacco_12m: {type: [boolean, 'null']}
+        gender: {$ref: '#/components/schemas/Gender'}
+        age_years: {type: integer, minimum: 0}
+    RecommendedOption:
+      type: object
+      required: [rank, uin, sum_assured_inr, term_years, ppt_years, quote, reason_codes]
+      properties:
+        rank: {type: integer, minimum: 1, maximum: 3}
+        uin: {$ref: '#/components/schemas/Uin'}
+        sum_assured_inr: {$ref: '#/components/schemas/Money'}
+        term_years: {type: integer}
+        ppt_years: {type: integer}
+        rider_uins:
+          type: array
+          default: []
+          items: {$ref: '#/components/schemas/Uin'}
+        quote:
+          description: null when health or tobacco answers were declined, or rating is down.
+          anyOf:
+            - $ref: '#/components/schemas/PremiumQuote'
+            - type: 'null'
+        reason_codes:
+          type: array
+          items: {type: string}
+        protection_gap_inr: {type: string, pattern: *money, default: '0'}
+    RankingResult:
+      type: object
+      required: [decision_id, options, ranker_version, suitability_inputs_sha256, inputs_sha256,
+                 reason_codes]
+      properties:
+        decision_id: {type: string, format: uuid}
+        options:
+          type: array
+          description: >-
+            At most three. Empty, with reason code NO_ELIGIBLE_OPTION, when nothing qualifies; the
+            orchestrator then escalates.
+          maxItems: 3
+          items: {$ref: '#/components/schemas/RecommendedOption'}
+        ranker_version: {type: string}
+        suitability_inputs_sha256:
+          description: Must match the SuitabilityResult it ranked (I2).
+          allOf: [{$ref: '#/components/schemas/Sha256Hex'}]
+        inputs_sha256: {$ref: '#/components/schemas/Sha256Hex'}
+        reason_codes:
+          type: array
+          items: {type: string}
+
+    # --- Quotes (TDD §3.8) ------------------------------------------------------------------
+    Frequency:
+      type: string
+      enum: [annual, half_yearly, monthly, single]
+    QuoteRequest:
+      type: object
+      required: [pins, uin, sum_assured_inr, term_years, ppt, rider_uins, age_years, tobacco_12m,
+                 frequency]
+      properties:
+        pins: {$ref: '#/components/schemas/Pins'}
+        uin: {$ref: '#/components/schemas/Uin'}
+        sum_assured_inr: {$ref: '#/components/schemas/Money'}
+        term_years: {type: integer, minimum: 1}
+        ppt: {$ref: '#/components/schemas/PptOption'}
+        rider_uins:
+          type: array
+          items: {$ref: '#/components/schemas/Uin'}
+        age_years: {type: integer, minimum: 0}
+        gender: {$ref: '#/components/schemas/Gender'}
+        tobacco_12m:
+          type: [boolean, 'null']
+          description: null (declined) is answered 422 TOBACCO_UNDISCLOSED; premiums are withheld upstream.
+        frequency: {$ref: '#/components/schemas/Frequency'}
+    PremiumQuote:
+      type: object
+      required: [decision_id, quote_id, uin, annual_premium_inr, frequency, valid_until, indicative,
+                 rider_premiums, gst_included, rating_version, inputs_sha256, reason_codes]
+      properties:
+        decision_id: {type: string, format: uuid}
+        quote_id: {type: string}
+        uin: {$ref: '#/components/schemas/Uin'}
+        annual_premium_inr:
+          description: GST included.
+          allOf: [{$ref: '#/components/schemas/Money'}]
+        frequency: {$ref: '#/components/schemas/Frequency'}
+        valid_until: {type: string, format: date}
+        indicative:
+          type: boolean
+          description: >-
+            Always true; the final premium is set after underwriting. TDD §3.8 types it
+            Literal[True], but openapi-generator 7.25 cannot compile a boolean const or enum.
+        rider_premiums:
+          type: object
+          description: Rider UIN to its annual premium.
+          additionalProperties: {$ref: '#/components/schemas/Money'}
+        gst_included: {type: boolean}
+        rating_version: {type: string}
+        inputs_sha256: {$ref: '#/components/schemas/Sha256Hex'}
+        reason_codes:
+          type: array
+          items: {type: string}
+    QuoteAlternativesRequest:
+      allOf:
+        - $ref: '#/components/schemas/QuoteRequest'
+        - type: object
+          required: [recommended_cover_inr]
+          properties:
+            recommended_cover_inr: {$ref: '#/components/schemas/Money'}
+    QuoteAlternative:
+      type: object
+      required: [quote, protection_gap_inr, change]
+      properties:
+        quote: {$ref: '#/components/schemas/PremiumQuote'}
+        protection_gap_inr: {$ref: '#/components/schemas/Money'}
+        change:
+          type: string
+          enum: [LOWER_COVER, FEWER_RIDERS, OTHER_PPT]

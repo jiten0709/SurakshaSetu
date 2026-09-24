@@ -1,0 +1,11 @@
+{
+  "description": "Money is a decimal string in the contract, so it is never re-formatted as a number.",
+  "input": {
+    "sum_assured_inr": "10000000",
+    "annual_premium_inr": "12345.60",
+    "protection_gap_inr": "0",
+    "outstanding_inr": "2500000.5"
+  },
+  "jcs_utf8_hex": "7b22616e6e75616c5f7072656d69756d5f696e72223a2231323334352e3630222c226f75747374616e64696e675f696e72223a22323530303030302e35222c2270726f74656374696f6e5f6761705f696e72223a2230222c2273756d5f617373757265645f696e72223a223130303030303030227d",
+  "sha256_hex": "70cc2044af06d20aa684b715a0974a13846c5acc78af567c37fe75d603d33e92"
+}

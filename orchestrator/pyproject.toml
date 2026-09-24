@@ -10,6 +10,7 @@ dependencies = [
     "psycopg[binary,pool]>=3",
     "pydantic>=2",
     "pydantic-settings>=2.15.0",
+    "rfc8785>=0.1.4",
     "uvicorn[standard]>=0.53.0",
 ]
 
@@ -19,8 +20,10 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
+    "datamodel-code-generator>=0.82.0",
     "hypothesis>=6.168.0",
     "mypy>=2.3.1",
+    "openapi-spec-validator>=0.9.0",
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
     "respx>=0.23.1",
@@ -35,6 +38,22 @@ select = ["E", "F", "I", "B", "UP", "S", "SIM", "ASYNC"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101"]
+# Generated from the contract; long lines are spec descriptions.
+"src/surakshasetu/domain/models.py" = ["E501"]
+
+# `make contracts` and `make check-contracts` both read this; only --output differs.
+[tool.datamodel-codegen]
+input = "../contracts/openapi/domain-services.v1.yaml"
+input-file-type = "openapi"
+output-model-type = "pydantic_v2.BaseModel"
+target-python-version = "3.12"
+formatters = ["ruff-format", "ruff-check"]
+use-type-alias = true
+enum-field-as-literal = "all"
+use-annotated = true
+strict-nullable = true
+output-datetime-class = "AwareDatetime"
+disable-timestamp = true
 
 [tool.mypy]
 strict = true

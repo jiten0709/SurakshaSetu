@@ -1,0 +1,32 @@
+{
+  "description": "Array order is preserved; only object keys are sorted, at every depth.",
+  "input": {
+    "z": [
+      [
+        3,
+        [
+          2,
+          []
+        ]
+      ],
+      {
+        "y": [],
+        "x": {}
+      }
+    ],
+    "a": [
+      {
+        "k": 2,
+        "j": 1
+      },
+      [
+        {
+          "b": null,
+          "a": true
+        }
+      ]
+    ]
+  },
+  "jcs_utf8_hex": "7b2261223a5b7b226a223a312c226b223a327d2c5b7b2261223a747275652c2262223a6e756c6c7d5d5d2c227a223a5b5b332c5b322c5b5d5d5d2c7b2278223a7b7d2c2279223a5b5d7d5d7d",
+  "sha256_hex": "0bbaacb3da475c2f9cd22eac23ffe38cbcc341f23abad01e00277b435fb33207"
+}

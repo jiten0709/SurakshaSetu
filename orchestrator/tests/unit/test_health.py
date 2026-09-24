@@ -14,6 +14,8 @@ def test_healthz_is_liveness_only() -> None:
         env="pilot",
         pg_dsn_app=SecretStr("postgresql://app@unreachable.invalid:5432/x"),
         redis_url=SecretStr("redis://unreachable.invalid:6379/0"),
+        domain_base_url="http://unreachable.invalid:8080",
+        domain_token=SecretStr("pilot-token"),
     )
     client = TestClient(create_app(settings))
 

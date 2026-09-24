@@ -1,0 +1,14 @@
+{
+  "description": "Keys sort by UTF-16 code unit, not numerically and not by insertion order.",
+  "input": {
+    "b": 1,
+    "a": 2,
+    "10": 3,
+    "2": 4,
+    "A": 5,
+    "_": 6,
+    "aa": 7
+  },
+  "jcs_utf8_hex": "7b223130223a332c2232223a342c2241223a352c225f223a362c2261223a322c226161223a372c2262223a317d",
+  "sha256_hex": "1140dd92470182f5f2746ef4851eeedaf3a01e4d707b826fbe1a1c3eb6468444"
+}

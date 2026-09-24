@@ -101,7 +101,11 @@ services:
     command: ["migrate"]
 
   domain-services:
-    build: ../domain-services
+    build:
+      context: ../domain-services
+      # The Maven build generates its interfaces from the tier contract.
+      additional_contexts:
+        contracts: ../contracts
     profiles: [core]
     depends_on:
       postgres: { condition: service_healthy }

@@ -1,0 +1,12 @@
+{
+  "description": "ECMAScript number serialisation: shortest round-trip form, exponent from 1e21 and below 1e-6.",
+  "input": {
+    "profile_sufficiency": 0.7,
+    "half": 1.5,
+    "big": 1e+21,
+    "small": 1e-07,
+    "third": 0.3333333333333333
+  },
+  "jcs_utf8_hex": "7b22626967223a31652b32312c2268616c66223a312e352c2270726f66696c655f73756666696369656e6379223a302e372c22736d616c6c223a31652d372c227468697264223a302e333333333333333333333333333333337d",
+  "sha256_hex": "882ba09435f606010b697498cc790b39c7101b7a7945cb46cadf6e7db56eb9a9"
+}
