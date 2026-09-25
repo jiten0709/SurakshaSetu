@@ -15,6 +15,12 @@ class Problem(BaseModel):
     title: str
     status: int
     detail: str | None = None
+    instance: Annotated[
+        str | None,
+        Field(
+            description="RFC 9457: the request path. It can carry ids or a pincode, so never log it."
+        ),
+    ] = None
     code: Annotated[
         str,
         Field(
@@ -132,7 +138,10 @@ class ConsentRecord(BaseModel):
         ),
     ]
     valid_reasons: Annotated[
-        list[str], Field(description="Why valid_p1 is false; empty when it is true.")
+        list[str],
+        Field(
+            description="Why valid_p1 is false; empty when it is true. Codes: P1_NOT_GRANTED, WITHDRAWN, AGE_NOT_DECLARED, NOTICE_SUPERSEDED (a newer notice is in force for the language) and CONSENT_EXPIRED (older than the consent TTL). The last two send a resumed session back to S0."
+        ),
     ]
 
 

@@ -4,8 +4,6 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.ProblemDetail;
-import org.springframework.web.ErrorResponseException;
 import org.springframework.web.method.HandlerMethod;
 import org.springframework.web.servlet.HandlerInterceptor;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
@@ -27,11 +25,10 @@ class NotImplementedStubs implements WebMvcConfigurer, HandlerInterceptor {
   public boolean preHandle(
       HttpServletRequest request, HttpServletResponse response, Object handler) {
     if (handler instanceof HandlerMethod method && method.getMethod().isDefault()) {
-      ProblemDetail problem =
-          ProblemDetail.forStatusAndDetail(
-              HttpStatus.NOT_IMPLEMENTED, method.getMethod().getName() + " is not implemented yet");
-      problem.setProperty("code", "NOT_IMPLEMENTED");
-      throw new ErrorResponseException(HttpStatus.NOT_IMPLEMENTED, problem, null);
+      throw Problems.problem(
+          HttpStatus.NOT_IMPLEMENTED,
+          "NOT_IMPLEMENTED",
+          method.getMethod().getName() + " is not implemented yet");
     }
     return true;
   }

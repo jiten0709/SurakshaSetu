@@ -22,6 +22,7 @@
     <google-java-format.version>1.36.1</google-java-format.version>
     <openapi-generator.version>7.25.0</openapi-generator.version>
     <java-json-canonicalization.version>1.1</java-json-canonicalization.version>
+    <openapi-request-validator.version>3.0.0</openapi-request-validator.version>
   </properties>
 
   <dependencies>
@@ -48,6 +49,12 @@
       <groupId>io.github.erdtman</groupId>
       <artifactId>java-json-canonicalization</artifactId>
       <version>${java-json-canonicalization.version}</version>
+    </dependency>
+    <!-- The seed loader reads content/seed/**/*.yaml into records; Jackson 3 keeps dates as text,
+         where SnakeYAML would turn them into java.util.Date. Version from Boot's Jackson BOM. -->
+    <dependency>
+      <groupId>tools.jackson.dataformat</groupId>
+      <artifactId>jackson-dataformat-yaml</artifactId>
     </dependency>
     <dependency>
       <groupId>org.postgresql</groupId>
@@ -77,6 +84,15 @@
     </dependency>
     <!-- MigrationsIT drives infra/db/migrations through the Flyway API. Test scope and no Boot
          Flyway starter: the service itself never migrates. -->
+    <!-- Asserts every MockMvc response against the tier contract. The artifact formerly named
+         swagger-request-validator-mockmvc; 3.0.0 targets Spring 7 and OpenAPI 3.1. It brings
+         Jackson 2 onto the test classpath only. -->
+    <dependency>
+      <groupId>com.atlassian.oai</groupId>
+      <artifactId>openapi-request-validator-mockmvc</artifactId>
+      <version>${openapi-request-validator.version}</version>
+      <scope>test</scope>
+    </dependency>
     <dependency>
       <groupId>org.flywaydb</groupId>
       <artifactId>flyway-database-postgresql</artifactId>

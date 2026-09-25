@@ -1,41 +1,28 @@
 package com.surakshasetu.domain;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
+import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.postgresql.PostgreSQLContainer;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.jdbc.core.simple.JdbcClient;
 
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-@Testcontainers
-class HealthIT {
+/** Health is UP with the database reached as domain_rw, never a superuser (least privilege). */
+class HealthIT extends DomainApiTestSupport {
 
-  // Same image as infra/compose.yaml.
-  @Container @ServiceConnection
-  static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:16.15-trixie");
-
-  @Value("${local.server.port}")
-  int port;
+  @Autowired DataSource dataSource;
 
   @Test
-  void contextLoadsAndActuatorHealthIsUp() throws Exception {
-    HttpRequest request =
-        HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/actuator/health")).build();
+  void actuatorHealthIsUpAsDomainRw() throws Exception {
+    mvc.perform(get("/actuator/health"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.status").value("UP"));
 
-    HttpResponse<String> response;
-    try (HttpClient client = HttpClient.newHttpClient()) {
-      response = client.send(request, HttpResponse.BodyHandlers.ofString());
-    }
-
-    assertThat(response.statusCode()).isEqualTo(200);
-    assertThat(response.body()).contains("\"status\":\"UP\"");
+    assertThat(
+            JdbcClient.create(dataSource).sql("SELECT current_user").query(String.class).single())
+        .isEqualTo("domain_rw");
   }
 }

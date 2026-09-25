@@ -1,0 +1,30 @@
+# Consent notices: FICTITIOUS placeholder copy (TDD §3.5 purpose lines), flagged is_dummy. Loaded
+# as domain_rw, which may only INSERT: a notice is immutable, so changed text needs a new
+# notice_version. The hi-IN notice awaits an approved translation.
+
+notices:
+  - notice_version: 2026.09.1-en
+    language: en-IN
+    approved_by: DUMMY-compliance
+    effective_from: 2026-09-01
+    is_dummy: true
+    body: |-
+      DUMMY: Please review how we use your information (notice 2026.09.1).
+      [P1 required] Use my answers, including basic health and lifestyle details, to assess my needs and suggest plans
+      [P2 optional] Let a licensed advisor contact me
+      [P3 optional] Send me product updates
+      [ ] I confirm I am 18 or older
+      [Read in हिंदी / other language]
+
+  - notice_version: 2026.09.1-hi
+    language: hi-IN
+    approved_by: DUMMY-compliance
+    effective_from: 2026-09-01
+    is_dummy: true
+    body: |-
+      DUMMY: [hi translation pending approval] Please review how we use your information (notice 2026.09.1).
+      [P1 required] Use my answers, including basic health and lifestyle details, to assess my needs and suggest plans
+      [P2 optional] Let a licensed advisor contact me
+      [P3 optional] Send me product updates
+      [ ] I confirm I am 18 or older
+      [Read in English / other language]

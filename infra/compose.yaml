@@ -125,12 +125,18 @@ services:
     profiles: [core]
     depends_on:
       postgres: { condition: service_healthy }
+    # Least privilege: domain_rw writes consent and reads the catalog; catalog_loader is used only
+    # by the kill switch and the seed loader. The roles exist before this starts because `make up`
+    # runs db-migrate first.
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/surakshasetu
-      # uperuser until startup runs db-migrate before this service. domain_rw doesn't
-      # exist yet at `make up` on a fresh volume, so switching now fails the healthcheck.
-      SPRING_DATASOURCE_USERNAME: postgres
-      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-surakshasetu-dev}
+      SPRING_DATASOURCE_USERNAME: domain_rw
+      SPRING_DATASOURCE_PASSWORD: ${DOMAIN_RW_PASSWORD:-surakshasetu-dev-domain-rw}
+      SURAKSHASETU_CATALOGLOADER_PASSWORD: ${CATALOG_LOADER_PASSWORD:-surakshasetu-dev-catalog-loader}
+      SURAKSHASETU_SEED_DIR: /content/seed
+    # Read by `make seed-catalog` (profile catalog-sync) only.
+    volumes:
+      - ../content/seed:/content/seed:ro
     ports: ["127.0.0.1:8080:8080"]
     healthcheck:
       <<: *healthcheck

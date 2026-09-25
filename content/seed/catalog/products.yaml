@@ -1,0 +1,82 @@
+# Product Catalog seed: FICTITIOUS reference data from TDD §7.3, flagged is_dummy. Compliance
+# replaces it before any pilot. Loaded by `make seed-catalog` as catalog_loader.
+# - Money is rupees as a decimal string.
+# - benefit_payment_options is catalog.product.payout_options (the contract's name). Vocabulary:
+#   lumpsum, monthly_income, lumpsum_plus_income; the TDD's "income" for 999N010V01 is monthly_income.
+# - maturity_age_max is not in the TDD; the values are invented placeholders.
+# - A product's status and effective_to are set on first insert only; afterwards they belong to
+#   the kill switch.
+# - quote_defaults uses QuoteRequest field names (Step 7's quote adapter reads them).
+
+products:
+  - uin: 999N001V02
+    name: Suraksha Term Shield
+    category: TERM
+    entry_age_min: 18
+    entry_age_max: 65
+    maturity_age_max: 85
+    sa_min_inr: "2500000.00"
+    sa_max_inr: "100000000.00"
+    term_years_min: 10
+    term_years_max: 40
+    ppt_options: [regular, limited_10, single]
+    benefit_payment_options: [lumpsum, monthly_income]
+    # 999A009V01 added (decided 2026-09-25) so this agrees with the rider table, which attaches
+    # critical illness to 999N001V02; the TDD's product row lists only 007 and 008.
+    rider_uins: [999A007V01, 999A008V01, 999A009V01]
+    effective_from: 2026-09-01
+    quote_defaults: {sum_assured_inr: "10000000", term_years: 30, ppt: regular, frequency: annual, rider_uins: []}
+    launch_enabled: true
+    is_dummy: true
+
+  - uin: 999N002V01
+    name: Suraksha Term Shield ROP
+    category: TERM_ROP
+    entry_age_min: 18
+    entry_age_max: 55
+    maturity_age_max: 75
+    sa_min_inr: "2500000.00"
+    sa_max_inr: "20000000.00"
+    term_years_min: 15
+    term_years_max: 35
+    ppt_options: [regular, limited_10]
+    benefit_payment_options: [lumpsum]
+    rider_uins: [999A007V01]
+    effective_from: 2026-09-01
+    quote_defaults: {sum_assured_inr: "5000000", term_years: 25, ppt: regular, frequency: annual, rider_uins: []}
+    launch_enabled: true
+    is_dummy: true
+
+  # Seeded but switched off in phase 1 (A5), so suitability exclusion reason codes get exercised.
+  - uin: 999N010V01
+    name: Suraksha Saver Guarantee
+    category: NON_PAR_SAVINGS
+    entry_age_min: 18
+    entry_age_max: 55
+    maturity_age_max: 80
+    sa_min_inr: "500000.00"
+    sa_max_inr: "10000000.00"
+    term_years_min: 10
+    term_years_max: 25
+    ppt_options: [limited_10]
+    benefit_payment_options: [lumpsum, monthly_income]
+    rider_uins: [999A008V01]
+    effective_from: 2026-09-01
+    quote_defaults: {sum_assured_inr: "1000000", term_years: 15, ppt: limited_10, frequency: annual, rider_uins: []}
+    launch_enabled: false
+    is_dummy: true
+
+riders:
+  - {uin: 999A007V01, name: Accidental death benefit, attaches_to: [999N001V02, 999N002V01], sa_max_inr: null, is_dummy: true}
+  - {uin: 999A008V01, name: Waiver of premium, attaches_to: [999N001V02, 999N002V01, 999N010V01], sa_max_inr: null, is_dummy: true}
+  - {uin: 999A009V01, name: Critical illness, attaches_to: [999N001V02], sa_max_inr: null, is_dummy: true}
+
+# The loader stores uri = content/seed/<path> and sha256 = SHA-256 of the file's bytes. A changed
+# file under the same (uin, kind, version, language) fails the load: bump the version.
+documents:
+  - {uin: 999N001V02, kind: CIS, version: v1, language: en-IN, path: kb/product/999N001V02-cis.md, is_dummy: true}
+  - {uin: 999N001V02, kind: POLICY_WORDING, version: v1, language: en-IN, path: kb/product/999N001V02-policy-wording.md, is_dummy: true}
+  - {uin: 999N002V01, kind: CIS, version: v1, language: en-IN, path: kb/product/999N002V01-cis.md, is_dummy: true}
+  - {uin: 999N002V01, kind: POLICY_WORDING, version: v1, language: en-IN, path: kb/product/999N002V01-policy-wording.md, is_dummy: true}
+  - {uin: 999N010V01, kind: CIS, version: v1, language: en-IN, path: kb/product/999N010V01-cis.md, is_dummy: true}
+  - {uin: 999N010V01, kind: POLICY_WORDING, version: v1, language: en-IN, path: kb/product/999N010V01-policy-wording.md, is_dummy: true}

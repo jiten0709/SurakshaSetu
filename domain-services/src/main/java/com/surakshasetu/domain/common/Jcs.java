@@ -1,13 +1,27 @@
 package com.surakshasetu.domain.common;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.text.Normalizer;
 import java.util.HexFormat;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import org.erdtman.jcs.JsonCanonicalizer;
+import tools.jackson.databind.json.JsonMapper;
 
-/** RFC 8785 JSON Canonicalization Scheme: the only way this tier hashes JSON. */
+/**
+ * RFC 8785 JSON Canonicalization Scheme, and every hash this tier computes (the contract's
+ * "Hashing" section). Nothing else in the tier hashes.
+ */
 public final class Jcs {
+
+  private static final JsonMapper MAPPER = JsonMapper.builder().build();
+
+  /** One entry of a disclosure set, as the set hash sees it. */
+  public record SetItem(String disclosureId, String bodySha256) {}
 
   private Jcs() {}
 
@@ -20,11 +34,42 @@ public final class Jcs {
   }
 
   public static String sha256Hex(String json) {
+    return sha256Hex(canonicalize(json));
+  }
+
+  public static String sha256Hex(byte[] bytes) {
     try {
-      return HexFormat.of()
-          .formatHex(MessageDigest.getInstance("SHA-256").digest(canonicalize(json)));
+      return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));
     } catch (NoSuchAlgorithmException e) {
       throw new IllegalStateException(e);
     }
+  }
+
+  /** {@code body_sha256} = SHA-256(UTF-8(NFC(body))), for consent-notice and disclosure bodies. */
+  public static String bodySha256(String body) {
+    return sha256Hex(nfc(body).getBytes(StandardCharsets.UTF_8));
+  }
+
+  public static String nfc(String text) {
+    return Normalizer.normalize(text, Normalizer.Form.NFC);
+  }
+
+  /**
+   * {@code set_sha256} = SHA-256(JCS({registry_version, uin, channel, language, items:
+   * [{disclosure_id, body_sha256}]})), items in set order.
+   */
+  public static String setSha256(
+      String registryVersion, String uin, String channel, String language, List<SetItem> items) {
+    Map<String, Object> set = new LinkedHashMap<>();
+    set.put("registry_version", registryVersion);
+    set.put("uin", uin);
+    set.put("channel", channel);
+    set.put("language", language);
+    set.put(
+        "items",
+        items.stream()
+            .map(i -> Map.of("disclosure_id", i.disclosureId(), "body_sha256", i.bodySha256()))
+            .toList());
+    return sha256Hex(MAPPER.writeValueAsString(set));
   }
 }

@@ -1,7 +1,7 @@
 # One entry point for local work and CI. Placeholder targets are filled in by later steps.
 COMPOSE := docker compose -f infra/compose.yaml --profile core
 PYTEST_MARKERS := not stack and not golden and not redteam and not live and not db
-PLACEHOLDERS := seed-catalog kb-ingest seed-eval test-invariants e2e-scripted \
+PLACEHOLDERS := kb-ingest seed-eval test-invariants e2e-scripted \
 	verify-release-gate eval eval-live contract-test local-setup
 SPEC := contracts/openapi/domain-services.v1.yaml
 MODELS := src/surakshasetu/domain/models.py
@@ -22,10 +22,13 @@ TEST_ENV := SS_TEST_PG_DSN_ADMIN="postgresql://postgres:$(POSTGRES_PASSWORD)@127
 	$(MINIO_ENV)
 
 .PHONY: up down logs check check-py check-java check-stubs check-db check-stack check-contracts \
-	db-migrate contracts contracts-lint verify-audit $(PLACEHOLDERS)
+	db-migrate seed-catalog contracts contracts-lint verify-audit $(PLACEHOLDERS)
 
-# `up --wait` treats an exited one-shot as a failure, so the one-shots run on their own.
+# Postgres first, then the migrations, so domain-services finds its domain_rw role on a fresh
+# volume. `up --wait` treats an exited one-shot as a failure, so the one-shots run on their own.
 up:
+	$(COMPOSE) up -d --wait postgres
+	@$(MAKE) --no-print-directory db-migrate
 	$(COMPOSE) up -d --build --wait --scale minio-init=0 --scale flyway=0
 	$(COMPOSE) run --rm minio-init
 
@@ -73,6 +76,11 @@ db-migrate:
 		(cd orchestrator && SS_PG_DSN_APP="postgresql://app_rw:$(APP_RW_PASSWORD)@127.0.0.1:5432/$$db" \
 			uv run --locked python -m surakshasetu.graph.checkpointer_setup) || exit 1; \
 	done
+
+# Load content/seed (catalog, disclosure registry, notices, reference masters) into surakshasetu
+# with the service's own code (profile catalog-sync), then exit. Idempotent; needs `make up`.
+seed-catalog:
+	$(COMPOSE) run --rm --build -e SPRING_PROFILES_ACTIVE=catalog-sync domain-services
 
 # The db-marked tests: privileges, the audit chain, subject keys. Needs `make up`; kept out of
 # check-py because CI's python job has no database.

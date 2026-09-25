@@ -1,66 +1,45 @@
 package com.surakshasetu.domain;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.request;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.surakshasetu.domain.contract.model.ConsentRecord;
 import com.surakshasetu.domain.contract.model.SuitabilityResult;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.postgresql.PostgreSQLContainer;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.MediaType;
 import tools.jackson.databind.json.JsonMapper;
 
-/** The generated contract wires up under Boot 4 and Jackson 3; every stub answers 501. */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-@Testcontainers
-class ContextLoadsTest {
-
-  // Same image as infra/compose.yaml.
-  @Container @ServiceConnection
-  static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:16.15-trixie");
-
-  @Value("${local.server.port}")
-  int port;
+/** The generated contract wires up under Boot 4 and Jackson 3; the Step 6–7 stubs answer 501. */
+class ContextLoadsTest extends DomainApiTestSupport {
 
   @Autowired JsonMapper mapper;
 
   @ParameterizedTest
   @CsvSource({
-    "GET, /v1/meta/versions",
-    "GET, /v1/consent/notices/current?language=en-IN",
-    "GET, /v1/catalog/products",
-    "GET, /v1/disclosures/DISC-GLOBAL-AI-06?language=en-IN",
-    "GET, /v1/reference/occupations",
     "GET, /v1/eligibility/required-attributes",
+    "POST, /v1/eligibility/evaluate",
     "GET, /v1/suitability/required-slots?pins.rules=r1",
+    "POST, /v1/suitability/evaluate",
     "POST, /v1/ranking/rank",
     "POST, /v1/quotes",
+    "POST, /v1/quotes/alternatives",
   })
   void stubAnswers501ProblemJson(String method, String path) throws Exception {
-    HttpRequest request =
-        HttpRequest.newBuilder(URI.create("http://localhost:" + port + path))
-            .method(method, HttpRequest.BodyPublishers.ofString("{}"))
-            .header("Content-Type", "application/json")
-            .build();
-
-    HttpResponse<String> response;
-    try (HttpClient client = HttpClient.newHttpClient()) {
-      response = client.send(request, HttpResponse.BodyHandlers.ofString());
-    }
-
-    assertThat(response.statusCode()).isEqualTo(501);
-    assertThat(response.headers().firstValue("Content-Type")).hasValue("application/problem+json");
-    assertThat(response.body()).contains("\"code\":\"NOT_IMPLEMENTED\"", "\"status\":501");
+    mvc.perform(
+            request(HttpMethod.valueOf(method), path)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{}"))
+        .andExpect(status().isNotImplemented())
+        .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
+        .andExpect(jsonPath("$.code").value("NOT_IMPLEMENTED"))
+        .andExpect(jsonPath("$.status").value(501));
   }
 
   @Test

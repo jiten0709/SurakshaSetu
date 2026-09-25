@@ -1,0 +1,132 @@
+# Disclosure Registry seed: FICTITIOUS placeholder bodies from TDD §7.3; every body starts "DUMMY:".
+# OD-1 (decided 2026-09-25, option a): a disclosure is keyed by (disclosure_id, language), so each
+# entry lists one body per language. hi-IN bodies await approved translations.
+# Bodies are immutable: changed text needs a new disclosure_id AND a new registry_version, and the
+# loader refuses a changed body under an existing (disclosure_id, language).
+
+disclosures:
+  - disclosure_id: DISC-GLOBAL-SOLICIT-01
+    scope: GLOBAL
+    scope_key: null
+    approved_by: DUMMY-compliance
+    effective_from: 2026-09-01
+    effective_to: null
+    is_dummy: true
+    bodies:
+      en-IN: "DUMMY: Approved solicitation statement."
+      hi-IN: "DUMMY: [hi translation pending approval] Approved solicitation statement."
+
+  - disclosure_id: DISC-GLOBAL-QUOTE-02
+    scope: GLOBAL
+    scope_key: null
+    approved_by: DUMMY-compliance
+    effective_from: 2026-09-01
+    effective_to: null
+    is_dummy: true
+    bodies:
+      en-IN: "DUMMY: Premium is indicative, final after underwriting."
+      hi-IN: "DUMMY: [hi translation pending approval] Premium is indicative, final after underwriting."
+
+  - disclosure_id: DISC-GLOBAL-S45-03
+    scope: GLOBAL
+    scope_key: null
+    approved_by: DUMMY-compliance
+    effective_from: 2026-09-01
+    effective_to: null
+    is_dummy: true
+    bodies:
+      en-IN: "DUMMY: Consequences of misstatement or non-disclosure."
+      hi-IN: "DUMMY: [hi translation pending approval] Consequences of misstatement or non-disclosure."
+
+  - disclosure_id: DISC-GLOBAL-FREELOOK-04
+    scope: GLOBAL
+    scope_key: null
+    approved_by: DUMMY-compliance
+    effective_from: 2026-09-01
+    effective_to: null
+    is_dummy: true
+    bodies:
+      en-IN: "DUMMY: 30-day free-look period."
+      hi-IN: "DUMMY: [hi translation pending approval] 30-day free-look period."
+
+  - disclosure_id: DISC-GLOBAL-TAX-05
+    scope: GLOBAL
+    scope_key: null
+    approved_by: DUMMY-compliance
+    effective_from: 2026-09-01
+    effective_to: null
+    is_dummy: true
+    bodies:
+      en-IN: "DUMMY: Tax treatment depends on the law in force and can change."
+      hi-IN: "DUMMY: [hi translation pending approval] Tax treatment depends on the law in force and can change."
+
+  - disclosure_id: DISC-GLOBAL-AI-06
+    scope: GLOBAL
+    scope_key: null
+    approved_by: DUMMY-compliance
+    effective_from: 2026-09-01
+    effective_to: null
+    is_dummy: true
+    bodies:
+      en-IN: "DUMMY: AI assistant identity and human alternative."
+      hi-IN: "DUMMY: [hi translation pending approval] AI assistant identity and human alternative."
+
+  - disclosure_id: DISC-CAT-SAVINGS-11
+    scope: CATEGORY
+    scope_key: NON_PAR_SAVINGS
+    approved_by: DUMMY-compliance
+    effective_from: 2026-09-01
+    effective_to: null
+    is_dummy: true
+    bodies:
+      en-IN: "DUMMY: Guaranteed and non-guaranteed benefits, illustration reference."
+      hi-IN: "DUMMY: [hi translation pending approval] Guaranteed and non-guaranteed benefits, illustration reference."
+
+  - disclosure_id: DISC-UIN-999N001V02-21
+    scope: UIN
+    scope_key: 999N001V02
+    approved_by: DUMMY-compliance
+    effective_from: 2026-09-01
+    effective_to: null
+    is_dummy: true
+    bodies:
+      en-IN: "DUMMY: Key exclusions and waiting periods summary for 999N001V02."
+      hi-IN: "DUMMY: [hi translation pending approval] Key exclusions and waiting periods summary for 999N001V02."
+
+  - disclosure_id: DISC-UIN-999N002V01-22
+    scope: UIN
+    scope_key: 999N002V01
+    approved_by: DUMMY-compliance
+    effective_from: 2026-09-01
+    effective_to: null
+    is_dummy: true
+    bodies:
+      en-IN: "DUMMY: Key exclusions and waiting periods summary for 999N002V01."
+      hi-IN: "DUMMY: [hi translation pending approval] Key exclusions and waiting periods summary for 999N002V01."
+
+# Ordered sets, one row per channel x language. TDD §7.3 seed order for 999N001V02; 999N002V01 is
+# the same with its own UIN item. A set is immutable under its registry_version.
+disclosure_sets:
+  - uin: 999N001V02
+    registry_version: "2026.09.1"
+    channels: [web, app]
+    languages: [en-IN, hi-IN]
+    disclosure_ids:
+      - DISC-GLOBAL-SOLICIT-01
+      - DISC-GLOBAL-QUOTE-02
+      - DISC-UIN-999N001V02-21
+      - DISC-GLOBAL-S45-03
+      - DISC-GLOBAL-FREELOOK-04
+      - DISC-GLOBAL-TAX-05
+
+  - uin: 999N002V01
+    registry_version: "2026.09.1"
+    channels: [web, app]
+    languages: [en-IN, hi-IN]
+    disclosure_ids:
+      - DISC-GLOBAL-SOLICIT-01
+      - DISC-GLOBAL-QUOTE-02
+      - DISC-UIN-999N002V01-22
+      - DISC-GLOBAL-S45-03
+      - DISC-GLOBAL-FREELOOK-04
+      - DISC-GLOBAL-TAX-05

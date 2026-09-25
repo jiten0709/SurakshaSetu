@@ -25,6 +25,7 @@ info:
     | 404 | `NOT_FOUND` | Unknown UIN, consent id, notice, disclosure, pincode or occupation. |
     | 409 | `RULES_VERSION_UNKNOWN` | `pins.rules` names a version the service has not loaded. |
     | 409 | `IDEMPOTENCY_KEY_REUSED` | The same Idempotency-Key arrives with a different body. |
+    | 409 | `CONSENT_WITHDRAWN` | A purpose change on a withdrawn consent record; capture a new record instead. |
     | 409 | `PRODUCT_WITHDRAWN` | A quote for a withdrawn product. |
     | 422 | `NOTICE_MISMATCH` | The notice version is not in force, or `notice_sha256` does not match it. |
     | 422 | `P1_REQUIRED` | A consent record without the P1 purpose. |
@@ -32,6 +33,7 @@ info:
     | 422 | `QUOTE_OUT_OF_BOUNDS` | Cover, term, age or rider outside the product's limits; the problem carries `allowed_min` and `allowed_max`. |
     | 500 | `REGISTRY_INTEGRITY` | A stored disclosure set fails its hash check; it is never served. |
     | 501 | `NOT_IMPLEMENTED` | The operation is not implemented yet. |
+    | any | the HTTP status name | Framework errors: `BAD_REQUEST` (malformed or invalid request), `NOT_FOUND` (no such route), `METHOD_NOT_ALLOWED`, `UNSUPPORTED_MEDIA_TYPE`, `INTERNAL_SERVER_ERROR`, and so on. |
 
     ## Hashing
     Every hash is the lowercase hex SHA-256. JSON is canonicalised with RFC 8785 (JCS); shared
@@ -523,6 +525,9 @@ components:
         title: {type: string}
         status: {type: integer}
         detail: {type: string}
+        instance:
+          type: string
+          description: 'RFC 9457: the request path. It can carry ids or a pincode, so never log it.'
         code:
           type: string
           description: Machine-readable error code; the table in the API description lists them.
@@ -639,7 +644,10 @@ components:
             TTL, as of the request's as_of.
         valid_reasons:
           type: array
-          description: Why valid_p1 is false; empty when it is true.
+          description: >-
+            Why valid_p1 is false; empty when it is true. Codes: P1_NOT_GRANTED, WITHDRAWN,
+            AGE_NOT_DECLARED, NOTICE_SUPERSEDED (a newer notice is in force for the language) and
+            CONSENT_EXPIRED (older than the consent TTL). The last two send a resumed session back to S0.
           items: {type: string}
     ConsentWithdrawal:
       type: object

@@ -1,0 +1,36 @@
+# Reference masters: FICTITIOUS serviceability and risk classes, flagged is_dummy. Pincodes are
+# quoted so YAML keeps them as text.
+
+pincodes:
+  - {pincode: "411001", district: Pune, state: Maharashtra, serviceable: true, is_dummy: true}
+  - {pincode: "411014", district: Pune, state: Maharashtra, serviceable: true, is_dummy: true}
+  - {pincode: "411038", district: Pune, state: Maharashtra, serviceable: true, is_dummy: true}
+  - {pincode: "400001", district: Mumbai, state: Maharashtra, serviceable: true, is_dummy: true}
+  - {pincode: "110001", district: New Delhi, state: Delhi, serviceable: true, is_dummy: true}
+  - {pincode: "560001", district: Bengaluru Urban, state: Karnataka, serviceable: true, is_dummy: true}
+  - {pincode: "600001", district: Chennai, state: Tamil Nadu, serviceable: true, is_dummy: true}
+  - {pincode: "700001", district: Kolkata, state: West Bengal, serviceable: true, is_dummy: true}
+  - {pincode: "500001", district: Hyderabad, state: Telangana, serviceable: true, is_dummy: true}
+  - {pincode: "380001", district: Ahmedabad, state: Gujarat, serviceable: true, is_dummy: true}
+  - {pincode: "302001", district: Jaipur, state: Rajasthan, serviceable: true, is_dummy: true}
+  - {pincode: "226001", district: Lucknow, state: Uttar Pradesh, serviceable: true, is_dummy: true}
+  - {pincode: "452001", district: Indore, state: Madhya Pradesh, serviceable: true, is_dummy: true}
+  - {pincode: "800001", district: Patna, state: Bihar, serviceable: true, is_dummy: true}
+  - {pincode: "682001", district: Ernakulam, state: Kerala, serviceable: true, is_dummy: true}
+  - {pincode: "160017", district: Chandigarh, state: Chandigarh, serviceable: true, is_dummy: true}
+  - {pincode: "744101", district: South Andaman, state: Andaman and Nicobar Islands, serviceable: false, is_dummy: true}
+  - {pincode: "194101", district: Leh, state: Ladakh, serviceable: false, is_dummy: true}
+  - {pincode: "737101", district: Gangtok, state: Sikkim, serviceable: false, is_dummy: true}
+  - {pincode: "795001", district: Imphal West, state: Manipur, serviceable: false, is_dummy: true}
+
+occupations:
+  - {code: OCC-OFFICE-01, label: Salaried office professional, risk_class: 1, is_dummy: true}
+  - {code: OCC-TEACH-02, label: Teacher or lecturer, risk_class: 1, is_dummy: true}
+  - {code: OCC-SWE-03, label: Software engineer, risk_class: 1, is_dummy: true}
+  - {code: OCC-SALES-04, label: Field sales executive, risk_class: 2, is_dummy: true}
+  - {code: OCC-SHOP-05, label: Shopkeeper or retail trader, risk_class: 2, is_dummy: true}
+  - {code: OCC-DRIVER-06, label: Commercial vehicle driver, risk_class: 3, is_dummy: true}
+  - {code: OCC-FACTORY-07, label: Factory machine operator, risk_class: 3, is_dummy: true}
+  - {code: OCC-CONSTR-08, label: Construction worker at height, risk_class: 4, is_dummy: true}
+  - {code: OCC-MINING-09, label: Underground mining worker, risk_class: 4, is_dummy: true}
+  - {code: OCC-FISHER-10, label: Deep-sea fisher, risk_class: 4, is_dummy: true}

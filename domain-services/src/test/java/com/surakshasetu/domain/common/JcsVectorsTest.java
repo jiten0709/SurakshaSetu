@@ -41,4 +41,12 @@ class JcsVectorsTest {
         .isEqualTo(vector.get("jcs_utf8_hex").asString());
     assertThat(Jcs.sha256Hex(input)).isEqualTo(vector.get("sha256_hex").asString());
   }
+
+  /** body_sha256 is over NFC, so a composed and a decomposed é hash alike. */
+  @Test
+  void bodyHashIsOverNfcUtf8() {
+    assertThat(Jcs.bodySha256("caf\u00e9")).isEqualTo(Jcs.bodySha256("cafe\u0301"));
+    assertThat(Jcs.bodySha256("DUMMY: x"))
+        .isEqualTo(Jcs.sha256Hex("DUMMY: x".getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+  }
 }
