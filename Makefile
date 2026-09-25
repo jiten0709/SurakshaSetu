@@ -2,7 +2,7 @@
 COMPOSE := docker compose -f infra/compose.yaml --profile core
 PYTEST_MARKERS := not stack and not golden and not redteam and not live and not db
 PLACEHOLDERS := seed-catalog kb-ingest seed-eval test-invariants e2e-scripted \
-	verify-audit verify-release-gate eval eval-live contract-test local-setup
+	verify-release-gate eval eval-live contract-test local-setup
 SPEC := contracts/openapi/domain-services.v1.yaml
 MODELS := src/surakshasetu/domain/models.py
 
@@ -11,10 +11,18 @@ MODELS := src/surakshasetu/domain/models.py
 -include infra/.env
 POSTGRES_PASSWORD ?= surakshasetu-dev
 APP_RW_PASSWORD ?= surakshasetu-dev-app-rw
+KEYVAULT_RW_PASSWORD ?= surakshasetu-dev-keyvault-rw
+MINIO_ROOT_USER ?= surakshasetu
+MINIO_ROOT_PASSWORD ?= surakshasetu-dev-minio
 DATABASES := surakshasetu surakshasetu_test
+MINIO_ENV := SS_MINIO_ACCESS_KEY="$(MINIO_ROOT_USER)" SS_MINIO_SECRET_KEY="$(MINIO_ROOT_PASSWORD)"
+# What the db- and stack-marked tests connect with (tests/conftest.py).
+TEST_ENV := SS_TEST_PG_DSN_ADMIN="postgresql://postgres:$(POSTGRES_PASSWORD)@127.0.0.1:5432/surakshasetu_test" \
+	SS_TEST_PG_DSN_KEYVAULT="postgresql://keyvault_rw:$(KEYVAULT_RW_PASSWORD)@127.0.0.1:5432/surakshasetu_test" \
+	$(MINIO_ENV)
 
-.PHONY: up down logs check check-py check-java check-stubs check-db check-contracts db-migrate \
-	contracts contracts-lint $(PLACEHOLDERS)
+.PHONY: up down logs check check-py check-java check-stubs check-db check-stack check-contracts \
+	db-migrate contracts contracts-lint verify-audit $(PLACEHOLDERS)
 
 # `up --wait` treats an exited one-shot as a failure, so the one-shots run on their own.
 up:
@@ -66,12 +74,23 @@ db-migrate:
 			uv run --locked python -m surakshasetu.graph.checkpointer_setup) || exit 1; \
 	done
 
-# The db-marked privilege tests. Needs `make up`; kept out of check-py because CI's python job
-# has no database.
+# The db-marked tests: privileges, the audit chain, subject keys. Needs `make up`; kept out of
+# check-py because CI's python job has no database.
 check-db: db-migrate
-	@cd orchestrator && \
-		SS_TEST_PG_DSN_ADMIN="postgresql://postgres:$(POSTGRES_PASSWORD)@127.0.0.1:5432/surakshasetu_test" \
-		uv run --locked pytest -m db
+	@cd orchestrator && $(TEST_ENV) uv run --locked pytest -m db
+
+# The stack-marked tests (the anchor against MinIO's object lock). Needs `make up`.
+check-stack: db-migrate
+	@cd orchestrator && $(TEST_ENV) uv run --locked pytest -m stack
+
+# Verify every audit chain active on DATE (UTC) and anchor the day's Merkle root in MinIO and
+# audit.chain_anchor, as app_rw. DB=surakshasetu_test checks the test database instead.
+DB ?= surakshasetu
+verify-audit:
+	@test -n "$(DATE)" || { echo "usage: make verify-audit DATE=YYYY-MM-DD [DB=surakshasetu]" >&2; exit 2; }
+	@cd orchestrator && $(MINIO_ENV) \
+		SS_PG_DSN_APP="postgresql://app_rw:$(APP_RW_PASSWORD)@127.0.0.1:5432/$(DB)" \
+		uv run --locked python -m surakshasetu.audit.verify --date "$(DATE)"
 
 $(PLACEHOLDERS):
 	@echo "$@: not implemented yet"

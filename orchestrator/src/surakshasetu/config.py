@@ -3,12 +3,23 @@
 from pathlib import Path
 from typing import Literal, Self
 
-from pydantic import SecretStr, ValidationError, model_validator
+from pydantic import Field, SecretStr, ValidationError, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ENV_PREFIX = "SS_"
 # Settings with no safe default outside a developer machine: pilot and prod must set them.
-REQUIRED_OUTSIDE_DEV = ("pg_dsn_app", "redis_url", "domain_token")
+REQUIRED_OUTSIDE_DEV = (
+    "pg_dsn_app",
+    "redis_url",
+    "domain_token",
+    "kek_b64",
+    "pg_dsn_keyvault",
+    "minio_endpoint",
+    "minio_access_key",
+    "minio_secret_key",
+    "tsa_key_path",
+    "anchor_retention_days",
+)
 
 
 class ConfigError(RuntimeError):
@@ -29,6 +40,18 @@ class Settings(BaseSettings):
     redis_url: SecretStr | None = None
     domain_base_url: str = "http://127.0.0.1:8080"
     domain_token: SecretStr = SecretStr("surakshasetu-dev-domain-token")
+    # Subject keys (Step 4). The dev KEK is 32 public bytes; the DSN is the compose dummy.
+    kek_b64: SecretStr = SecretStr("c3VyYWtzaGFzZXR1LWRldi1rZWstbm90LXNlY3JldCE=")
+    pg_dsn_keyvault: SecretStr = SecretStr(
+        "postgresql://keyvault_rw:surakshasetu-dev-keyvault-rw@127.0.0.1:5432/surakshasetu"
+    )
+    # Audit anchoring (Step 4): compose's MinIO dummies. With no TSA key file, dev and test sign
+    # with a key derived from a public constant.
+    minio_endpoint: str = "http://127.0.0.1:9000"
+    minio_access_key: SecretStr = SecretStr("surakshasetu")
+    minio_secret_key: SecretStr = SecretStr("surakshasetu-dev-minio")
+    tsa_key_path: Path | None = None
+    anchor_retention_days: int = Field(default=1, ge=1)
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
     # Opt-in local extras: per-subsystem JSON files, and a readable console instead of JSON.
     log_dir: Path | None = None

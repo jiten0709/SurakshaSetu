@@ -1,12 +1,11 @@
 """The Step 2 privilege model, proven against the migrated test database.
 
-Each case switches role with SET LOCAL ROLE inside a transaction that is always rolled back, so
-nothing persists. Run with `make up && make check-db`.
+Each case switches role with SET LOCAL ROLE inside a transaction that is always rolled back (the
+`db` fixture in tests/conftest.py), so nothing persists. Run with `make up && make check-db`.
 """
 
 import os
 import uuid
-from collections.abc import Iterator
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
@@ -131,16 +130,6 @@ CHECKS = [
         "product_document_kind_check",
     ),
 ]
-
-
-@pytest.fixture
-def db() -> Iterator[Conn]:
-    dsn = os.environ.get("SS_TEST_PG_DSN_ADMIN")
-    if not dsn:
-        pytest.fail("SS_TEST_PG_DSN_ADMIN is not set; run `make up && make check-db`")
-    # A superuser session can SET ROLE to any role; force_rollback discards every write.
-    with psycopg.connect(dsn, autocommit=True) as conn, conn.transaction(force_rollback=True):
-        yield conn
 
 
 def set_role(conn: Conn, role: str) -> None:

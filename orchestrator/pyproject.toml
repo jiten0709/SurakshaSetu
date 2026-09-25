@@ -4,9 +4,11 @@ version = "0.1.0"
 description = "SurakshaSetu conversation tier: Conversation API and LangGraph orchestrator."
 requires-python = ">=3.12,<3.13"
 dependencies = [
+    "cryptography>=50.0.1",
     "fastapi>=0.141.1",
     "httpx>=0.28.1",
     "langgraph-checkpoint-postgres>=3.1.2",
+    "minio>=7.2.20",
     "psycopg[binary,pool]>=3",
     "pydantic>=2",
     "pydantic-settings>=2.15.0",

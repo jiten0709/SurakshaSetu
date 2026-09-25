@@ -1,4 +1,5 @@
 from importlib.metadata import version
+from pathlib import Path
 
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
@@ -16,6 +17,13 @@ def test_healthz_is_liveness_only() -> None:
         redis_url=SecretStr("redis://unreachable.invalid:6379/0"),
         domain_base_url="http://unreachable.invalid:8080",
         domain_token=SecretStr("pilot-token"),
+        kek_b64=SecretStr("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="),
+        pg_dsn_keyvault=SecretStr("postgresql://keyvault@unreachable.invalid:5432/x"),
+        minio_endpoint="https://unreachable.invalid:9000",
+        minio_access_key=SecretStr("anchor-writer"),
+        minio_secret_key=SecretStr("pilot-secret"),
+        tsa_key_path=Path("/nonexistent/tsa.pem"),
+        anchor_retention_days=3650,
     )
     client = TestClient(create_app(settings))
 

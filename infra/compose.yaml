@@ -22,7 +22,17 @@ services:
     healthcheck:
       <<: *healthcheck
       # TCP, not the socket: the init-time server listens on the socket only.
-      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "postgres", "-d", "surakshasetu"]
+      test:
+        [
+          "CMD",
+          "pg_isready",
+          "-h",
+          "127.0.0.1",
+          "-U",
+          "postgres",
+          "-d",
+          "surakshasetu",
+        ]
 
   valkey:
     image: valkey/valkey:9.1.2-alpine3.24
@@ -41,7 +51,13 @@ services:
     healthcheck:
       <<: *healthcheck
       # The image ships no HTTP client.
-      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/6333 && printf 'GET /readyz HTTP/1.0\\r\\n\\r\\n' >&3 && grep -q ' 200 ' <&3"]
+      test:
+        [
+          "CMD",
+          "bash",
+          "-c",
+          "exec 3<>/dev/tcp/127.0.0.1/6333 && printf 'GET /readyz HTTP/1.0\\r\\n\\r\\n' >&3 && grep -q ' 200 ' <&3",
+        ]
 
   minio:
     image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
@@ -111,7 +127,7 @@ services:
       postgres: { condition: service_healthy }
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/surakshasetu
-      # ponytail: superuser until startup runs db-migrate before this service. domain_rw doesn't
+      # uperuser until startup runs db-migrate before this service. domain_rw doesn't
       # exist yet at `make up` on a fresh volume, so switching now fails the healthcheck.
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-surakshasetu-dev}
@@ -127,7 +143,13 @@ services:
     ports: ["127.0.0.1:8090:8090"]
     healthcheck:
       <<: *healthcheck
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/healthz', timeout=3)"]
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/healthz', timeout=3)",
+        ]
 
 volumes:
   pgdata:

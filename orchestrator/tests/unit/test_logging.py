@@ -1,6 +1,5 @@
 import json
 import logging
-from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -38,20 +37,6 @@ def test_record_is_one_json_line_with_context_and_no_extras() -> None:
 
 # --- configure_logging: per-subsystem files, JSON stdout, no leaks -----------------------------
 PINCODE = "400001"
-
-
-@pytest.fixture
-def restore_logging() -> Iterator[None]:
-    root = logging.getLogger()
-    ours = logging.getLogger("surakshasetu")
-    saved = (root.handlers[:], root.level, ours.level)
-    yield
-    for handler in root.handlers:
-        if handler not in saved[0]:
-            handler.close()
-    root.handlers[:] = saved[0]
-    root.setLevel(saved[1])
-    ours.setLevel(saved[2])
 
 
 def _all_text(log_dir: Path) -> str:
