@@ -355,8 +355,14 @@ paths:
     get:
       tags: [eligibility]
       operationId: getRequiredAttributes
-      summary: The attributes S1 must ask for, in order.
+      summary: The attributes S1 must ask for, in order, under the session's pinned rules.
+      description: >-
+        Gender is listed only when a product in force and launched on `as_of` is rated by gender.
       parameters:
+        - name: pins.rules
+          in: query
+          required: true
+          schema: {type: string}
         - $ref: '#/components/parameters/AsOf'
       responses:
         '200':
@@ -911,6 +917,11 @@ components:
         years_left: {type: integer, minimum: 0, maximum: 40}
     NeedsPayload:
       type: object
+      description: >-
+        Confirmed S2 needs, annual amounts only. Omit an optional slot that was not asked rather
+        than sending its default: the service reads presence in the JSON as sent, so an omitted
+        slot takes its default and does not count toward `profile_sufficiency`, and a null counts
+        as declined.
       required: [goals, annual_income_inr, income_type, existing_annual_premium_inr,
                  financial_distress, comprehension_difficulty_count]
       properties:
@@ -970,9 +981,16 @@ components:
           description: Repeated comprehension difficulty (vulnerability).
     EligibilitySnapshot:
       type: object
-      required: [age_years, eligible_uins, flags]
+      description: >-
+        The confirmed S1 facts suitability needs. Tobacco and gender price the affordability
+        estimate.
+      required: [age_years, eligible_uins, flags, tobacco_12m]
       properties:
         age_years: {type: integer, minimum: 0}
+        tobacco_12m:
+          type: [boolean, 'null']
+          description: null means the customer declined to answer.
+        gender: {$ref: '#/components/schemas/Gender'}
         eligible_uins:
           type: array
           items: {$ref: '#/components/schemas/Uin'}
@@ -986,11 +1004,32 @@ components:
         pins: {$ref: '#/components/schemas/Pins'}
         eligibility: {$ref: '#/components/schemas/EligibilitySnapshot'}
         needs: {$ref: '#/components/schemas/NeedsPayload'}
+    Rate:
+      type: string
+      description: A decimal fraction, e.g. 0.07 for 7%.
+      pattern: '^\d+(\.\d+)?$'
+    SuitabilityAssumptions:
+      type: object
+      description: >-
+        The assumptions behind need_inr, for the needs summary (TDD §3.7): cover-to age,
+        dependency years, existing cover counted, and the discount, growth and consumption rates.
+      required: [cover_to_age, dependency_years, discount_rate, income_growth, consumption_share,
+                 final_expenses_inr, existing_cover_counted_inr]
+      properties:
+        cover_to_age: {type: integer}
+        dependency_years: {type: integer, minimum: 0, description: The n of the income term.}
+        discount_rate: {$ref: '#/components/schemas/Rate'}
+        income_growth: {$ref: '#/components/schemas/Rate'}
+        consumption_share: {$ref: '#/components/schemas/Rate'}
+        final_expenses_inr: {$ref: '#/components/schemas/Money'}
+        existing_cover_counted_inr:
+          description: Individual cover plus the share of employer cover the parameters count.
+          allOf: [{$ref: '#/components/schemas/Money'}]
     SuitabilityResult:
       type: object
       required: [decision_id, outcome, profile_sufficiency, fit_types, excluded, need_inr,
                  recommended_cover_inr, uw_cap_inr, term_years, affordability, vulnerability_flags,
-                 rule_ids, reason_codes, params_version, rules_version, inputs_sha256]
+                 assumptions, rule_ids, reason_codes, params_version, rules_version, inputs_sha256]
       properties:
         decision_id: {type: string, format: uuid}
         outcome:
@@ -1030,6 +1069,7 @@ components:
         vulnerability_flags:
           type: array
           items: {type: string}
+        assumptions: {$ref: '#/components/schemas/SuitabilityAssumptions'}
         rule_ids:
           type: array
           description: Rules that fired.

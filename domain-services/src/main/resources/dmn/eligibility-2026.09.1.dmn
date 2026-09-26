@@ -1,0 +1,191 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- DUMMY rules for phase 1 build and test (TDD §3.6, §3.7, §7.3). Every threshold, band,
+     multiple and weight is illustrative until the board-approved underwriting and
+     suitability policy (D6) replaces it. A change ships as a new rules version: copy this
+     file to <model>-<next version>.dmn, bump the namespace, and keep the old file loaded
+     (sessions stay pinned to it, I7). rule_id is the id reported in rule_ids; a row with a
+     null rule_id is a default, not a rule. -->
+<definitions xmlns="https://www.omg.org/spec/DMN/20230324/MODEL/"
+             id="eligibility-2026.09.1" name="eligibility" namespace="urn:surakshasetu:rules-2026.09.1">
+  <description>S1 eligibility screening (TDD §7.3 E-01..E-06, V2 minor path) and the attributes S1 asks for.</description>
+  <inputData id="in_age" name="age"><variable id="in_age_var" name="age" typeRef="number"/></inputData>
+  <inputData id="in_residency" name="residency"><variable id="in_residency_var" name="residency" typeRef="string"/></inputData>
+  <inputData id="in_occupation_risk_class" name="occupation_risk_class"><variable id="in_occupation_risk_class_var" name="occupation_risk_class" typeRef="string"/></inputData>
+  <inputData id="in_gender_rated" name="gender_rated"><variable id="in_gender_rated_var" name="gender_rated" typeRef="boolean"/></inputData>
+  <decision id="Eligibility" name="Eligibility">
+    <description>First matching row wins. occupation_risk_class is the occupation master's class, or declined (no code given) or unknown (a code not in the master).</description>
+    <variable id="Eligibility_var" name="Eligibility"/>
+    <informationRequirement id="Eligibility_ri0"><requiredInput href="#in_age"/></informationRequirement>
+    <informationRequirement id="Eligibility_ri1"><requiredInput href="#in_residency"/></informationRequirement>
+    <informationRequirement id="Eligibility_ri2"><requiredInput href="#in_occupation_risk_class"/></informationRequirement>
+    <decisionTable id="Eligibility_dt" hitPolicy="FIRST">
+      <input id="Eligibility_in0" label="age">
+        <inputExpression id="Eligibility_ie0" typeRef="number"><text>age</text></inputExpression>
+      </input>
+      <input id="Eligibility_in1" label="residency">
+        <inputExpression id="Eligibility_ie1" typeRef="string"><text>residency</text></inputExpression>
+        <inputValues id="Eligibility_iv1"><text>"resident","nri","oci_pio"</text></inputValues>
+      </input>
+      <input id="Eligibility_in2" label="occupation_risk_class">
+        <inputExpression id="Eligibility_ie2" typeRef="string"><text>occupation_risk_class</text></inputExpression>
+        <inputValues id="Eligibility_iv2"><text>"1","2","3","4","declined","unknown"</text></inputValues>
+      </input>
+      <output id="Eligibility_out0" name="rule_id" typeRef="string"/>
+      <output id="Eligibility_out1" name="outcome" typeRef="string"/>
+      <output id="Eligibility_out2" name="escalation_reason" typeRef="string"/>
+      <output id="Eligibility_out3" name="flag" typeRef="string"/>
+      <annotation name="note"/>
+      <rule id="Eligibility_r1">
+        <inputEntry id="Eligibility_r1_i0"><text>&lt; 18</text></inputEntry>
+        <inputEntry id="Eligibility_r1_i1"><text>-</text></inputEntry>
+        <inputEntry id="Eligibility_r1_i2"><text>-</text></inputEntry>
+        <outputEntry id="Eligibility_r1_o0"><text>"E-03"</text></outputEntry>
+        <outputEntry id="Eligibility_r1_o1"><text>"DATA_ERASURE_EXIT"</text></outputEntry>
+        <outputEntry id="Eligibility_r1_o2"><text>null</text></outputEntry>
+        <outputEntry id="Eligibility_r1_o3"><text>null</text></outputEntry>
+        <annotationEntry><text>Under 18: Data Erasure and a polite exit (V2), before any other rule</text></annotationEntry>
+      </rule>
+      <rule id="Eligibility_r2">
+        <inputEntry id="Eligibility_r2_i0"><text>-</text></inputEntry>
+        <inputEntry id="Eligibility_r2_i1"><text>"nri","oci_pio"</text></inputEntry>
+        <inputEntry id="Eligibility_r2_i2"><text>-</text></inputEntry>
+        <outputEntry id="Eligibility_r2_o0"><text>"E-05"</text></outputEntry>
+        <outputEntry id="Eligibility_r2_o1"><text>"HUMAN_ESCALATION"</text></outputEntry>
+        <outputEntry id="Eligibility_r2_o2"><text>"HE_NRI"</text></outputEntry>
+        <outputEntry id="Eligibility_r2_o3"><text>null</text></outputEntry>
+        <annotationEntry><text>NRI, OCI or PIO: advisor-assisted path</text></annotationEntry>
+      </rule>
+      <rule id="Eligibility_r3">
+        <inputEntry id="Eligibility_r3_i0"><text>&gt; 65</text></inputEntry>
+        <inputEntry id="Eligibility_r3_i1"><text>-</text></inputEntry>
+        <inputEntry id="Eligibility_r3_i2"><text>-</text></inputEntry>
+        <outputEntry id="Eligibility_r3_o0"><text>"E-04"</text></outputEntry>
+        <outputEntry id="Eligibility_r3_o1"><text>"HUMAN_ESCALATION"</text></outputEntry>
+        <outputEntry id="Eligibility_r3_o2"><text>"HE_AGE_BAND"</text></outputEntry>
+        <outputEntry id="Eligibility_r3_o3"><text>null</text></outputEntry>
+        <annotationEntry><text>Over 65: out of the entry band</text></annotationEntry>
+      </rule>
+      <rule id="Eligibility_r4">
+        <inputEntry id="Eligibility_r4_i0"><text>[18..65]</text></inputEntry>
+        <inputEntry id="Eligibility_r4_i1"><text>"resident"</text></inputEntry>
+        <inputEntry id="Eligibility_r4_i2"><text>"declined","unknown"</text></inputEntry>
+        <outputEntry id="Eligibility_r4_o0"><text>"E-06"</text></outputEntry>
+        <outputEntry id="Eligibility_r4_o1"><text>"RE_ASK"</text></outputEntry>
+        <outputEntry id="Eligibility_r4_o2"><text>null</text></outputEntry>
+        <outputEntry id="Eligibility_r4_o3"><text>null</text></outputEntry>
+        <annotationEntry><text>Occupation declined or unknown: re-ask once, then escalate</text></annotationEntry>
+      </rule>
+      <rule id="Eligibility_r5">
+        <inputEntry id="Eligibility_r5_i0"><text>[18..65]</text></inputEntry>
+        <inputEntry id="Eligibility_r5_i1"><text>"resident"</text></inputEntry>
+        <inputEntry id="Eligibility_r5_i2"><text>"4"</text></inputEntry>
+        <outputEntry id="Eligibility_r5_o0"><text>"E-02"</text></outputEntry>
+        <outputEntry id="Eligibility_r5_o1"><text>"ELIGIBLE"</text></outputEntry>
+        <outputEntry id="Eligibility_r5_o2"><text>null</text></outputEntry>
+        <outputEntry id="Eligibility_r5_o3"><text>"MANUAL_UW"</text></outputEntry>
+        <annotationEntry><text>Hazardous class 4: eligible, manual underwriting</text></annotationEntry>
+      </rule>
+      <rule id="Eligibility_r6">
+        <inputEntry id="Eligibility_r6_i0"><text>[18..65]</text></inputEntry>
+        <inputEntry id="Eligibility_r6_i1"><text>"resident"</text></inputEntry>
+        <inputEntry id="Eligibility_r6_i2"><text>"1","2","3"</text></inputEntry>
+        <outputEntry id="Eligibility_r6_o0"><text>"E-01"</text></outputEntry>
+        <outputEntry id="Eligibility_r6_o1"><text>"ELIGIBLE"</text></outputEntry>
+        <outputEntry id="Eligibility_r6_o2"><text>null</text></outputEntry>
+        <outputEntry id="Eligibility_r6_o3"><text>null</text></outputEntry>
+        <annotationEntry><text>Eligible</text></annotationEntry>
+      </rule>
+    </decisionTable>
+  </decision>
+  <decision id="RequiredAttributes" name="RequiredAttributes">
+    <description>The S1 questions in asking order, each with its approved reason line (a template id). It covers every input of Eligibility and of the service's post-processing (pincode, tobacco, health, proposer). Gender is asked only when a product in force is rated by gender.</description>
+    <variable id="RequiredAttributes_var" name="RequiredAttributes"/>
+    <informationRequirement id="RequiredAttributes_ri0"><requiredInput href="#in_gender_rated"/></informationRequirement>
+    <decisionTable id="RequiredAttributes_dt" hitPolicy="RULE ORDER">
+      <input id="RequiredAttributes_in0" label="gender_rated">
+        <inputExpression id="RequiredAttributes_ie0" typeRef="boolean"><text>gender_rated</text></inputExpression>
+      </input>
+      <output id="RequiredAttributes_out0" name="attribute" typeRef="string"/>
+      <output id="RequiredAttributes_out1" name="reason_line_id" typeRef="string"/>
+      <output id="RequiredAttributes_out2" name="asked_if" typeRef="string"/>
+      <annotation name="note"/>
+      <rule id="RequiredAttributes_r1">
+        <inputEntry id="RequiredAttributes_r1_i0"><text>-</text></inputEntry>
+        <outputEntry id="RequiredAttributes_r1_o0"><text>"age_years"</text></outputEntry>
+        <outputEntry id="RequiredAttributes_r1_o1"><text>"RL-S1-AGE"</text></outputEntry>
+        <outputEntry id="RequiredAttributes_r1_o2"><text>null</text></outputEntry>
+        <annotationEntry><text></text></annotationEntry>
+      </rule>
+      <rule id="RequiredAttributes_r2">
+        <inputEntry id="RequiredAttributes_r2_i0"><text>true</text></inputEntry>
+        <outputEntry id="RequiredAttributes_r2_o0"><text>"gender"</text></outputEntry>
+        <outputEntry id="RequiredAttributes_r2_o1"><text>"RL-S1-GENDER"</text></outputEntry>
+        <outputEntry id="RequiredAttributes_r2_o2"><text>null</text></outputEntry>
+        <annotationEntry><text>Only where the rating basis uses it</text></annotationEntry>
+      </rule>
+      <rule id="RequiredAttributes_r3">
+        <inputEntry id="RequiredAttributes_r3_i0"><text>-</text></inputEntry>
+        <outputEntry id="RequiredAttributes_r3_o0"><text>"residency"</text></outputEntry>
+        <outputEntry id="RequiredAttributes_r3_o1"><text>"RL-S1-RESIDENCY"</text></outputEntry>
+        <outputEntry id="RequiredAttributes_r3_o2"><text>null</text></outputEntry>
+        <annotationEntry><text></text></annotationEntry>
+      </rule>
+      <rule id="RequiredAttributes_r4">
+        <inputEntry id="RequiredAttributes_r4_i0"><text>-</text></inputEntry>
+        <outputEntry id="RequiredAttributes_r4_o0"><text>"pincode"</text></outputEntry>
+        <outputEntry id="RequiredAttributes_r4_o1"><text>"RL-S1-PINCODE"</text></outputEntry>
+        <outputEntry id="RequiredAttributes_r4_o2"><text>null</text></outputEntry>
+        <annotationEntry><text></text></annotationEntry>
+      </rule>
+      <rule id="RequiredAttributes_r5">
+        <inputEntry id="RequiredAttributes_r5_i0"><text>-</text></inputEntry>
+        <outputEntry id="RequiredAttributes_r5_o0"><text>"tobacco_12m"</text></outputEntry>
+        <outputEntry id="RequiredAttributes_r5_o1"><text>"RL-S1-TOBACCO"</text></outputEntry>
+        <outputEntry id="RequiredAttributes_r5_o2"><text>null</text></outputEntry>
+        <annotationEntry><text>Material-fact question, verbatim</text></annotationEntry>
+      </rule>
+      <rule id="RequiredAttributes_r6">
+        <inputEntry id="RequiredAttributes_r6_i0"><text>-</text></inputEntry>
+        <outputEntry id="RequiredAttributes_r6_o0"><text>"occupation_code"</text></outputEntry>
+        <outputEntry id="RequiredAttributes_r6_o1"><text>"RL-S1-OCCUPATION"</text></outputEntry>
+        <outputEntry id="RequiredAttributes_r6_o2"><text>null</text></outputEntry>
+        <annotationEntry><text></text></annotationEntry>
+      </rule>
+      <rule id="RequiredAttributes_r7">
+        <inputEntry id="RequiredAttributes_r7_i0"><text>-</text></inputEntry>
+        <outputEntry id="RequiredAttributes_r7_o0"><text>"health_flags"</text></outputEntry>
+        <outputEntry id="RequiredAttributes_r7_o1"><text>"RL-S1-HEALTH"</text></outputEntry>
+        <outputEntry id="RequiredAttributes_r7_o2"><text>null</text></outputEntry>
+        <annotationEntry><text>One yes/no per approved screening question</text></annotationEntry>
+      </rule>
+      <rule id="RequiredAttributes_r8">
+        <inputEntry id="RequiredAttributes_r8_i0"><text>-</text></inputEntry>
+        <outputEntry id="RequiredAttributes_r8_o0"><text>"proposer.is_life_assured"</text></outputEntry>
+        <outputEntry id="RequiredAttributes_r8_o1"><text>"RL-S1-PROPOSER"</text></outputEntry>
+        <outputEntry id="RequiredAttributes_r8_o2"><text>null</text></outputEntry>
+        <annotationEntry><text></text></annotationEntry>
+      </rule>
+      <rule id="RequiredAttributes_r9">
+        <inputEntry id="RequiredAttributes_r9_i0"><text>-</text></inputEntry>
+        <outputEntry id="RequiredAttributes_r9_o0"><text>"proposer.relationship"</text></outputEntry>
+        <outputEntry id="RequiredAttributes_r9_o1"><text>"RL-S1-LA-RELATIONSHIP"</text></outputEntry>
+        <outputEntry id="RequiredAttributes_r9_o2"><text>"proposer.is_life_assured = false"</text></outputEntry>
+        <annotationEntry><text></text></annotationEntry>
+      </rule>
+      <rule id="RequiredAttributes_r10">
+        <inputEntry id="RequiredAttributes_r10_i0"><text>-</text></inputEntry>
+        <outputEntry id="RequiredAttributes_r10_o0"><text>"proposer.la_age"</text></outputEntry>
+        <outputEntry id="RequiredAttributes_r10_o1"><text>"RL-S1-LA-AGE"</text></outputEntry>
+        <outputEntry id="RequiredAttributes_r10_o2"><text>"proposer.is_life_assured = false"</text></outputEntry>
+        <annotationEntry><text></text></annotationEntry>
+      </rule>
+      <rule id="RequiredAttributes_r11">
+        <inputEntry id="RequiredAttributes_r11_i0"><text>-</text></inputEntry>
+        <outputEntry id="RequiredAttributes_r11_o0"><text>"proposer.business_cover"</text></outputEntry>
+        <outputEntry id="RequiredAttributes_r11_o1"><text>"RL-S1-BUSINESS-COVER"</text></outputEntry>
+        <outputEntry id="RequiredAttributes_r11_o2"><text>"proposer.is_life_assured = false"</text></outputEntry>
+        <annotationEntry><text></text></annotationEntry>
+      </rule>
+    </decisionTable>
+  </decision>
+</definitions>

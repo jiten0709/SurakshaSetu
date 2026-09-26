@@ -1,0 +1,578 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- DUMMY rules for phase 1 build and test (TDD §3.6, §3.7, §7.3). Every threshold, band,
+     multiple and weight is illustrative until the board-approved underwriting and
+     suitability policy (D6) replaces it. A change ships as a new rules version: copy this
+     file to <model>-<next version>.dmn, bump the namespace, and keep the old file loaded
+     (sessions stay pinned to it, I7). rule_id is the id reported in rule_ids; a row with a
+     null rule_id is a default, not a rule. -->
+<definitions xmlns="https://www.omg.org/spec/DMN/20230324/MODEL/"
+             id="suitability-2026.09.1" name="suitability" namespace="urn:surakshasetu:rules-2026.09.1">
+  <description>S2 suitability (TDD §3.7): fit types, exclusions, the income multiple m(a), vulnerability, affordability, plausibility, profile-sufficiency weights and the outcome. The cover formula itself is Java over params/actuarial-*.yaml.</description>
+  <inputData id="in_goal" name="goal"><variable id="in_goal_var" name="goal" typeRef="string"/></inputData>
+  <inputData id="in_product_type" name="product_type"><variable id="in_product_type_var" name="product_type" typeRef="string"/></inputData>
+  <inputData id="in_vulnerable" name="vulnerable"><variable id="in_vulnerable_var" name="vulnerable" typeRef="boolean"/></inputData>
+  <inputData id="in_age" name="age"><variable id="in_age_var" name="age" typeRef="number"/></inputData>
+  <inputData id="in_income_type" name="income_type"><variable id="in_income_type_var" name="income_type" typeRef="string"/></inputData>
+  <inputData id="in_annual_income" name="annual_income"><variable id="in_annual_income_var" name="annual_income" typeRef="number"/></inputData>
+  <inputData id="in_financial_distress" name="financial_distress"><variable id="in_financial_distress_var" name="financial_distress" typeRef="boolean"/></inputData>
+  <inputData id="in_comprehension_difficulty_count" name="comprehension_difficulty_count"><variable id="in_comprehension_difficulty_count_var" name="comprehension_difficulty_count" typeRef="number"/></inputData>
+  <inputData id="in_premium_to_income" name="premium_to_income"><variable id="in_premium_to_income_var" name="premium_to_income" typeRef="number"/></inputData>
+  <inputData id="in_loans_total" name="loans_total"><variable id="in_loans_total_var" name="loans_total" typeRef="number"/></inputData>
+  <inputData id="in_vulnerable_complex" name="vulnerable_complex"><variable id="in_vulnerable_complex_var" name="vulnerable_complex" typeRef="boolean"/></inputData>
+  <inputData id="in_out_of_scope" name="out_of_scope"><variable id="in_out_of_scope_var" name="out_of_scope" typeRef="boolean"/></inputData>
+  <inputData id="in_uninsurable" name="uninsurable"><variable id="in_uninsurable_var" name="uninsurable" typeRef="boolean"/></inputData>
+  <inputData id="in_affordability" name="affordability"><variable id="in_affordability_var" name="affordability" typeRef="string"/></inputData>
+  <inputData id="in_need_positive" name="need_positive"><variable id="in_need_positive_var" name="need_positive" typeRef="boolean"/></inputData>
+  <decision id="RequiredSlots" name="RequiredSlots">
+    <description>The S2 slots in asking order, with their profile_sufficiency weights (they sum to 1) and approved reason lines. slot is the NeedsPayload field. Risk profile and horizon are off for the term-only launch.</description>
+    <variable id="RequiredSlots_var" name="RequiredSlots"/>
+    <decisionTable id="RequiredSlots_dt" hitPolicy="RULE ORDER">
+      <output id="RequiredSlots_out0" name="slot" typeRef="string"/>
+      <output id="RequiredSlots_out1" name="weight" typeRef="number"/>
+      <output id="RequiredSlots_out2" name="reason_line_id" typeRef="string"/>
+      <annotation name="note"/>
+      <rule id="RequiredSlots_r1">
+        <outputEntry id="RequiredSlots_r1_o0"><text>"goals"</text></outputEntry>
+        <outputEntry id="RequiredSlots_r1_o1"><text>0.15</text></outputEntry>
+        <outputEntry id="RequiredSlots_r1_o2"><text>"RL-S2-GOALS"</text></outputEntry>
+        <annotationEntry><text></text></annotationEntry>
+      </rule>
+      <rule id="RequiredSlots_r2">
+        <outputEntry id="RequiredSlots_r2_o0"><text>"annual_income_inr"</text></outputEntry>
+        <outputEntry id="RequiredSlots_r2_o1"><text>0.25</text></outputEntry>
+        <outputEntry id="RequiredSlots_r2_o2"><text>"RL-S2-INCOME"</text></outputEntry>
+        <annotationEntry><text></text></annotationEntry>
+      </rule>
+      <rule id="RequiredSlots_r3">
+        <outputEntry id="RequiredSlots_r3_o0"><text>"income_type"</text></outputEntry>
+        <outputEntry id="RequiredSlots_r3_o1"><text>0.05</text></outputEntry>
+        <outputEntry id="RequiredSlots_r3_o2"><text>"RL-S2-INCOME-TYPE"</text></outputEntry>
+        <annotationEntry><text></text></annotationEntry>
+      </rule>
+      <rule id="RequiredSlots_r4">
+        <outputEntry id="RequiredSlots_r4_o0"><text>"dependants"</text></outputEntry>
+        <outputEntry id="RequiredSlots_r4_o1"><text>0.20</text></outputEntry>
+        <outputEntry id="RequiredSlots_r4_o2"><text>"RL-S2-DEPENDANTS"</text></outputEntry>
+        <annotationEntry><text></text></annotationEntry>
+      </rule>
+      <rule id="RequiredSlots_r5">
+        <outputEntry id="RequiredSlots_r5_o0"><text>"liabilities"</text></outputEntry>
+        <outputEntry id="RequiredSlots_r5_o1"><text>0.15</text></outputEntry>
+        <outputEntry id="RequiredSlots_r5_o2"><text>"RL-S2-LIABILITIES"</text></outputEntry>
+        <annotationEntry><text></text></annotationEntry>
+      </rule>
+      <rule id="RequiredSlots_r6">
+        <outputEntry id="RequiredSlots_r6_o0"><text>"existing_cover_inr"</text></outputEntry>
+        <outputEntry id="RequiredSlots_r6_o1"><text>0.05</text></outputEntry>
+        <outputEntry id="RequiredSlots_r6_o2"><text>"RL-S2-EXISTING-COVER"</text></outputEntry>
+        <annotationEntry><text></text></annotationEntry>
+      </rule>
+      <rule id="RequiredSlots_r7">
+        <outputEntry id="RequiredSlots_r7_o0"><text>"employer_cover_inr"</text></outputEntry>
+        <outputEntry id="RequiredSlots_r7_o1"><text>0.05</text></outputEntry>
+        <outputEntry id="RequiredSlots_r7_o2"><text>"RL-S2-EMPLOYER-COVER"</text></outputEntry>
+        <annotationEntry><text></text></annotationEntry>
+      </rule>
+      <rule id="RequiredSlots_r8">
+        <outputEntry id="RequiredSlots_r8_o0"><text>"existing_annual_premium_inr"</text></outputEntry>
+        <outputEntry id="RequiredSlots_r8_o1"><text>0.05</text></outputEntry>
+        <outputEntry id="RequiredSlots_r8_o2"><text>"RL-S2-EXISTING-PREMIUM"</text></outputEntry>
+        <annotationEntry><text></text></annotationEntry>
+      </rule>
+      <rule id="RequiredSlots_r9">
+        <outputEntry id="RequiredSlots_r9_o0"><text>"earmarked_assets_inr"</text></outputEntry>
+        <outputEntry id="RequiredSlots_r9_o1"><text>0.025</text></outputEntry>
+        <outputEntry id="RequiredSlots_r9_o2"><text>"RL-S2-ASSETS"</text></outputEntry>
+        <annotationEntry><text>Optional</text></annotationEntry>
+      </rule>
+      <rule id="RequiredSlots_r10">
+        <outputEntry id="RequiredSlots_r10_o0"><text>"premium_budget_inr_pa"</text></outputEntry>
+        <outputEntry id="RequiredSlots_r10_o1"><text>0.025</text></outputEntry>
+        <outputEntry id="RequiredSlots_r10_o2"><text>"RL-S2-BUDGET"</text></outputEntry>
+        <annotationEntry><text>Optional</text></annotationEntry>
+      </rule>
+    </decisionTable>
+  </decision>
+  <decision id="FitTypes" name="FitTypes">
+    <description>Product types that serve a goal, in preference order. Goals are evaluated in the customer's rank order.</description>
+    <variable id="FitTypes_var" name="FitTypes"/>
+    <informationRequirement id="FitTypes_ri0"><requiredInput href="#in_goal"/></informationRequirement>
+    <decisionTable id="FitTypes_dt" hitPolicy="RULE ORDER">
+      <input id="FitTypes_in0" label="goal">
+        <inputExpression id="FitTypes_ie0" typeRef="string"><text>goal</text></inputExpression>
+        <inputValues id="FitTypes_iv0"><text>"income_protection","loan_cover","child_education","retirement","savings"</text></inputValues>
+      </input>
+      <output id="FitTypes_out0" name="rule_id" typeRef="string"/>
+      <output id="FitTypes_out1" name="product_type" typeRef="string"/>
+      <annotation name="note"/>
+      <rule id="FitTypes_r1">
+        <inputEntry id="FitTypes_r1_i0"><text>"income_protection"</text></inputEntry>
+        <outputEntry id="FitTypes_r1_o0"><text>"FIT-01"</text></outputEntry>
+        <outputEntry id="FitTypes_r1_o1"><text>"TERM"</text></outputEntry>
+        <annotationEntry><text></text></annotationEntry>
+      </rule>
+      <rule id="FitTypes_r2">
+        <inputEntry id="FitTypes_r2_i0"><text>"income_protection"</text></inputEntry>
+        <outputEntry id="FitTypes_r2_o0"><text>"FIT-02"</text></outputEntry>
+        <outputEntry id="FitTypes_r2_o1"><text>"TERM_ROP"</text></outputEntry>
+        <annotationEntry><text></text></annotationEntry>
+      </rule>
+      <rule id="FitTypes_r3">
+        <inputEntry id="FitTypes_r3_i0"><text>"loan_cover"</text></inputEntry>
+        <outputEntry id="FitTypes_r3_o0"><text>"FIT-03"</text></outputEntry>
+        <outputEntry id="FitTypes_r3_o1"><text>"TERM"</text></outputEntry>
+        <annotationEntry><text></text></annotationEntry>
+      </rule>
+      <rule id="FitTypes_r4">
+        <inputEntry id="FitTypes_r4_i0"><text>"child_education"</text></inputEntry>
+        <outputEntry id="FitTypes_r4_o0"><text>"FIT-04"</text></outputEntry>
+        <outputEntry id="FitTypes_r4_o1"><text>"TERM"</text></outputEntry>
+        <annotationEntry><text>Protects the education goal</text></annotationEntry>
+      </rule>
+      <rule id="FitTypes_r5">
+        <inputEntry id="FitTypes_r5_i0"><text>"child_education"</text></inputEntry>
+        <outputEntry id="FitTypes_r5_o0"><text>"FIT-05"</text></outputEntry>
+        <outputEntry id="FitTypes_r5_o1"><text>"NON_PAR_SAVINGS"</text></outputEntry>
+        <annotationEntry><text></text></annotationEntry>
+      </rule>
+      <rule id="FitTypes_r6">
+        <inputEntry id="FitTypes_r6_i0"><text>"retirement"</text></inputEntry>
+        <outputEntry id="FitTypes_r6_o0"><text>"FIT-06"</text></outputEntry>
+        <outputEntry id="FitTypes_r6_o1"><text>"NON_PAR_SAVINGS"</text></outputEntry>
+        <annotationEntry><text></text></annotationEntry>
+      </rule>
+      <rule id="FitTypes_r7">
+        <inputEntry id="FitTypes_r7_i0"><text>"retirement"</text></inputEntry>
+        <outputEntry id="FitTypes_r7_o0"><text>"FIT-07"</text></outputEntry>
+        <outputEntry id="FitTypes_r7_o1"><text>"PAR"</text></outputEntry>
+        <annotationEntry><text></text></annotationEntry>
+      </rule>
+      <rule id="FitTypes_r8">
+        <inputEntry id="FitTypes_r8_i0"><text>"retirement"</text></inputEntry>
+        <outputEntry id="FitTypes_r8_o0"><text>"FIT-08"</text></outputEntry>
+        <outputEntry id="FitTypes_r8_o1"><text>"ULIP"</text></outputEntry>
+        <annotationEntry><text></text></annotationEntry>
+      </rule>
+      <rule id="FitTypes_r9">
+        <inputEntry id="FitTypes_r9_i0"><text>"savings"</text></inputEntry>
+        <outputEntry id="FitTypes_r9_o0"><text>"FIT-09"</text></outputEntry>
+        <outputEntry id="FitTypes_r9_o1"><text>"NON_PAR_SAVINGS"</text></outputEntry>
+        <annotationEntry><text></text></annotationEntry>
+      </rule>
+      <rule id="FitTypes_r10">
+        <inputEntry id="FitTypes_r10_i0"><text>"savings"</text></inputEntry>
+        <outputEntry id="FitTypes_r10_o0"><text>"FIT-10"</text></outputEntry>
+        <outputEntry id="FitTypes_r10_o1"><text>"PAR"</text></outputEntry>
+        <annotationEntry><text></text></annotationEntry>
+      </rule>
+      <rule id="FitTypes_r11">
+        <inputEntry id="FitTypes_r11_i0"><text>"savings"</text></inputEntry>
+        <outputEntry id="FitTypes_r11_o0"><text>"FIT-11"</text></outputEntry>
+        <outputEntry id="FitTypes_r11_o1"><text>"ULIP"</text></outputEntry>
+        <annotationEntry><text></text></annotationEntry>
+      </rule>
+    </decisionTable>
+  </decision>
+  <decision id="ComplexGoals" name="ComplexGoals">
+    <description>Goals served mainly by complex (savings, participating or market-linked) products. With a vulnerability flag they escalate (V5).</description>
+    <variable id="ComplexGoals_var" name="ComplexGoals"/>
+    <informationRequirement id="ComplexGoals_ri0"><requiredInput href="#in_goal"/></informationRequirement>
+    <decisionTable id="ComplexGoals_dt" hitPolicy="FIRST">
+      <input id="ComplexGoals_in0" label="goal">
+        <inputExpression id="ComplexGoals_ie0" typeRef="string"><text>goal</text></inputExpression>
+        <inputValues id="ComplexGoals_iv0"><text>"income_protection","loan_cover","child_education","retirement","savings"</text></inputValues>
+      </input>
+      <output id="ComplexGoals_out0" name="rule_id" typeRef="string"/>
+      <output id="ComplexGoals_out1" name="complex" typeRef="boolean"/>
+      <annotation name="note"/>
+      <rule id="ComplexGoals_r1">
+        <inputEntry id="ComplexGoals_r1_i0"><text>"retirement","savings"</text></inputEntry>
+        <outputEntry id="ComplexGoals_r1_o0"><text>"CG-01"</text></outputEntry>
+        <outputEntry id="ComplexGoals_r1_o1"><text>true</text></outputEntry>
+        <annotationEntry><text></text></annotationEntry>
+      </rule>
+      <rule id="ComplexGoals_r2">
+        <inputEntry id="ComplexGoals_r2_i0"><text>-</text></inputEntry>
+        <outputEntry id="ComplexGoals_r2_o0"><text>null</text></outputEntry>
+        <outputEntry id="ComplexGoals_r2_o1"><text>false</text></outputEntry>
+        <annotationEntry><text>Default</text></annotationEntry>
+      </rule>
+    </decisionTable>
+  </decision>
+  <decision id="Exclusions" name="Exclusions">
+    <description>Why a fitting product type is excluded. Phase 1 launches term plans only (A5), so the savings, participating and unit-linked types are excluded, and vulnerability keeps complex products out of chat.</description>
+    <variable id="Exclusions_var" name="Exclusions"/>
+    <informationRequirement id="Exclusions_ri0"><requiredInput href="#in_product_type"/></informationRequirement>
+    <informationRequirement id="Exclusions_ri1"><requiredInput href="#in_vulnerable"/></informationRequirement>
+    <decisionTable id="Exclusions_dt" hitPolicy="COLLECT">
+      <input id="Exclusions_in0" label="product_type">
+        <inputExpression id="Exclusions_ie0" typeRef="string"><text>product_type</text></inputExpression>
+        <inputValues id="Exclusions_iv0"><text>"TERM","TERM_ROP","NON_PAR_SAVINGS","PAR","ULIP"</text></inputValues>
+      </input>
+      <input id="Exclusions_in1" label="vulnerable">
+        <inputExpression id="Exclusions_ie1" typeRef="boolean"><text>vulnerable</text></inputExpression>
+      </input>
+      <output id="Exclusions_out0" name="rule_id" typeRef="string"/>
+      <output id="Exclusions_out1" name="reason_code" typeRef="string"/>
+      <annotation name="note"/>
+      <rule id="Exclusions_r1">
+        <inputEntry id="Exclusions_r1_i0"><text>"NON_PAR_SAVINGS"</text></inputEntry>
+        <inputEntry id="Exclusions_r1_i1"><text>-</text></inputEntry>
+        <outputEntry id="Exclusions_r1_o0"><text>"EXC-01"</text></outputEntry>
+        <outputEntry id="Exclusions_r1_o1"><text>"SUIT-SAV-LAUNCH-DISABLED"</text></outputEntry>
+        <annotationEntry><text></text></annotationEntry>
+      </rule>
+      <rule id="Exclusions_r2">
+        <inputEntry id="Exclusions_r2_i0"><text>"PAR"</text></inputEntry>
+        <inputEntry id="Exclusions_r2_i1"><text>-</text></inputEntry>
+        <outputEntry id="Exclusions_r2_o0"><text>"EXC-02"</text></outputEntry>
+        <outputEntry id="Exclusions_r2_o1"><text>"SUIT-PAR-LAUNCH-DISABLED"</text></outputEntry>
+        <annotationEntry><text></text></annotationEntry>
+      </rule>
+      <rule id="Exclusions_r3">
+        <inputEntry id="Exclusions_r3_i0"><text>"ULIP"</text></inputEntry>
+        <inputEntry id="Exclusions_r3_i1"><text>-</text></inputEntry>
+        <outputEntry id="Exclusions_r3_o0"><text>"EXC-03"</text></outputEntry>
+        <outputEntry id="Exclusions_r3_o1"><text>"SUIT-ULIP-LAUNCH-DISABLED"</text></outputEntry>
+        <annotationEntry><text></text></annotationEntry>
+      </rule>
+      <rule id="Exclusions_r4">
+        <inputEntry id="Exclusions_r4_i0"><text>"NON_PAR_SAVINGS","PAR","ULIP"</text></inputEntry>
+        <inputEntry id="Exclusions_r4_i1"><text>true</text></inputEntry>
+        <outputEntry id="Exclusions_r4_o0"><text>"EXC-04"</text></outputEntry>
+        <outputEntry id="Exclusions_r4_o1"><text>"SUIT-VULN-COMPLEX"</text></outputEntry>
+        <annotationEntry><text></text></annotationEntry>
+      </rule>
+    </decisionTable>
+  </decision>
+  <decision id="IncomeMultiple" name="IncomeMultiple">
+    <description>m(a): the underwriting income multiple for age a. uw_cap = m(a) × annual income.</description>
+    <variable id="IncomeMultiple_var" name="IncomeMultiple"/>
+    <informationRequirement id="IncomeMultiple_ri0"><requiredInput href="#in_age"/></informationRequirement>
+    <decisionTable id="IncomeMultiple_dt" hitPolicy="UNIQUE">
+      <input id="IncomeMultiple_in0" label="age">
+        <inputExpression id="IncomeMultiple_ie0" typeRef="number"><text>age</text></inputExpression>
+      </input>
+      <output id="IncomeMultiple_out0" name="rule_id" typeRef="string"/>
+      <output id="IncomeMultiple_out1" name="multiple" typeRef="number"/>
+      <annotation name="note"/>
+      <rule id="IncomeMultiple_r1">
+        <inputEntry id="IncomeMultiple_r1_i0"><text>&lt; 18</text></inputEntry>
+        <outputEntry id="IncomeMultiple_r1_o0"><text>"MA-00"</text></outputEntry>
+        <outputEntry id="IncomeMultiple_r1_o1"><text>0</text></outputEntry>
+        <annotationEntry><text>Never reached: eligibility routes minors out</text></annotationEntry>
+      </rule>
+      <rule id="IncomeMultiple_r2">
+        <inputEntry id="IncomeMultiple_r2_i0"><text>[18..35]</text></inputEntry>
+        <outputEntry id="IncomeMultiple_r2_o0"><text>"MA-01"</text></outputEntry>
+        <outputEntry id="IncomeMultiple_r2_o1"><text>25</text></outputEntry>
+        <annotationEntry><text></text></annotationEntry>
+      </rule>
+      <rule id="IncomeMultiple_r3">
+        <inputEntry id="IncomeMultiple_r3_i0"><text>[36..45]</text></inputEntry>
+        <outputEntry id="IncomeMultiple_r3_o0"><text>"MA-02"</text></outputEntry>
+        <outputEntry id="IncomeMultiple_r3_o1"><text>20</text></outputEntry>
+        <annotationEntry><text></text></annotationEntry>
+      </rule>
+      <rule id="IncomeMultiple_r4">
+        <inputEntry id="IncomeMultiple_r4_i0"><text>[46..55]</text></inputEntry>
+        <outputEntry id="IncomeMultiple_r4_o0"><text>"MA-03"</text></outputEntry>
+        <outputEntry id="IncomeMultiple_r4_o1"><text>15</text></outputEntry>
+        <annotationEntry><text></text></annotationEntry>
+      </rule>
+      <rule id="IncomeMultiple_r5">
+        <inputEntry id="IncomeMultiple_r5_i0"><text>[56..65]</text></inputEntry>
+        <outputEntry id="IncomeMultiple_r5_o0"><text>"MA-04"</text></outputEntry>
+        <outputEntry id="IncomeMultiple_r5_o1"><text>10</text></outputEntry>
+        <annotationEntry><text></text></annotationEntry>
+      </rule>
+      <rule id="IncomeMultiple_r6">
+        <inputEntry id="IncomeMultiple_r6_i0"><text>&gt; 65</text></inputEntry>
+        <outputEntry id="IncomeMultiple_r6_o0"><text>"MA-05"</text></outputEntry>
+        <outputEntry id="IncomeMultiple_r6_o1"><text>5</text></outputEntry>
+        <annotationEntry><text></text></annotationEntry>
+      </rule>
+    </decisionTable>
+  </decision>
+  <decision id="Vulnerability" name="Vulnerability">
+    <description>Vulnerability flags (TDD §3.7). They tighten the affordability bands and keep complex products out of chat.</description>
+    <variable id="Vulnerability_var" name="Vulnerability"/>
+    <informationRequirement id="Vulnerability_ri0"><requiredInput href="#in_age"/></informationRequirement>
+    <informationRequirement id="Vulnerability_ri1"><requiredInput href="#in_income_type"/></informationRequirement>
+    <informationRequirement id="Vulnerability_ri2"><requiredInput href="#in_annual_income"/></informationRequirement>
+    <informationRequirement id="Vulnerability_ri3"><requiredInput href="#in_financial_distress"/></informationRequirement>
+    <informationRequirement id="Vulnerability_ri4"><requiredInput href="#in_comprehension_difficulty_count"/></informationRequirement>
+    <decisionTable id="Vulnerability_dt" hitPolicy="COLLECT">
+      <input id="Vulnerability_in0" label="age">
+        <inputExpression id="Vulnerability_ie0" typeRef="number"><text>age</text></inputExpression>
+      </input>
+      <input id="Vulnerability_in1" label="income_type">
+        <inputExpression id="Vulnerability_ie1" typeRef="string"><text>income_type</text></inputExpression>
+        <inputValues id="Vulnerability_iv1"><text>"salaried","self_employed","homemaker","student","retired"</text></inputValues>
+      </input>
+      <input id="Vulnerability_in2" label="annual_income">
+        <inputExpression id="Vulnerability_ie2" typeRef="number"><text>annual_income</text></inputExpression>
+      </input>
+      <input id="Vulnerability_in3" label="financial_distress">
+        <inputExpression id="Vulnerability_ie3" typeRef="boolean"><text>financial_distress</text></inputExpression>
+      </input>
+      <input id="Vulnerability_in4" label="comprehension_difficulty_count">
+        <inputExpression id="Vulnerability_ie4" typeRef="number"><text>comprehension_difficulty_count</text></inputExpression>
+      </input>
+      <output id="Vulnerability_out0" name="rule_id" typeRef="string"/>
+      <output id="Vulnerability_out1" name="flag" typeRef="string"/>
+      <annotation name="note"/>
+      <rule id="Vulnerability_r1">
+        <inputEntry id="Vulnerability_r1_i0"><text>&gt;= 60</text></inputEntry>
+        <inputEntry id="Vulnerability_r1_i1"><text>-</text></inputEntry>
+        <inputEntry id="Vulnerability_r1_i2"><text>-</text></inputEntry>
+        <inputEntry id="Vulnerability_r1_i3"><text>-</text></inputEntry>
+        <inputEntry id="Vulnerability_r1_i4"><text>-</text></inputEntry>
+        <outputEntry id="Vulnerability_r1_o0"><text>"VUL-01"</text></outputEntry>
+        <outputEntry id="Vulnerability_r1_o1"><text>"VULN_AGE_60_PLUS"</text></outputEntry>
+        <annotationEntry><text></text></annotationEntry>
+      </rule>
+      <rule id="Vulnerability_r2">
+        <inputEntry id="Vulnerability_r2_i0"><text>-</text></inputEntry>
+        <inputEntry id="Vulnerability_r2_i1"><text>"homemaker","student","retired"</text></inputEntry>
+        <inputEntry id="Vulnerability_r2_i2"><text>-</text></inputEntry>
+        <inputEntry id="Vulnerability_r2_i3"><text>-</text></inputEntry>
+        <inputEntry id="Vulnerability_r2_i4"><text>-</text></inputEntry>
+        <outputEntry id="Vulnerability_r2_o0"><text>"VUL-02"</text></outputEntry>
+        <outputEntry id="Vulnerability_r2_o1"><text>"VULN_NO_PERSONAL_INCOME"</text></outputEntry>
+        <annotationEntry><text></text></annotationEntry>
+      </rule>
+      <rule id="Vulnerability_r3">
+        <inputEntry id="Vulnerability_r3_i0"><text>-</text></inputEntry>
+        <inputEntry id="Vulnerability_r3_i1"><text>-</text></inputEntry>
+        <inputEntry id="Vulnerability_r3_i2"><text>0</text></inputEntry>
+        <inputEntry id="Vulnerability_r3_i3"><text>-</text></inputEntry>
+        <inputEntry id="Vulnerability_r3_i4"><text>-</text></inputEntry>
+        <outputEntry id="Vulnerability_r3_o0"><text>"VUL-03"</text></outputEntry>
+        <outputEntry id="Vulnerability_r3_o1"><text>"VULN_NO_PERSONAL_INCOME"</text></outputEntry>
+        <annotationEntry><text>Declared income of zero</text></annotationEntry>
+      </rule>
+      <rule id="Vulnerability_r4">
+        <inputEntry id="Vulnerability_r4_i0"><text>-</text></inputEntry>
+        <inputEntry id="Vulnerability_r4_i1"><text>-</text></inputEntry>
+        <inputEntry id="Vulnerability_r4_i2"><text>-</text></inputEntry>
+        <inputEntry id="Vulnerability_r4_i3"><text>true</text></inputEntry>
+        <inputEntry id="Vulnerability_r4_i4"><text>-</text></inputEntry>
+        <outputEntry id="Vulnerability_r4_o0"><text>"VUL-04"</text></outputEntry>
+        <outputEntry id="Vulnerability_r4_o1"><text>"VULN_FINANCIAL_DISTRESS"</text></outputEntry>
+        <annotationEntry><text></text></annotationEntry>
+      </rule>
+      <rule id="Vulnerability_r5">
+        <inputEntry id="Vulnerability_r5_i0"><text>-</text></inputEntry>
+        <inputEntry id="Vulnerability_r5_i1"><text>-</text></inputEntry>
+        <inputEntry id="Vulnerability_r5_i2"><text>-</text></inputEntry>
+        <inputEntry id="Vulnerability_r5_i3"><text>-</text></inputEntry>
+        <inputEntry id="Vulnerability_r5_i4"><text>&gt;= 2</text></inputEntry>
+        <outputEntry id="Vulnerability_r5_o0"><text>"VUL-05"</text></outputEntry>
+        <outputEntry id="Vulnerability_r5_o1"><text>"VULN_COMPREHENSION"</text></outputEntry>
+        <annotationEntry><text>Repeated comprehension difficulty</text></annotationEntry>
+      </rule>
+    </decisionTable>
+  </decision>
+  <decision id="AffordabilityLimits" name="AffordabilityLimits">
+    <description>The upper edge of green and amber, as a share of annual income. Vulnerability tightens them. Illustrative until D6.</description>
+    <variable id="AffordabilityLimits_var" name="AffordabilityLimits"/>
+    <informationRequirement id="AffordabilityLimits_ri0"><requiredInput href="#in_vulnerable"/></informationRequirement>
+    <decisionTable id="AffordabilityLimits_dt" hitPolicy="UNIQUE">
+      <input id="AffordabilityLimits_in0" label="vulnerable">
+        <inputExpression id="AffordabilityLimits_ie0" typeRef="boolean"><text>vulnerable</text></inputExpression>
+      </input>
+      <output id="AffordabilityLimits_out0" name="rule_id" typeRef="string"/>
+      <output id="AffordabilityLimits_out1" name="green_max" typeRef="number"/>
+      <output id="AffordabilityLimits_out2" name="amber_max" typeRef="number"/>
+      <annotation name="note"/>
+      <rule id="AffordabilityLimits_r1">
+        <inputEntry id="AffordabilityLimits_r1_i0"><text>false</text></inputEntry>
+        <outputEntry id="AffordabilityLimits_r1_o0"><text>"AFL-01"</text></outputEntry>
+        <outputEntry id="AffordabilityLimits_r1_o1"><text>0.10</text></outputEntry>
+        <outputEntry id="AffordabilityLimits_r1_o2"><text>0.20</text></outputEntry>
+        <annotationEntry><text>Green up to 10%, amber to 20%</text></annotationEntry>
+      </rule>
+      <rule id="AffordabilityLimits_r2">
+        <inputEntry id="AffordabilityLimits_r2_i0"><text>true</text></inputEntry>
+        <outputEntry id="AffordabilityLimits_r2_o0"><text>"AFL-02"</text></outputEntry>
+        <outputEntry id="AffordabilityLimits_r2_o1"><text>0.05</text></outputEntry>
+        <outputEntry id="AffordabilityLimits_r2_o2"><text>0.10</text></outputEntry>
+        <annotationEntry><text>Tightened for a vulnerable customer</text></annotationEntry>
+      </rule>
+    </decisionTable>
+  </decision>
+  <decision id="Affordability" name="Affordability">
+    <description>Total annual premium (the estimate for the recommended cover plus existing premiums) over annual income. Unknown when income is declined or zero, or no premium can be estimated.</description>
+    <variable id="Affordability_var" name="Affordability"/>
+    <informationRequirement id="Affordability_rd0"><requiredDecision href="#AffordabilityLimits"/></informationRequirement>
+    <informationRequirement id="Affordability_ri0"><requiredInput href="#in_premium_to_income"/></informationRequirement>
+    <decisionTable id="Affordability_dt" hitPolicy="FIRST">
+      <input id="Affordability_in0" label="premium_to_income">
+        <inputExpression id="Affordability_ie0" typeRef="number"><text>premium_to_income</text></inputExpression>
+      </input>
+      <output id="Affordability_out0" name="rule_id" typeRef="string"/>
+      <output id="Affordability_out1" name="band" typeRef="string"/>
+      <annotation name="note"/>
+      <rule id="Affordability_r1">
+        <inputEntry id="Affordability_r1_i0"><text>null</text></inputEntry>
+        <outputEntry id="Affordability_r1_o0"><text>null</text></outputEntry>
+        <outputEntry id="Affordability_r1_o1"><text>"unknown"</text></outputEntry>
+        <annotationEntry><text></text></annotationEntry>
+      </rule>
+      <rule id="Affordability_r2">
+        <inputEntry id="Affordability_r2_i0"><text>&lt;= AffordabilityLimits.green_max</text></inputEntry>
+        <outputEntry id="Affordability_r2_o0"><text>"AFF-01"</text></outputEntry>
+        <outputEntry id="Affordability_r2_o1"><text>"green"</text></outputEntry>
+        <annotationEntry><text></text></annotationEntry>
+      </rule>
+      <rule id="Affordability_r3">
+        <inputEntry id="Affordability_r3_i0"><text>&lt;= AffordabilityLimits.amber_max</text></inputEntry>
+        <outputEntry id="Affordability_r3_o0"><text>"AFF-02"</text></outputEntry>
+        <outputEntry id="Affordability_r3_o1"><text>"amber"</text></outputEntry>
+        <annotationEntry><text>Explicit confirmation before S3</text></annotationEntry>
+      </rule>
+      <rule id="Affordability_r4">
+        <inputEntry id="Affordability_r4_i0"><text>-</text></inputEntry>
+        <outputEntry id="Affordability_r4_o0"><text>"AFF-03"</text></outputEntry>
+        <outputEntry id="Affordability_r4_o1"><text>"red"</text></outputEntry>
+        <annotationEntry><text>Advisor referral</text></annotationEntry>
+      </rule>
+    </decisionTable>
+  </decision>
+  <decision id="Plausibility" name="Plausibility">
+    <description>Values to re-confirm with the customer (TDD §3.7 edge cases). They never reject a request.</description>
+    <variable id="Plausibility_var" name="Plausibility"/>
+    <informationRequirement id="Plausibility_ri0"><requiredInput href="#in_annual_income"/></informationRequirement>
+    <informationRequirement id="Plausibility_ri1"><requiredInput href="#in_loans_total"/></informationRequirement>
+    <decisionTable id="Plausibility_dt" hitPolicy="COLLECT">
+      <input id="Plausibility_in0" label="annual_income">
+        <inputExpression id="Plausibility_ie0" typeRef="number"><text>annual_income</text></inputExpression>
+      </input>
+      <input id="Plausibility_in1" label="if annual_income != null and annual_income &gt; 0 then loans_total / annual_income else null">
+        <inputExpression id="Plausibility_ie1" typeRef="number"><text>if annual_income != null and annual_income &gt; 0 then loans_total / annual_income else null</text></inputExpression>
+      </input>
+      <output id="Plausibility_out0" name="rule_id" typeRef="string"/>
+      <output id="Plausibility_out1" name="flag" typeRef="string"/>
+      <annotation name="note"/>
+      <rule id="Plausibility_r1">
+        <inputEntry id="Plausibility_r1_i0"><text>-</text></inputEntry>
+        <inputEntry id="Plausibility_r1_i1"><text>&gt; 40</text></inputEntry>
+        <outputEntry id="Plausibility_r1_o0"><text>"PLB-01"</text></outputEntry>
+        <outputEntry id="Plausibility_r1_o1"><text>"IMPLAUSIBLE_INPUT"</text></outputEntry>
+        <annotationEntry><text>Loans over 40 times income</text></annotationEntry>
+      </rule>
+      <rule id="Plausibility_r2">
+        <inputEntry id="Plausibility_r2_i0"><text>(0..30000)</text></inputEntry>
+        <inputEntry id="Plausibility_r2_i1"><text>-</text></inputEntry>
+        <outputEntry id="Plausibility_r2_o0"><text>"PLB-02"</text></outputEntry>
+        <outputEntry id="Plausibility_r2_o1"><text>"IMPLAUSIBLE_INPUT"</text></outputEntry>
+        <annotationEntry><text>Income above zero but below the floor</text></annotationEntry>
+      </rule>
+    </decisionTable>
+  </decision>
+  <decision id="Outcome" name="Outcome">
+    <description>Every matching row adds its codes to reason_codes; the first gives the outcome. Escalations come before the exit (TDD §3.1 order; mandatory triggers V5), then forward progress.</description>
+    <variable id="Outcome_var" name="Outcome"/>
+    <informationRequirement id="Outcome_ri0"><requiredInput href="#in_vulnerable_complex"/></informationRequirement>
+    <informationRequirement id="Outcome_ri1"><requiredInput href="#in_out_of_scope"/></informationRequirement>
+    <informationRequirement id="Outcome_ri2"><requiredInput href="#in_uninsurable"/></informationRequirement>
+    <informationRequirement id="Outcome_ri3"><requiredInput href="#in_affordability"/></informationRequirement>
+    <informationRequirement id="Outcome_ri4"><requiredInput href="#in_need_positive"/></informationRequirement>
+    <decisionTable id="Outcome_dt" hitPolicy="RULE ORDER">
+      <input id="Outcome_in0" label="vulnerable_complex">
+        <inputExpression id="Outcome_ie0" typeRef="boolean"><text>vulnerable_complex</text></inputExpression>
+      </input>
+      <input id="Outcome_in1" label="out_of_scope">
+        <inputExpression id="Outcome_ie1" typeRef="boolean"><text>out_of_scope</text></inputExpression>
+      </input>
+      <input id="Outcome_in2" label="uninsurable">
+        <inputExpression id="Outcome_ie2" typeRef="boolean"><text>uninsurable</text></inputExpression>
+      </input>
+      <input id="Outcome_in3" label="affordability">
+        <inputExpression id="Outcome_ie3" typeRef="string"><text>affordability</text></inputExpression>
+        <inputValues id="Outcome_iv3"><text>"green","amber","red","unknown"</text></inputValues>
+      </input>
+      <input id="Outcome_in4" label="need_positive">
+        <inputExpression id="Outcome_ie4" typeRef="boolean"><text>need_positive</text></inputExpression>
+      </input>
+      <output id="Outcome_out0" name="rule_id" typeRef="string"/>
+      <output id="Outcome_out1" name="outcome" typeRef="string"/>
+      <output id="Outcome_out2" name="escalation_reason" typeRef="string"/>
+      <output id="Outcome_out3" name="reason_code" typeRef="string"/>
+      <annotation name="note"/>
+      <rule id="Outcome_r1">
+        <inputEntry id="Outcome_r1_i0"><text>true</text></inputEntry>
+        <inputEntry id="Outcome_r1_i1"><text>-</text></inputEntry>
+        <inputEntry id="Outcome_r1_i2"><text>-</text></inputEntry>
+        <inputEntry id="Outcome_r1_i3"><text>-</text></inputEntry>
+        <inputEntry id="Outcome_r1_i4"><text>-</text></inputEntry>
+        <outputEntry id="Outcome_r1_o0"><text>"OUT-01"</text></outputEntry>
+        <outputEntry id="Outcome_r1_o1"><text>"ESCALATE"</text></outputEntry>
+        <outputEntry id="Outcome_r1_o2"><text>"HE_VULNERABLE_COMPLEX"</text></outputEntry>
+        <outputEntry id="Outcome_r1_o3"><text>null</text></outputEntry>
+        <annotationEntry><text>A vulnerability flag with a complex-product goal</text></annotationEntry>
+      </rule>
+      <rule id="Outcome_r2">
+        <inputEntry id="Outcome_r2_i0"><text>-</text></inputEntry>
+        <inputEntry id="Outcome_r2_i1"><text>true</text></inputEntry>
+        <inputEntry id="Outcome_r2_i2"><text>-</text></inputEntry>
+        <inputEntry id="Outcome_r2_i3"><text>-</text></inputEntry>
+        <inputEntry id="Outcome_r2_i4"><text>-</text></inputEntry>
+        <outputEntry id="Outcome_r2_o0"><text>"OUT-02"</text></outputEntry>
+        <outputEntry id="Outcome_r2_o1"><text>"ESCALATE"</text></outputEntry>
+        <outputEntry id="Outcome_r2_o2"><text>"HE_OUT_OF_SCOPE"</text></outputEntry>
+        <outputEntry id="Outcome_r2_o3"><text>"SUIT-NO-FIT-TYPE"</text></outputEntry>
+        <annotationEntry><text>No launched product type serves the goals</text></annotationEntry>
+      </rule>
+      <rule id="Outcome_r3">
+        <inputEntry id="Outcome_r3_i0"><text>-</text></inputEntry>
+        <inputEntry id="Outcome_r3_i1"><text>-</text></inputEntry>
+        <inputEntry id="Outcome_r3_i2"><text>true</text></inputEntry>
+        <inputEntry id="Outcome_r3_i3"><text>-</text></inputEntry>
+        <inputEntry id="Outcome_r3_i4"><text>-</text></inputEntry>
+        <outputEntry id="Outcome_r3_o0"><text>"OUT-03"</text></outputEntry>
+        <outputEntry id="Outcome_r3_o1"><text>"ESCALATE"</text></outputEntry>
+        <outputEntry id="Outcome_r3_o2"><text>"HE_OUT_OF_SCOPE"</text></outputEntry>
+        <outputEntry id="Outcome_r3_o3"><text>"SUIT-NO-INSURABLE-COVER"</text></outputEntry>
+        <annotationEntry><text>A need, but no cover can be recommended (e.g. no income: m(a) × 0)</text></annotationEntry>
+      </rule>
+      <rule id="Outcome_r4">
+        <inputEntry id="Outcome_r4_i0"><text>-</text></inputEntry>
+        <inputEntry id="Outcome_r4_i1"><text>-</text></inputEntry>
+        <inputEntry id="Outcome_r4_i2"><text>-</text></inputEntry>
+        <inputEntry id="Outcome_r4_i3"><text>"red"</text></inputEntry>
+        <inputEntry id="Outcome_r4_i4"><text>-</text></inputEntry>
+        <outputEntry id="Outcome_r4_o0"><text>"OUT-04"</text></outputEntry>
+        <outputEntry id="Outcome_r4_o1"><text>"ESCALATE"</text></outputEntry>
+        <outputEntry id="Outcome_r4_o2"><text>"HE_AFFORDABILITY_RED"</text></outputEntry>
+        <outputEntry id="Outcome_r4_o3"><text>null</text></outputEntry>
+        <annotationEntry><text></text></annotationEntry>
+      </rule>
+      <rule id="Outcome_r5">
+        <inputEntry id="Outcome_r5_i0"><text>-</text></inputEntry>
+        <inputEntry id="Outcome_r5_i1"><text>-</text></inputEntry>
+        <inputEntry id="Outcome_r5_i2"><text>-</text></inputEntry>
+        <inputEntry id="Outcome_r5_i3"><text>-</text></inputEntry>
+        <inputEntry id="Outcome_r5_i4"><text>false</text></inputEntry>
+        <outputEntry id="Outcome_r5_o0"><text>"OUT-05"</text></outputEntry>
+        <outputEntry id="Outcome_r5_o1"><text>"NO_GAP"</text></outputEntry>
+        <outputEntry id="Outcome_r5_o2"><text>null</text></outputEntry>
+        <outputEntry id="Outcome_r5_o3"><text>"SUIT-NO-GAP"</text></outputEntry>
+        <annotationEntry><text>Existing cover appears sufficient: Exit (Advisory)</text></annotationEntry>
+      </rule>
+      <rule id="Outcome_r6">
+        <inputEntry id="Outcome_r6_i0"><text>-</text></inputEntry>
+        <inputEntry id="Outcome_r6_i1"><text>-</text></inputEntry>
+        <inputEntry id="Outcome_r6_i2"><text>-</text></inputEntry>
+        <inputEntry id="Outcome_r6_i3"><text>-</text></inputEntry>
+        <inputEntry id="Outcome_r6_i4"><text>-</text></inputEntry>
+        <outputEntry id="Outcome_r6_o0"><text>null</text></outputEntry>
+        <outputEntry id="Outcome_r6_o1"><text>"FIT"</text></outputEntry>
+        <outputEntry id="Outcome_r6_o2"><text>null</text></outputEntry>
+        <outputEntry id="Outcome_r6_o3"><text>null</text></outputEntry>
+        <annotationEntry><text>Default</text></annotationEntry>
+      </rule>
+    </decisionTable>
+  </decision>
+</definitions>

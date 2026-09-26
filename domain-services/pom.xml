@@ -23,6 +23,8 @@
     <openapi-generator.version>7.25.0</openapi-generator.version>
     <java-json-canonicalization.version>1.1</java-json-canonicalization.version>
     <openapi-request-validator.version>3.0.0</openapi-request-validator.version>
+    <kie.version>10.2.0</kie.version>
+    <archunit.version>1.5.1</archunit.version>
   </properties>
 
   <dependencies>
@@ -55,6 +57,19 @@
     <dependency>
       <groupId>tools.jackson.dataformat</groupId>
       <artifactId>jackson-dataformat-yaml</artifactId>
+    </dependency>
+    <!-- Embedded Apache KIE DMN engine: evaluates resources/dmn/*.dmn (no Kogito codegen, no KIE
+         starter). kie-dmn-feel brings Jackson 2 (Boot-managed 2.21.5) onto the classpath; Spring MVC
+         keeps using Jackson 3. -->
+    <dependency>
+      <groupId>org.kie</groupId>
+      <artifactId>kie-dmn-core</artifactId>
+      <version>${kie.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.kie</groupId>
+      <artifactId>kie-dmn-api</artifactId>
+      <version>${kie.version}</version>
     </dependency>
     <dependency>
       <groupId>org.postgresql</groupId>
@@ -91,6 +106,13 @@
       <groupId>com.atlassian.oai</groupId>
       <artifactId>openapi-request-validator-mockmvc</artifactId>
       <version>${openapi-request-validator.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <!-- CommercialFieldBanTest: no commission-like field in a decision package. -->
+    <dependency>
+      <groupId>com.tngtech.archunit</groupId>
+      <artifactId>archunit</artifactId>
+      <version>${archunit.version}</version>
       <scope>test</scope>
     </dependency>
     <dependency>

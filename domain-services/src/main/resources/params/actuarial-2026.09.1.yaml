@@ -1,0 +1,23 @@
+# DUMMY actuarial assumptions for suitability cover sizing (TDD §3.7):
+#   N = I(1-s)(1-(1+r)^-n)/r + L + G + F - E - A,  r = (1+i)/(1+g) - 1
+# Every value is illustrative until the board-approved underwriting and suitability policy (D6)
+# replaces it. Thresholds, bands, multiples and weights are not here: they live in
+# dmn/suitability-*.dmn. A change ships as a new file with a new params_version, bound to a new
+# rules version; a session keeps the parameters of the rules version it pinned (I7).
+params_version: actuarial-2026.09.1
+rules_version: rules-2026.09.1        # the DMN release these parameters belong to
+is_dummy: true
+consumption_share: "0.30"             # s: the share of income the customer consumes
+discount_rate: "0.07"                 # i
+income_growth: "0.05"                 # g
+# Years a dependant stays dependent: until this age for the relations listed; any relation not
+# listed (spouse, parent, other) depends until the customer's cover_to_age.
+independence_age: {child: 25}
+cover_to_age_default: 60              # when needs.cover_to_age is not sent
+final_expenses_inr: "200000"          # F
+employer_cover_share: "0.50"          # the share of employer group cover counted in E
+sa_rounding_step_inr: "500000"        # band(): recommended cover is a multiple of this
+# G: a corpus in today's rupees for each dependant of the relation, due when they reach the age;
+# counted when the goal is selected, discounted at r.
+goal_corpora:
+  - {goal: child_education, relation: child, amount_inr: "2000000", due_at_age: 18}

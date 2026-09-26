@@ -29,6 +29,8 @@ class ContractValidationTest extends DomainApiTestSupport {
   void versions() throws Exception {
     JsonNode versions = json(api(get("/v1/meta/versions")).andExpect(status().isOk()));
     assertThat(versions.get("registry_version").asString()).isEqualTo("2026.09.1");
+    assertThat(versions.get("rules_version").asString()).isEqualTo("rules-2026.09.1");
+    assertThat(versions.get("params_version").asString()).isEqualTo("actuarial-2026.09.1");
     assertThat(versions.get("active_rules_versions").get(0))
         .isEqualTo(versions.get("rules_version"));
   }

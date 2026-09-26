@@ -317,14 +317,14 @@ class DomainClient:
 
     # --- decisions --------------------------------------------------------------------------
     async def get_required_attributes(
-        self, as_of: datetime | None = None
+        self, rules: str, as_of: datetime | None = None
     ) -> list[RequiredAttribute]:
         return await self._call(
             "getRequiredAttributes",
             _REQUIRED_ATTRIBUTES.validate_json,
             "GET",
             "/v1/eligibility/required-attributes",
-            params={"as_of": _iso(as_of)},
+            params={"pins.rules": rules, "as_of": _iso(as_of)},
         )
 
     async def evaluate_eligibility(self, request: EligibilityRequest) -> EligibilityResult:

@@ -21,6 +21,7 @@ PATTERN_SAMPLES = {
     SCHEMAS["Sha256Hex"]["pattern"]: "ab" * 32,
     SCHEMAS["Uin"]["pattern"]: "999N001V02",
     SCHEMAS["Pincode"]["pattern"]: "411001",
+    SCHEMAS["Rate"]["pattern"]: "0.07",
 }
 FORMAT_SAMPLES = {
     "uuid": "0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b",

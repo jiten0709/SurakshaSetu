@@ -10,7 +10,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.erdtman.jcs.JsonCanonicalizer;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 /**
  * RFC 8785 JSON Canonicalization Scheme, and every hash this tier computes (the contract's
@@ -52,6 +54,17 @@ public final class Jcs {
 
   public static String nfc(String text) {
     return Normalizer.normalize(text, Normalizer.Form.NFC);
+  }
+
+  /**
+   * Suitability {@code inputs_sha256} = SHA-256(JCS(needs)), over the {@code needs} object as sent
+   * with its {@code slots_sha256} member removed. It must equal the orchestrator's {@code
+   * slots_sha256} (I2); {@code content/testvectors/needs/} pins both tiers.
+   */
+  public static String needsSha256(JsonNode needs) {
+    ObjectNode preimage = (ObjectNode) needs.deepCopy();
+    preimage.remove("slots_sha256");
+    return sha256Hex(MAPPER.writeValueAsString(preimage));
   }
 
   /**

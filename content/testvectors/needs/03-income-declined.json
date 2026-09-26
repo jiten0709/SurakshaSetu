@@ -1,0 +1,39 @@
+{
+  "description": "Declined answers are null and stay in the preimage; money keeps its decimals as sent; slots_sha256 null is removed like any other value.",
+  "needs": {
+    "goals": [
+      "loan_cover",
+      "child_education"
+    ],
+    "annual_income_inr": null,
+    "income_type": "self_employed",
+    "dependants": [
+      {
+        "relation": "spouse",
+        "age": 41
+      },
+      {
+        "relation": "child",
+        "age": 12
+      }
+    ],
+    "liabilities": [
+      {
+        "kind": "business",
+        "outstanding_inr": "1250000.50",
+        "years_left": 7
+      }
+    ],
+    "existing_cover_inr": "500000",
+    "employer_cover_inr": "0",
+    "earmarked_assets_inr": null,
+    "premium_budget_inr_pa": null,
+    "cover_to_age": 65,
+    "confirmed_at": "2026-09-26T04:30:00Z",
+    "slots_sha256": null,
+    "existing_annual_premium_inr": "18000.75",
+    "financial_distress": true,
+    "comprehension_difficulty_count": 2
+  },
+  "inputs_sha256": "e4902dca3d16a3a0c328945822b31cf127aa73e77a149eb503371c33b4f6bb5b"
+}

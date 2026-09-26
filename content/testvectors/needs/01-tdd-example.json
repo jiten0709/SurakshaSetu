@@ -1,0 +1,41 @@
+{
+  "description": "The TDD §3.7 example as the orchestrator sends it: slots_sha256 is set, and removed before hashing, so the hash equals jcs/12-needs-preimage.json.",
+  "needs": {
+    "goals": [
+      "income_protection",
+      "loan_cover"
+    ],
+    "annual_income_inr": "2400000",
+    "income_type": "salaried",
+    "dependants": [
+      {
+        "relation": "spouse",
+        "age": 32
+      },
+      {
+        "relation": "child",
+        "age": 4
+      }
+    ],
+    "liabilities": [
+      {
+        "kind": "home",
+        "outstanding_inr": "3500000",
+        "years_left": 18
+      }
+    ],
+    "existing_cover_inr": "0",
+    "employer_cover_inr": "1500000",
+    "earmarked_assets_inr": null,
+    "premium_budget_inr_pa": "30000",
+    "cover_to_age": 60,
+    "risk_profile": null,
+    "horizon_years": null,
+    "confirmed_at": "2026-09-23T10:15:00Z",
+    "existing_annual_premium_inr": "0",
+    "financial_distress": false,
+    "comprehension_difficulty_count": 0,
+    "slots_sha256": "aeca729f3a673225b6f2b0f9319483ff900d66bf1351e9e2404b5b45f9ca3b17"
+  },
+  "inputs_sha256": "aeca729f3a673225b6f2b0f9319483ff900d66bf1351e9e2404b5b45f9ca3b17"
+}

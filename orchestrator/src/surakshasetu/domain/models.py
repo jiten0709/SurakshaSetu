@@ -354,6 +354,10 @@ class NeedsPayload(BaseModel):
 
 class EligibilitySnapshot(BaseModel):
     age_years: Annotated[int, Field(ge=0)]
+    tobacco_12m: Annotated[
+        bool | None, Field(description="null means the customer declined to answer.")
+    ]
+    gender: Gender | None = None
     eligible_uins: list[Uin]
     flags: list[str]
 
@@ -362,6 +366,26 @@ class SuitabilityRequest(BaseModel):
     pins: Pins
     eligibility: EligibilitySnapshot
     needs: NeedsPayload
+
+
+type Rate = Annotated[
+    str, Field(description="A decimal fraction, e.g. 0.07 for 7%.", pattern="^\\d+(\\.\\d+)?$")
+]
+
+
+class SuitabilityAssumptions(BaseModel):
+    cover_to_age: int
+    dependency_years: Annotated[int, Field(description="The n of the income term.", ge=0)]
+    discount_rate: Rate
+    income_growth: Rate
+    consumption_share: Rate
+    final_expenses_inr: Money
+    existing_cover_counted_inr: Annotated[
+        Money,
+        Field(
+            description="Individual cover plus the share of employer cover the parameters count."
+        ),
+    ]
 
 
 class SuitabilityResult(BaseModel):
@@ -393,6 +417,7 @@ class SuitabilityResult(BaseModel):
     term_years: int
     affordability: Literal["green", "amber", "red", "unknown"]
     vulnerability_flags: list[str]
+    assumptions: SuitabilityAssumptions
     rule_ids: Annotated[list[str], Field(description="Rules that fired.")]
     reason_codes: list[str]
     params_version: Annotated[str, Field(description="Actuarial assumptions.")]

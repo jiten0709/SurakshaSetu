@@ -1,0 +1,21 @@
+{
+  "description": "The short path: optional slots that were not asked are omitted, not sent as defaults, so the preimage has no existing_cover_inr, employer_cover_inr, cover_to_age or slots_sha256.",
+  "needs": {
+    "goals": [
+      "income_protection"
+    ],
+    "annual_income_inr": "1200000",
+    "income_type": "salaried",
+    "dependants": [
+      {
+        "relation": "child",
+        "age": 2
+      }
+    ],
+    "liabilities": [],
+    "existing_annual_premium_inr": "0",
+    "financial_distress": false,
+    "comprehension_difficulty_count": 0
+  },
+  "inputs_sha256": "8c08196a9ce87bbf3014657b59c941ccbb88505ef868618b78d6822680e0152b"
+}
