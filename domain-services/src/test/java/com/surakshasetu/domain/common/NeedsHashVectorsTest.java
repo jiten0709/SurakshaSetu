@@ -13,7 +13,7 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * Suitability inputs_sha256 = SHA-256(JCS(needs as sent, minus slots_sha256)). The vectors in
  * content/testvectors/needs/ were hashed by the orchestrator's crypto/jcs.py when they were
- * written, and Step 17's Python parity test reads the same files (I2 across tiers).
+ * written, and Step 20's Python parity test reads the same files (I2 across tiers).
  */
 class NeedsHashVectorsTest {
 

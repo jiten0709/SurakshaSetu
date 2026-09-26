@@ -1,5 +1,6 @@
 package com.surakshasetu.domain.catalog;
 
+import com.surakshasetu.domain.contract.model.Frequency;
 import com.surakshasetu.domain.contract.model.PptOption;
 import com.surakshasetu.domain.contract.model.Product;
 import com.surakshasetu.domain.contract.model.ProductDocument;
@@ -17,6 +18,8 @@ import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Reads the Product Catalog as domain_rw. A product is served on a date inside [effective_from,
@@ -34,6 +37,11 @@ public class CatalogRepository {
       FROM catalog.product
       WHERE effective_from <= :on AND (effective_to IS NULL OR :on < effective_to)
       """;
+
+  private static final JsonMapper JSON = JsonMapper.builder().build();
+
+  /** The quote engine's default premium-paying term and frequency for a product. */
+  public record QuoteDefaults(PptOption ppt, Frequency frequency) {}
 
   private final JdbcClient jdbc;
 
@@ -68,6 +76,28 @@ public class CatalogRepository {
         .param("uin", uin)
         .query(this::product)
         .optional();
+  }
+
+  /**
+   * The product's quote_defaults. Without one, its first PPT option, paid annually (single for a
+   * single premium).
+   */
+  public QuoteDefaults quoteDefaults(Product product) {
+    JsonNode defaults =
+        JSON.readTree(
+            jdbc.sql("SELECT quote_defaults::text FROM catalog.product WHERE uin = ?")
+                .param(product.getUin())
+                .query(String.class)
+                .single());
+    PptOption ppt =
+        defaults.hasNonNull("ppt")
+            ? PptOption.fromValue(defaults.get("ppt").asString())
+            : product.getPptOptions().getFirst();
+    Frequency frequency =
+        defaults.hasNonNull("frequency")
+            ? Frequency.fromValue(defaults.get("frequency").asString())
+            : ppt == PptOption.SINGLE ? Frequency.SINGLE : Frequency.ANNUAL;
+    return new QuoteDefaults(ppt, frequency);
   }
 
   public boolean exists(String uin) {

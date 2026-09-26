@@ -166,7 +166,7 @@ class EligibilityApiTest extends DomainApiTestSupport {
                 .getContentAsString());
     List<String> attributes = new ArrayList<>();
     r.forEach(a -> attributes.add(a.get("attribute").asString()));
-    // The stub rating engine rates no product by gender, so gender isn't asked.
+    // The DUMMY rate table rates no product by gender, so gender isn't asked.
     assertThat(attributes).doesNotContain("gender").hasSize(10).startsWith("age_years");
     assertThat(r.get(0).get("reason_line_id").asString()).isEqualTo("RL-S1-AGE");
     assertThat(r.get(9).get("asked_if").asString()).isEqualTo("proposer.is_life_assured = false");

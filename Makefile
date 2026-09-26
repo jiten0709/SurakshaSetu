@@ -2,7 +2,7 @@
 COMPOSE := docker compose -f infra/compose.yaml --profile core
 PYTEST_MARKERS := not stack and not golden and not redteam and not live and not db
 PLACEHOLDERS := kb-ingest seed-eval test-invariants e2e-scripted \
-	verify-release-gate eval eval-live contract-test local-setup
+	verify-release-gate eval eval-live local-setup
 SPEC := contracts/openapi/domain-services.v1.yaml
 MODELS := src/surakshasetu/domain/models.py
 
@@ -22,7 +22,7 @@ TEST_ENV := SS_TEST_PG_DSN_ADMIN="postgresql://postgres:$(POSTGRES_PASSWORD)@127
 	$(MINIO_ENV)
 
 .PHONY: up down logs check check-py check-java check-stubs check-db check-stack check-contracts \
-	db-migrate seed-catalog contracts contracts-lint verify-audit $(PLACEHOLDERS)
+	db-migrate seed-catalog contracts contracts-lint contract-test verify-audit $(PLACEHOLDERS)
 
 # Postgres first, then the migrations, so domain-services finds its domain_rw role on a fresh
 # volume. `up --wait` treats an exited one-shot as a failure, so the one-shots run on their own.
@@ -87,7 +87,14 @@ seed-catalog:
 check-db: db-migrate
 	@cd orchestrator && $(TEST_ENV) uv run --locked pytest -m db
 
-# The stack-marked tests (the anchor against MinIO's object lock). Needs `make up`.
+# Schemathesis against the running domain-services (SS_DOMAIN_BASE_URL, default :8080): every
+# operation and the spec's links, checking not_a_server_error and response_schema_conformance.
+# Needs `make up`. Consent records it creates land in the dev database.
+contract-test:
+	cd orchestrator && uv run --locked pytest -m stack tests/stack/test_domain_contract.py
+
+# The stack-marked tests: the anchor against MinIO's object lock and the Schemathesis contract
+# tests. Needs `make up`.
 check-stack: db-migrate
 	@cd orchestrator && $(TEST_ENV) uv run --locked pytest -m stack
 

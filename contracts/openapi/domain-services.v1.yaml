@@ -26,14 +26,14 @@ info:
     | 409 | `RULES_VERSION_UNKNOWN` | `pins.rules` names a version the service has not loaded. |
     | 409 | `IDEMPOTENCY_KEY_REUSED` | The same Idempotency-Key arrives with a different body. |
     | 409 | `CONSENT_WITHDRAWN` | A purpose change on a withdrawn consent record; capture a new record instead. |
-    | 409 | `PRODUCT_WITHDRAWN` | A quote for a withdrawn product. |
+    | 409 | `PRODUCT_WITHDRAWN` | A quote for a product not on sale today: withdrawn, expired or not launched. |
     | 422 | `NOTICE_MISMATCH` | The notice version is not in force, or `notice_sha256` does not match it. |
     | 422 | `P1_REQUIRED` | A consent record without the P1 purpose. |
     | 422 | `TOBACCO_UNDISCLOSED` | A quote with `tobacco_12m` null; premiums are withheld upstream. |
-    | 422 | `QUOTE_OUT_OF_BOUNDS` | Cover, term, age or rider outside the product's limits; the problem carries `allowed_min` and `allowed_max`. |
+    | 422 | `QUOTE_OUT_OF_BOUNDS` | Cover, term, age, premium-paying term, frequency or rider outside the product's limits. The problem names the request member in `field` and carries the bounds that apply: `allowed_min`, `allowed_max`, and `allowed_step` for cover. |
     | 500 | `REGISTRY_INTEGRITY` | A stored disclosure set fails its hash check; it is never served. |
     | 501 | `NOT_IMPLEMENTED` | The operation is not implemented yet. |
-    | any | the HTTP status name | Framework errors: `BAD_REQUEST` (malformed or invalid request), `NOT_FOUND` (no such route), `METHOD_NOT_ALLOWED`, `UNSUPPORTED_MEDIA_TYPE`, `INTERNAL_SERVER_ERROR`, and so on. |
+    | any | the HTTP status name | Framework errors: `BAD_REQUEST` (malformed or invalid request), `NOT_FOUND` (no such route), `METHOD_NOT_ALLOWED`, `UNSUPPORTED_MEDIA_TYPE`, `INTERNAL_SERVER_ERROR`, `SERVICE_UNAVAILABLE` (the rating engine can't rate a quote), and so on. |
 
     ## Hashing
     Every hash is the lowercase hex SHA-256. JSON is canonicalised with RFC 8785 (JCS); shared
@@ -136,6 +136,16 @@ paths:
           content:
             application/json:
               schema: {$ref: '#/components/schemas/ConsentRecord'}
+          links:
+            GetConsentRecord:
+              operationId: getConsentRecord
+              parameters: {consent_id: '$response.body#/consent_id'}
+            ChangeConsentPurpose:
+              operationId: changeConsentPurpose
+              parameters: {consent_id: '$response.body#/consent_id'}
+            WithdrawConsent:
+              operationId: withdrawConsent
+              parameters: {consent_id: '$response.body#/consent_id'}
         default: {$ref: '#/components/responses/Problem'}
   /v1/consent/records/{consent_id}:
     get:
@@ -214,6 +224,10 @@ paths:
               schema:
                 type: array
                 items: {$ref: '#/components/schemas/Product'}
+          links:
+            GetFirstProduct:
+              operationId: getProduct
+              parameters: {uin: '$response.body#/0/uin'}
         default: {$ref: '#/components/responses/Problem'}
   /v1/catalog/products/{uin}:
     get:
@@ -229,6 +243,10 @@ paths:
           content:
             application/json:
               schema: {$ref: '#/components/schemas/Product'}
+          links:
+            GetFirstRider:
+              operationId: getRider
+              parameters: {uin: '$response.body#/rider_uins/0'}
         default: {$ref: '#/components/responses/Problem'}
   /v1/catalog/riders/{uin}:
     get:
@@ -537,6 +555,20 @@ components:
         code:
           type: string
           description: Machine-readable error code; the table in the API description lists them.
+        field:
+          type: string
+          description: QUOTE_OUT_OF_BOUNDS only. The request member outside the product's limits.
+        allowed_min:
+          type: string
+          description: QUOTE_OUT_OF_BOUNDS only. The lowest allowed value, as a decimal string.
+        allowed_max:
+          type: string
+          description: >-
+            QUOTE_OUT_OF_BOUNDS only. The highest allowed value, as a decimal string; absent when
+            unbounded.
+        allowed_step:
+          type: string
+          description: QUOTE_OUT_OF_BOUNDS on cover only. Cover must be a multiple of this.
     Money:
       type: string
       description: Rupees as a decimal string.
@@ -1087,7 +1119,7 @@ components:
     RankingRequest:
       type: object
       required: [pins, eligible_uins, suitability, excluded_uins, channel, language, as_of,
-                 tobacco_12m, age_years]
+                 tobacco_12m, age_years, flags]
       properties:
         pins: {$ref: '#/components/schemas/Pins'}
         eligible_uins:
@@ -1103,7 +1135,13 @@ components:
         as_of: {type: string, format: date-time}
         tobacco_12m: {type: [boolean, 'null']}
         gender: {$ref: '#/components/schemas/Gender'}
-        age_years: {type: integer, minimum: 0}
+        age_years: {type: integer, minimum: 0, description: The life assured's age.}
+        flags:
+          type: array
+          description: >-
+            The S1 eligibility flags. PREMIUM_WITHHELD (a declined health or tobacco answer)
+            withholds every premium.
+          items: {type: string}
     RecommendedOption:
       type: object
       required: [rank, uin, sum_assured_inr, term_years, ppt_years, quote, reason_codes]
@@ -1173,14 +1211,22 @@ components:
         frequency: {$ref: '#/components/schemas/Frequency'}
     PremiumQuote:
       type: object
-      required: [decision_id, quote_id, uin, annual_premium_inr, frequency, valid_until, indicative,
-                 rider_premiums, gst_included, rating_version, inputs_sha256, reason_codes]
+      required: [decision_id, quote_id, uin, sum_assured_inr, term_years, ppt, annual_premium_inr,
+                 frequency, valid_until, indicative, rider_premiums, gst_included, rating_version,
+                 inputs_sha256, reason_codes]
       properties:
         decision_id: {type: string, format: uuid}
-        quote_id: {type: string}
+        quote_id: {type: string, examples: [Q-2026-09-20-0042]}
         uin: {$ref: '#/components/schemas/Uin'}
+        sum_assured_inr:
+          description: The cover this quote priced.
+          allOf: [{$ref: '#/components/schemas/Money'}]
+        term_years: {type: integer, description: The policy term this quote priced.}
+        ppt: {$ref: '#/components/schemas/PptOption'}
         annual_premium_inr:
-          description: GST included.
+          description: >-
+            The base premium plus every rider premium, GST included. With ppt single it is the
+            single premium.
           allOf: [{$ref: '#/components/schemas/Money'}]
         frequency: {$ref: '#/components/schemas/Frequency'}
         valid_until: {type: string, format: date}
@@ -1191,7 +1237,7 @@ components:
             Literal[True], but openapi-generator 7.25 cannot compile a boolean const or enum.
         rider_premiums:
           type: object
-          description: Rider UIN to its annual premium.
+          description: Rider UIN to its annual premium, GST included; part of annual_premium_inr.
           additionalProperties: {$ref: '#/components/schemas/Money'}
         gst_included: {type: boolean}
         rating_version: {type: string}
@@ -1200,12 +1246,29 @@ components:
           type: array
           items: {type: string}
     QuoteAlternativesRequest:
-      allOf:
-        - $ref: '#/components/schemas/QuoteRequest'
-        - type: object
-          required: [recommended_cover_inr]
-          properties:
-            recommended_cover_inr: {$ref: '#/components/schemas/Money'}
+      type: object
+      description: >-
+        A QuoteRequest plus recommended_cover_inr. Written out rather than as an allOf, because
+        openapi-generator 7.25 drops tobacco_12m's null from a flattened allOf; a unit test keeps
+        the members equal to QuoteRequest's.
+      required: [pins, uin, sum_assured_inr, term_years, ppt, rider_uins, age_years, tobacco_12m,
+                 frequency, recommended_cover_inr]
+      properties:
+        pins: {$ref: '#/components/schemas/Pins'}
+        uin: {$ref: '#/components/schemas/Uin'}
+        sum_assured_inr: {$ref: '#/components/schemas/Money'}
+        term_years: {type: integer, minimum: 1}
+        ppt: {$ref: '#/components/schemas/PptOption'}
+        rider_uins:
+          type: array
+          items: {$ref: '#/components/schemas/Uin'}
+        age_years: {type: integer, minimum: 0}
+        gender: {$ref: '#/components/schemas/Gender'}
+        tobacco_12m:
+          type: [boolean, 'null']
+          description: null (declined) is answered 422 TOBACCO_UNDISCLOSED; premiums are withheld upstream.
+        frequency: {$ref: '#/components/schemas/Frequency'}
+        recommended_cover_inr: {$ref: '#/components/schemas/Money'}
     QuoteAlternative:
       type: object
       required: [quote, protection_gap_inr, change]

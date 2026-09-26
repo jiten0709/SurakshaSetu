@@ -1,9 +1,12 @@
 package com.surakshasetu.domain.common;
 
 import jakarta.validation.ConstraintViolationException;
+import java.sql.SQLException;
+import org.apache.tomcat.util.http.InvalidParameterException;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
@@ -43,6 +46,34 @@ class ProblemHandler extends ResponseEntityExceptionHandler {
     ProblemDetail problem =
         ProblemDetail.forStatusAndDetail(
             HttpStatus.BAD_REQUEST, "a request value breaks a constraint of the contract");
+    return createResponseEntity(problem, new HttpHeaders(), HttpStatus.BAD_REQUEST, request);
+  }
+
+  /**
+   * A query string Tomcat can't parse (an empty parameter name, a bad escape) is the client's
+   * error. Tomcat 11 raises it when the parameters are first read, inside the servlet.
+   */
+  @ExceptionHandler(InvalidParameterException.class)
+  ResponseEntity<Object> invalidParameter(InvalidParameterException ex, WebRequest request) {
+    ProblemDetail problem =
+        ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, "the query string is malformed");
+    return createResponseEntity(problem, new HttpHeaders(), HttpStatus.BAD_REQUEST, request);
+  }
+
+  /**
+   * A value the database refuses as data (SQLSTATE class 22: a NUL character, a number out of
+   * range) came from the request, so it is a 400. Only the SQLSTATE is logged.
+   */
+  @ExceptionHandler(DataIntegrityViolationException.class)
+  ResponseEntity<Object> dataIntegrity(DataIntegrityViolationException ex, WebRequest request) {
+    String state = ex.getMostSpecificCause() instanceof SQLException sql ? sql.getSQLState() : null;
+    if (state == null || !state.startsWith("22")) {
+      return unexpected(ex, request);
+    }
+    log.warn("request value refused by the database: SQLSTATE {}", state);
+    ProblemDetail problem =
+        ProblemDetail.forStatusAndDetail(
+            HttpStatus.BAD_REQUEST, "a request value can't be stored or compared");
     return createResponseEntity(problem, new HttpHeaders(), HttpStatus.BAD_REQUEST, request);
   }
 

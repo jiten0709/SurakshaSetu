@@ -1,0 +1,53 @@
+# DUMMY rate table for the stub rating engine (quote/StubRatingEngine). Phase 1 has no core rating
+# engine, so indicative premiums come from here, behind the RatingEngine port. Every number is
+# invented; actuarial replaces the table before any pilot (D6). A new table ships as a new file with
+# a new rating_version, and surakshasetu.rating.table points at it.
+#
+# Annual premium per product = SA / 1,000 x base rate x tobacco loading (if tobacco) x PPT loading
+# x gender loading (if the product is rated by gender). Each rider adds SA / 1,000 x its rate x the
+# same PPT loading; a rider's sum assured is the base sum assured. GST is applied to each part, which
+# is then rounded to the paisa.
+rating_version: rating-dummy-2026.09.1
+is_dummy: true
+# GST on the premium, as a fraction. Individual life insurance premiums were exempted from GST from
+# 22 September 2025, so this is 0.00. TAX MUST CONFIRM THIS RATE before any pilot. It is a parameter,
+# so a change needs a new table, not code.
+gst_rate: "0.00"
+
+products:
+  "999N001V02":                        # Suraksha Term Shield (TERM)
+    tobacco_loading: "1.80"
+    ppt_loading: {regular: "1.00", limited_10: "1.70", single: "9.00"}
+    gender_loading: {}                 # empty: not rated by gender, so S1 doesn't ask
+    # Base rate per 1,000 of sum assured: non-tobacco, regular pay. Bands are inclusive.
+    base_rates:
+      - {age_min: 18, age_max: 30, term_min: 10, term_max: 20, rate: "0.80"}
+      - {age_min: 18, age_max: 30, term_min: 21, term_max: 30, rate: "0.95"}
+      - {age_min: 18, age_max: 30, term_min: 31, term_max: 40, rate: "1.10"}
+      - {age_min: 31, age_max: 40, term_min: 10, term_max: 20, rate: "1.30"}
+      - {age_min: 31, age_max: 40, term_min: 21, term_max: 30, rate: "1.60"}
+      - {age_min: 31, age_max: 40, term_min: 31, term_max: 40, rate: "1.90"}
+      - {age_min: 41, age_max: 50, term_min: 10, term_max: 20, rate: "2.60"}
+      - {age_min: 41, age_max: 50, term_min: 21, term_max: 30, rate: "3.10"}
+      - {age_min: 41, age_max: 50, term_min: 31, term_max: 40, rate: "3.60"}
+      - {age_min: 51, age_max: 65, term_min: 10, term_max: 20, rate: "5.20"}
+      - {age_min: 51, age_max: 65, term_min: 21, term_max: 30, rate: "6.00"}
+      - {age_min: 51, age_max: 65, term_min: 31, term_max: 40, rate: "7.00"}
+
+  "999N002V01":                        # Suraksha Term Shield ROP (TERM_ROP)
+    tobacco_loading: "1.60"
+    ppt_loading: {regular: "1.00", limited_10: "1.55"}
+    gender_loading: {}
+    base_rates:
+      - {age_min: 18, age_max: 30, term_min: 15, term_max: 25, rate: "2.80"}
+      - {age_min: 18, age_max: 30, term_min: 26, term_max: 35, rate: "3.20"}
+      - {age_min: 31, age_max: 40, term_min: 15, term_max: 25, rate: "3.80"}
+      - {age_min: 31, age_max: 40, term_min: 26, term_max: 35, rate: "4.20"}
+      - {age_min: 41, age_max: 55, term_min: 15, term_max: 25, rate: "6.50"}
+      - {age_min: 41, age_max: 55, term_min: 26, term_max: 35, rate: "7.50"}
+
+# Rider rate per 1,000 of rider sum assured.
+riders:
+  "999A007V01": "0.30"                 # Accidental death benefit
+  "999A008V01": "0.15"                 # Waiver of premium
+  "999A009V01": "0.80"                 # Critical illness

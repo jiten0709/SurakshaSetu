@@ -1,41 +1,36 @@
 package com.surakshasetu.domain;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.request;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.surakshasetu.domain.contract.model.ConsentRecord;
 import com.surakshasetu.domain.contract.model.SuitabilityResult;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpMethod;
-import org.springframework.http.MediaType;
+import org.springframework.web.method.HandlerMethod;
+import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
 import tools.jackson.databind.json.JsonMapper;
 
-/** The generated contract wires up under Boot 4 and Jackson 3; the Step 7 stubs answer 501. */
+/**
+ * The generated contract wires up under Boot 4 and Jackson 3, and every operation is implemented.
+ */
 class ContextLoadsTest extends DomainApiTestSupport {
 
   @Autowired JsonMapper mapper;
 
-  @ParameterizedTest
-  @CsvSource({
-    "POST, /v1/ranking/rank",
-    "POST, /v1/quotes",
-    "POST, /v1/quotes/alternatives",
-  })
-  void stubAnswers501ProblemJson(String method, String path) throws Exception {
-    mvc.perform(
-            request(HttpMethod.valueOf(method), path)
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("{}"))
-        .andExpect(status().isNotImplemented())
-        .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
-        .andExpect(jsonPath("$.code").value("NOT_IMPLEMENTED"))
-        .andExpect(jsonPath("$.status").value(501));
+  @Test
+  void everyContractOperationIsImplemented() {
+    // An inherited generated default method would answer 501 (common/NotImplementedStubs).
+    var handlers =
+        context
+            .getBean("requestMappingHandlerMapping", RequestMappingHandlerMapping.class)
+            .getHandlerMethods();
+    var operations =
+        handlers.entrySet().stream()
+            .filter(e -> e.getKey().getPatternValues().stream().anyMatch(v -> v.startsWith("/v1/")))
+            .map(e -> e.getValue())
+            .toList();
+    assertThat(operations).hasSize(23).noneMatch(h -> h.getMethod().isDefault());
+    assertThat(operations).extracting(HandlerMethod::getBeanType).doesNotContainNull();
   }
 
   @Test

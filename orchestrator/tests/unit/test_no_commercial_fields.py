@@ -9,7 +9,7 @@ from openapi_spec_validator.readers import read_from_filename
 SPEC, _ = read_from_filename(
     str(Path(__file__).parents[3] / "contracts" / "openapi" / "domain-services.v1.yaml")
 )
-BANNED = re.compile(r"commission|margin|incentive|campaign|payout", re.IGNORECASE)
+BANNED = re.compile(r"commission|margin|incentive|campaign|payout|brokerage", re.IGNORECASE)
 
 
 def names(node: Any) -> set[str]:

@@ -51,7 +51,9 @@ public class Rules {
                       .toArray(),
               Arrays::compare)
           .reversed();
-  private static final YAMLMapper YAML =
+
+  /** Strict YAML for every versioned rules, weights and rate file: unknown or missing keys fail. */
+  public static final YAMLMapper YAML =
       YAMLMapper.builder()
           .propertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE)
           .enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
@@ -194,7 +196,9 @@ public class Rules {
               model(runtime, version, "suitability"),
               p));
     }
-    return releases;
+    // Newest first, but looked up by hash: a TreeMap would run the version comparator on the
+    // pinned string, which throws for one that isn't rules-YYYY.MM.N.
+    return new LinkedHashMap<>(releases);
   }
 
   private static DMNModel model(DMNRuntime runtime, String version, String name) {

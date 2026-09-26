@@ -11,7 +11,7 @@ services:
   postgres:
     image: postgres:16.15-trixie
     profiles: [core]
-    command: ["postgres", "-c", "wal_level=logical"] # Debezium CDC (Step 21)
+    command: ["postgres", "-c", "wal_level=logical"] # Debezium CDC (Step 24)
     environment:
       POSTGRES_DB: surakshasetu
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-surakshasetu-dev}

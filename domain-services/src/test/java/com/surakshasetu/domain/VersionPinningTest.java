@@ -26,7 +26,7 @@ class VersionPinningTest extends DomainApiTestSupport {
   private static final String UNKNOWN = "rules-1999.01.1";
 
   @Test
-  void anUnknownRulesVersionIs409OnEveryDecision() throws Exception {
+  void anUnknownRulesVersionIs409OnEveryPinnedOperation() throws Exception {
     String eligibility =
         """
         {"pins":{"rules":"%s"},"age_years":34,"residency":"resident","pincode":"411001",
@@ -43,6 +43,28 @@ class VersionPinningTest extends DomainApiTestSupport {
                   "financial_distress":false,"comprehension_difficulty_count":0}}
         """
             .formatted(UNKNOWN);
+    String quote =
+        """
+        {"pins":{"rules":"%s"},"uin":"999N001V02","sum_assured_inr":"10000000","term_years":30,
+         "ppt":"regular","rider_uins":[],"age_years":34,"tobacco_12m":false,"frequency":"annual"
+         %s}
+        """;
+    String ranking =
+        """
+        {"pins":{"rules":"%s"},"eligible_uins":["999N001V02"],"excluded_uins":[],"channel":"web",
+         "language":"en-IN","as_of":"2026-09-26T10:00:00Z","tobacco_12m":false,"age_years":34,
+         "flags":[],
+         "suitability":{"decision_id":"0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5c","outcome":"FIT",
+          "profile_sufficiency":1,"fit_types":["TERM"],"excluded":{},"need_inr":"10000000",
+          "recommended_cover_inr":"10000000","uw_cap_inr":null,"term_years":26,
+          "affordability":"green","vulnerability_flags":[],
+          "assumptions":{"cover_to_age":60,"dependency_years":0,"discount_rate":"0.07",
+            "income_growth":"0.05","consumption_share":"0.30","final_expenses_inr":"200000",
+            "existing_cover_counted_inr":"0"},
+          "rule_ids":[],"reason_codes":[],"params_version":"p","rules_version":"r",
+          "inputs_sha256":"%s"}}
+        """
+            .formatted(UNKNOWN, "a".repeat(64));
     for (MockHttpServletRequestBuilder request :
         new MockHttpServletRequestBuilder[] {
           post("/v1/eligibility/evaluate")
@@ -53,8 +75,21 @@ class VersionPinningTest extends DomainApiTestSupport {
               .content(suitability),
           get("/v1/eligibility/required-attributes?pins.rules=" + UNKNOWN),
           get("/v1/suitability/required-slots?pins.rules=" + UNKNOWN),
+          post("/v1/ranking/rank").contentType(MediaType.APPLICATION_JSON).content(ranking),
+          post("/v1/quotes")
+              .contentType(MediaType.APPLICATION_JSON)
+              .content(quote.formatted(UNKNOWN, "")),
+          post("/v1/quotes/alternatives")
+              .contentType(MediaType.APPLICATION_JSON)
+              .content(quote.formatted(UNKNOWN, ",\"recommended_cover_inr\":\"10000000\"")),
         }) {
       api(request)
+          .andExpect(status().isConflict())
+          .andExpect(jsonPath("$.code").value("RULES_VERSION_UNKNOWN"));
+    }
+    // A pin that isn't rules-YYYY.MM.N at all is unknown too, not a 500 (found by Schemathesis).
+    for (String pin : new String[] {"AAA", "rules-x.y.z"}) {
+      api(get("/v1/suitability/required-slots").param("pins.rules", pin))
           .andExpect(status().isConflict())
           .andExpect(jsonPath("$.code").value("RULES_VERSION_UNKNOWN"));
     }

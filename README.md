@@ -2,7 +2,7 @@
 
 An AI-assisted conversational advisor for life and term insurance in India. It guides a customer from consent, through eligibility and needs discovery, to a compliant, explainable plan recommendation.
 
-> **🚧 Work in progress.** Steps 1–4 of 21 are done: a runnable skeleton, core local infrastructure, CI, the database migrations, the OpenAPI contract between the two tiers, per-customer encryption keys, and a tamper-evident audit trail anchored daily in locked storage. There's no business logic yet. Phase 1 targets journey states S0–S3.
+> **🚧 Work in progress.** Steps 1–7 of 24 are done: a runnable skeleton, core local infrastructure, CI, the database migrations, the OpenAPI contract between the two tiers, per-customer encryption keys, a tamper-evident audit trail anchored daily in locked storage, and the deterministic domain tier (consent, product catalog and disclosure registry, eligibility and suitability rules, indicative quotes and ranking, all on dummy data). There's no conversation yet. Phase 1 targets journey states S0–S3.
 
 ## Core idea
 

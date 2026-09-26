@@ -47,6 +47,14 @@ public final class Jcs {
     }
   }
 
+  /**
+   * SHA-256(JCS(model)) for a request the service built itself (a quote inside a ranking option or
+   * an alternative), serialised as the contract's JSON.
+   */
+  public static String modelSha256(Object model) {
+    return sha256Hex(MAPPER.writeValueAsString(model));
+  }
+
   /** {@code body_sha256} = SHA-256(UTF-8(NFC(body))), for consent-notice and disclosure bodies. */
   public static String bodySha256(String body) {
     return sha256Hex(nfc(body).getBytes(StandardCharsets.UTF_8));

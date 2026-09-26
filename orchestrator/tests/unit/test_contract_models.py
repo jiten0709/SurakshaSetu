@@ -101,3 +101,15 @@ def test_declined_answers_are_explicit_nulls() -> None:
     del payload["tobacco_12m"]
     with pytest.raises(ValidationError):
         models.EligibilityRequest.model_validate(payload)
+
+
+def test_alternatives_request_is_a_quote_request_plus_the_recommended_cover() -> None:
+    # Written out, not as an allOf (openapi-generator drops tobacco_12m's null from a flattened
+    # allOf), so this keeps the copy in step.
+    quote = SCHEMAS["QuoteRequest"]
+    alternatives = SCHEMAS["QuoteAlternativesRequest"]
+    assert alternatives["properties"] == {
+        **quote["properties"],
+        "recommended_cover_inr": {"$ref": "#/components/schemas/Money"},
+    }
+    assert alternatives["required"] == [*quote["required"], "recommended_cover_inr"]

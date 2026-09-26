@@ -23,6 +23,7 @@ import com.surakshasetu.domain.contract.model.SuitabilityRequest;
 import com.surakshasetu.domain.contract.model.SuitabilityResult;
 import com.surakshasetu.domain.contract.model.SuitabilityResult.AffordabilityEnum;
 import com.surakshasetu.domain.contract.model.SuitabilityResult.OutcomeEnum;
+import com.surakshasetu.domain.quote.QuoteAdapter;
 import com.surakshasetu.domain.quote.RatingEngine;
 import com.surakshasetu.domain.suitability.SuitabilityCalculator.Sizing;
 import java.math.BigDecimal;
@@ -34,7 +35,6 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import org.jspecify.annotations.Nullable;
@@ -169,7 +169,8 @@ class SuitabilityController implements SuitabilityApi {
       reasons.add((String) row.get("flag"));
     }
 
-    BigDecimal estimate = premiumEstimate(products, eligibility, needs, sizing);
+    BigDecimal estimate =
+        premiumEstimate(products, eligibility, needs, sizing, params.saRoundingStepInr());
     BigDecimal share =
         income == null || income.signum() == 0 || estimate == null
             ? null
@@ -264,26 +265,42 @@ class SuitabilityController implements SuitabilityApi {
   }
 
   /**
-   * The cheapest indicative premium among the fitting products at the recommended cover, plus the
-   * premiums already paid; null when nothing can be rated. No new cover prices at zero.
+   * The cheapest indicative premium among the fitting products, each sized as the ranker sizes it
+   * (cover and term within its limits, its default PPT, no riders), plus the premiums already paid;
+   * null when nothing can be rated. Undisclosed tobacco is priced as tobacco, so the estimate errs
+   * high. No new cover prices at zero.
    */
   private @Nullable BigDecimal premiumEstimate(
-      List<Product> products, EligibilitySnapshot eligibility, NeedsPayload needs, Sizing sizing) {
+      List<Product> products,
+      EligibilitySnapshot eligibility,
+      NeedsPayload needs,
+      Sizing sizing,
+      BigDecimal step) {
     BigDecimal existing = new BigDecimal(needs.getExistingAnnualPremiumInr());
     if (sizing.recommended().signum() == 0) {
       return existing;
     }
+    int age = eligibility.getAgeYears();
+    boolean tobacco = !Boolean.FALSE.equals(eligibility.getTobacco12m());
     return products.stream()
-        .map(
+        .flatMap(
             p ->
-                rating.annualPremium(
-                    p.getUin(),
-                    eligibility.getAgeYears(),
-                    eligibility.getTobacco12m(),
-                    eligibility.getGender(),
-                    sizing.recommended(),
-                    sizing.termYears()))
-        .flatMap(Optional::stream)
+                QuoteAdapter.size(p, age, sizing.recommended(), sizing.termYears(), step).stream()
+                    .flatMap(
+                        sized ->
+                            rating
+                                .rate(
+                                    new RatingEngine.Basis(
+                                        p.getUin(),
+                                        age,
+                                        tobacco,
+                                        eligibility.getGender(),
+                                        sized.sumAssured(),
+                                        sized.termYears(),
+                                        catalog.quoteDefaults(p).ppt(),
+                                        List.of()))
+                                .stream()))
+        .map(RatingEngine.Premium::total)
         .min(Comparator.naturalOrder())
         .map(existing::add)
         .orElse(null);

@@ -27,6 +27,28 @@ class Problem(BaseModel):
             description="Machine-readable error code; the table in the API description lists them."
         ),
     ]
+    field: Annotated[
+        str | None,
+        Field(
+            description="QUOTE_OUT_OF_BOUNDS only. The request member outside the product's limits."
+        ),
+    ] = None
+    allowed_min: Annotated[
+        str | None,
+        Field(
+            description="QUOTE_OUT_OF_BOUNDS only. The lowest allowed value, as a decimal string."
+        ),
+    ] = None
+    allowed_max: Annotated[
+        str | None,
+        Field(
+            description="QUOTE_OUT_OF_BOUNDS only. The highest allowed value, as a decimal string; absent when unbounded."
+        ),
+    ] = None
+    allowed_step: Annotated[
+        str | None,
+        Field(description="QUOTE_OUT_OF_BOUNDS on cover only. Cover must be a multiple of this."),
+    ] = None
 
 
 type Money = Annotated[
@@ -442,7 +464,13 @@ class RankingRequest(BaseModel):
     as_of: AwareDatetime
     tobacco_12m: bool | None
     gender: Gender | None = None
-    age_years: Annotated[int, Field(ge=0)]
+    age_years: Annotated[int, Field(description="The life assured's age.", ge=0)]
+    flags: Annotated[
+        list[str],
+        Field(
+            description="The S1 eligibility flags. PREMIUM_WITHHELD (a declined health or tobacco answer) withholds every premium."
+        ),
+    ]
 
 
 type Frequency = Literal["annual", "half_yearly", "monthly", "single"]
@@ -468,9 +496,17 @@ class QuoteRequest(BaseModel):
 
 class PremiumQuote(BaseModel):
     decision_id: UUID
-    quote_id: str
+    quote_id: Annotated[str, Field(examples=["Q-2026-09-20-0042"])]
     uin: Uin
-    annual_premium_inr: Annotated[Money, Field(description="GST included.")]
+    sum_assured_inr: Annotated[Money, Field(description="The cover this quote priced.")]
+    term_years: Annotated[int, Field(description="The policy term this quote priced.")]
+    ppt: PptOption
+    annual_premium_inr: Annotated[
+        Money,
+        Field(
+            description="The base premium plus every rider premium, GST included. With ppt single it is the single premium."
+        ),
+    ]
     frequency: Frequency
     valid_until: date
     indicative: Annotated[
@@ -480,7 +516,10 @@ class PremiumQuote(BaseModel):
         ),
     ]
     rider_premiums: Annotated[
-        dict[str, Money], Field(description="Rider UIN to its annual premium.")
+        dict[str, Money],
+        Field(
+            description="Rider UIN to its annual premium, GST included; part of annual_premium_inr."
+        ),
     ]
     gst_included: bool
     rating_version: str
@@ -488,7 +527,22 @@ class PremiumQuote(BaseModel):
     reason_codes: list[str]
 
 
-class QuoteAlternativesRequest(QuoteRequest):
+class QuoteAlternativesRequest(BaseModel):
+    pins: Pins
+    uin: Uin
+    sum_assured_inr: Money
+    term_years: Annotated[int, Field(ge=1)]
+    ppt: PptOption
+    rider_uins: list[Uin]
+    age_years: Annotated[int, Field(ge=0)]
+    gender: Gender | None = None
+    tobacco_12m: Annotated[
+        bool | None,
+        Field(
+            description="null (declined) is answered 422 TOBACCO_UNDISCLOSED; premiums are withheld upstream."
+        ),
+    ]
+    frequency: Frequency
     recommended_cover_inr: Money
 
 

@@ -23,8 +23,8 @@ import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
 
 /**
- * POST /v1/suitability/evaluate end to end under rules-2026.09.1 with the DUMMY stub rating (₹1.50
- * per ₹1,000 sum assured without tobacco). The base case is the TDD needs vector: age 34, income
+ * POST /v1/suitability/evaluate end to end under rules-2026.09.1, with premiums from the DUMMY rate
+ * table (rating/dummy-rates-2026.09.1.yaml). The base case is the TDD needs vector: age 34, income
  * ₹24 lakh, spouse 32 and child 4, home loan ₹35 lakh, employer cover ₹15 lakh, goals income
  * protection and loan cover.
  */
@@ -47,8 +47,10 @@ class SuitabilityApiTest extends DomainApiTestSupport {
     assertThat(r.get("recommended_cover_inr").asString()).isEqualTo("37500000");
     assertThat(r.get("uw_cap_inr").asString()).isEqualTo("60000000"); // 25 × 24,00,000
     assertThat(r.get("term_years").asInt()).isEqualTo(26);
-    // 3,75,00,000 × 1.50 / 1,000 = 56,250, plus no existing premiums: 2.3% of income.
-    assertThat(r.get("affordability_premium_estimate_inr").asString()).isEqualTo("56250");
+    // The cheaper of the two term plans at the ranker's sizing: 999N001V02 at ₹3.75 crore for 26
+    // years is 37,500 × 1.60 = 60,000 (999N002V01, capped at ₹2 crore, is 84,000). No existing
+    // premiums: 2.5% of income.
+    assertThat(r.get("affordability_premium_estimate_inr").asString()).isEqualTo("60000");
     assertThat(r.get("affordability").asString()).isEqualTo("green");
     assertThat(strings(r, "vulnerability_flags")).isEmpty();
     assertThat(r.get("profile_sufficiency").decimalValue()).isEqualByComparingTo("0.975");
@@ -139,12 +141,12 @@ class SuitabilityApiTest extends DomainApiTestSupport {
 
   @Test
   void redAffordabilityEscalates() throws Exception {
-    // (56,250 + 5,00,000) / 24,00,000 = 23.2%: red.
+    // (60,000 + 5,00,000) / 24,00,000 = 23.3%: red.
     ObjectNode request = request("01-tdd-example.json");
     needs(request).put("existing_annual_premium_inr", "500000");
     JsonNode r = evaluate(request);
     assertThat(r.get("affordability").asString()).isEqualTo("red");
-    assertThat(r.get("affordability_premium_estimate_inr").asString()).isEqualTo("556250");
+    assertThat(r.get("affordability_premium_estimate_inr").asString()).isEqualTo("560000");
     assertThat(r.get("outcome").asString()).isEqualTo("ESCALATE");
     assertThat(r.get("escalation_reason").asString()).isEqualTo("HE_AFFORDABILITY_RED");
   }
@@ -203,6 +205,27 @@ class SuitabilityApiTest extends DomainApiTestSupport {
     assertThat(r.get(0).get("slot").asString()).isEqualTo("goals");
     assertThat(r.get(1).get("weight").decimalValue()).isEqualByComparingTo("0.25");
     assertThat(r.get(1).get("reason_line_id").asString()).isEqualTo("RL-S2-INCOME");
+  }
+
+  @Test
+  void anExplicitNullOnADefaultedMemberReadsAsAbsent() throws Exception {
+    // employer_cover_inr isn't nullable; a client that sends null gets the contract default "0"
+    // rather than a 500 (found by Schemathesis).
+    ObjectNode request = request("01-tdd-example.json");
+    needs(request).put("employer_cover_inr", "0");
+    JsonNode zero = evaluate(request);
+    needs(request).putNull("employer_cover_inr");
+    JsonNode nulled =
+        JSON.readTree(
+            apiRejecting(
+                    post("/v1/suitability/evaluate")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(JSON.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString());
+    assertThat(nulled.get("need_inr")).isEqualTo(zero.get("need_inr"));
   }
 
   @Test

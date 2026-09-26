@@ -1,0 +1,25 @@
+# DUMMY ranking weights and rider-fit rules for ranking/Ranker (TDD §3.8). Owned by compliance and
+# never A/B tested. A change ships as a new file with a new ranker_version, bound to a new rules
+# version; a session keeps the ranking of the rules version it pinned (I7).
+#
+# score = need_coverage x weight + affordability x weight + rider_fit x weight, where, per option:
+#   need_coverage = min(cover / recommended cover, 1) x min(term / needed term, 1)
+#   affordability = the cheapest quoted premium among the options / this option's premium
+#                   (0 without a quote: premium withheld or rating unavailable)
+#   rider_fit     = riders attached / riders that fit the customer (1 when none fit)
+# Ties go to the lower premium, then the lower UIN. Only needs, cover, term and premiums are
+# inputs: nothing about what a sale earns anyone.
+ranker_version: ranker-2026.09.1
+rules_version: rules-2026.09.1        # the DMN release these weights belong to
+owner: compliance
+is_dummy: true
+weights:                              # must sum to 1
+  need_coverage: "0.60"
+  affordability: "0.30"
+  rider_fit: "0.10"
+# A rider fits the customer when every condition holds; null means no condition. It is attached to
+# an option only if the product offers it and the option's cover is within the rider's limit.
+rider_rules:
+  - {rider_uin: 999A007V01, reason_code: RANK-RIDER-ADB, dependency_years_min: 1, age_max: null, affordability: [green]}
+  - {rider_uin: 999A008V01, reason_code: RANK-RIDER-WOP, dependency_years_min: 1, age_max: null, affordability: [green]}
+  - {rider_uin: 999A009V01, reason_code: RANK-RIDER-CI, dependency_years_min: null, age_max: 50, affordability: [green]}

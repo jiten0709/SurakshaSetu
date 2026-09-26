@@ -30,6 +30,7 @@ dev = [
     "pytest-asyncio>=1.4.0",
     "respx>=0.23.1",
     "ruff>=0.16.8",
+    "schemathesis>=4.28.0",
 ]
 
 [tool.ruff]

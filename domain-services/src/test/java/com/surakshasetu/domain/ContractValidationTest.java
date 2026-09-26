@@ -3,6 +3,7 @@ package com.surakshasetu.domain;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -31,6 +32,8 @@ class ContractValidationTest extends DomainApiTestSupport {
     assertThat(versions.get("registry_version").asString()).isEqualTo("2026.09.1");
     assertThat(versions.get("rules_version").asString()).isEqualTo("rules-2026.09.1");
     assertThat(versions.get("params_version").asString()).isEqualTo("actuarial-2026.09.1");
+    assertThat(versions.get("ranker_version").asString()).isEqualTo("ranker-2026.09.1");
+    assertThat(versions.get("rating_version").asString()).isEqualTo("rating-dummy-2026.09.1");
     assertThat(versions.get("active_rules_versions").get(0))
         .isEqualTo(versions.get("rules_version"));
   }
@@ -73,6 +76,25 @@ class ContractValidationTest extends DomainApiTestSupport {
     mvc.perform(delete("/v1/meta/versions"))
         .andExpect(status().isMethodNotAllowed())
         .andExpect(jsonPath("$.code").value("METHOD_NOT_ALLOWED"));
+    // Found by Schemathesis as 500s: a NUL the database refuses, a null list element.
+    api(get("/v1/reference/occupations").param("q", "a\u0000b"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
+    apiRejecting(
+            post("/v1/consent/records")
+                .header("Idempotency-Key", "null-element")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {"session_id":"0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b",
+                     "subject_ref":"0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5c",
+                     "notice_version":"2026.09.1-en","notice_sha256":"%s","language":"en-IN",
+                     "ai_disclosure_version":"ai-1","purposes":[null],
+                     "age_18_plus_declared":true,"method":"structured_action"}
+                    """
+                        .formatted("a".repeat(64))))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
   }
 
   @Test
