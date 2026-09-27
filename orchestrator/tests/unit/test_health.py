@@ -24,6 +24,10 @@ def test_healthz_is_liveness_only() -> None:
         minio_secret_key=SecretStr("pilot-secret"),
         tsa_key_path=Path("/nonexistent/tsa.pem"),
         anchor_retention_days=3650,
+        gateway_base_url="http://unreachable.invalid/v1",
+        gateway_api_key=SecretStr("pilot-gateway-key"),
+        tei_embed_url="http://unreachable.invalid:8081",
+        tei_rerank_url="http://unreachable.invalid:8082",
     )
     client = TestClient(create_app(settings))
 

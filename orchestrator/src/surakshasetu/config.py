@@ -19,6 +19,10 @@ REQUIRED_OUTSIDE_DEV = (
     "minio_secret_key",
     "tsa_key_path",
     "anchor_retention_days",
+    "gateway_base_url",
+    "gateway_api_key",
+    "tei_embed_url",
+    "tei_rerank_url",
 )
 
 
@@ -52,6 +56,17 @@ class Settings(BaseSettings):
     minio_secret_key: SecretStr = SecretStr("surakshasetu-dev-minio")
     tsa_key_path: Path | None = None
     anchor_retention_days: int = Field(default=1, ge=1)
+    # Model path (Step 8). Chat routes go to the gateway (the stubs until Step 9 fronts them).
+    # embed and rerank go straight to the self-hosted TEI services, never through the gateway.
+    gateway_base_url: str = "http://127.0.0.1:8090/v1"
+    gateway_api_key: SecretStr = SecretStr("surakshasetu-dev-gateway-key")
+    tei_embed_url: str = "http://127.0.0.1:8081"
+    tei_rerank_url: str = "http://127.0.0.1:8082"
+    # Bound to the embedding model in infra/compose.yaml: its vector size, and the instruction an
+    # instruction-tuned model needs in front of queries (never documents). Empty for a symmetric
+    # model.
+    embed_dim: int = Field(default=1024, ge=1)
+    embed_query_prefix: str = ""
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
     # Opt-in local extras: per-subsystem JSON files, and a readable console instead of JSON.
     log_dir: Path | None = None

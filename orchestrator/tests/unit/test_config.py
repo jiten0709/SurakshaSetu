@@ -16,6 +16,13 @@ KEY_AND_ANCHOR_ENV = {
     "SS_TSA_KEY_PATH": "/run/secrets/tsa.pem",
     "SS_ANCHOR_RETENTION_DAYS": "3650",
 }
+# Step 8's model path: the dev defaults point at local containers and a dummy key.
+GATEWAY_ENV = {
+    "SS_GATEWAY_BASE_URL": "https://omniroute.internal/v1",
+    "SS_GATEWAY_API_KEY": "gateway-key",
+    "SS_TEI_EMBED_URL": "http://tei-embed.internal",
+    "SS_TEI_RERANK_URL": "http://tei-rerank.internal",
+}
 
 
 @pytest.fixture(autouse=True)
@@ -62,7 +69,7 @@ def test_dev_domain_token_default_is_refused_outside_dev(monkeypatch: pytest.Mon
     monkeypatch.setenv("SS_ENV", "pilot")
     monkeypatch.setenv("SS_PG_DSN_APP", "postgresql://app_rw:x@postgres:5432/surakshasetu")
     monkeypatch.setenv("SS_REDIS_URL", "redis://valkey:6379/0")
-    for name, value in KEY_AND_ANCHOR_ENV.items():
+    for name, value in (KEY_AND_ANCHOR_ENV | GATEWAY_ENV).items():
         monkeypatch.setenv(name, value)
 
     with pytest.raises(ConfigError, match="requires SS_DOMAIN_TOKEN$"):
@@ -80,6 +87,28 @@ def test_pilot_requires_every_key_and_anchor_setting(monkeypatch: pytest.MonkeyP
 
     for name in KEY_AND_ANCHOR_ENV:
         assert name in str(excinfo.value)
+
+
+def test_pilot_requires_every_model_path_setting(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SS_ENV", "pilot")
+
+    with pytest.raises(ConfigError) as excinfo:
+        load_settings()
+
+    for name in GATEWAY_ENV:
+        assert name in str(excinfo.value)
+    assert "SS_EMBED_DIM" not in str(excinfo.value)
+
+
+def test_model_path_dev_defaults_are_the_local_stack() -> None:
+    settings = load_settings()
+
+    assert settings.gateway_base_url == "http://127.0.0.1:8090/v1"
+    assert (settings.tei_embed_url, settings.tei_rerank_url) == (
+        "http://127.0.0.1:8081",
+        "http://127.0.0.1:8082",
+    )
+    assert (settings.embed_dim, settings.embed_query_prefix) == (1024, "")
 
 
 def test_invalid_env_names_the_variable(monkeypatch: pytest.MonkeyPatch) -> None:

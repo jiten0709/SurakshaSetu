@@ -1,0 +1,76 @@
+# Production route table (TDD §1.5), as a sketch. Nothing parses this file: Step 9 expresses the
+# chat routes in OmniRoute's native config, and the frontier endpoints wait for D2.
+#
+# Rules this file encodes:
+# - Application code sends only the combo name as `model`. Models, providers, pools and URLs
+#   appear here and in infra/ config, nowhere else.
+# - Strategy is priority, with eval-qualified models only (TDD §1.6): no auto aliases and no
+#   cost-optimised, random or adaptive strategies. Every model in a chain passes the same
+#   evaluation gate as the primary, through the gateway.
+# - self_hosted routes may receive raw text (the adapter's SELF_HOSTED_RAW data class). The
+#   others receive only redacted, attested envelopes (REDACTED).
+# - The last step of each chain is not a model. It is what the orchestrator does when the
+#   adapter raises GatewayUnavailable (fail closed).
+# - timeout_ms is the adapter's whole-call budget (surakshasetu.gateway.adapter.ROUTES).
+
+strategy: priority
+
+routes:
+  guard-input:
+    self_hosted: true
+    timeout_ms: 200
+    chain:
+      - pool: vllm-guard            # meta-llama/Llama-Prompt-Guard-2-86M (injection)
+      - pool: vllm-guard            # meta-llama/Llama-Guard-4-12B (safety)
+    on_unavailable: deterministic heuristics; self-harm fails closed (Step 10)
+
+  nlu-extract:
+    self_hosted: true               # sees raw PII
+    timeout_ms: 800
+    chain:
+      - pool: vllm-nlu-a            # a 7-14B open-weight instruct model, chosen by eval (D2)
+      - pool: vllm-nlu-b            # a second replica pool of the same model
+    on_unavailable: the template clarifying question
+
+  gen-converse:
+    self_hosted: false              # redacted envelope
+    timeout_ms: 2000
+    chain:
+      - endpoint: "<D2: mid-tier model, provider A, India region>"
+      - endpoint: "<D2: alternate provider>"
+    on_unavailable: the question template
+
+  gen-recommend:
+    self_hosted: false              # redacted envelope, no direct identifiers
+    timeout_ms: 6000
+    chain:
+      - endpoint: "<D2: frontier model, provider A, India region>"
+      - endpoint: "<D2: frontier model, provider B, India region>"
+    on_unavailable: the deterministic card with an advisor offer
+
+  verify-claims:
+    self_hosted: true
+    timeout_ms: 1000
+    chain:
+      - pool: vllm-verify           # a small NLI or judge model, chosen by eval
+    on_unavailable: hold the response
+
+  summarise:
+    self_hosted: true
+    timeout_ms: 1000
+    chain:
+      - pool: vllm-nlu-a            # the rolling summary, regenerated every six turns
+    on_unavailable: keep the previous summary
+
+# embed and rerank are NOT gateway routes. OmniRoute hosts no embedding or rerank models, and its
+# /v1/rerank speaks the Cohere/Voyage shape, not TEI's. The adapter calls the TEI services
+# directly on the self-hosted network (SS_TEI_EMBED_URL, SS_TEI_RERANK_URL):
+#
+#   embed:  TEI GPU replicas behind one internal service URL; BAAI/bge-m3 @ 5617a9f61b02.
+#           150 ms. On failure: BM25-only retrieval with a stricter threshold (Step 12).
+#   rerank: TEI GPU replicas behind one internal service URL;
+#           Alibaba-NLP/gte-multilingual-reranker-base @ 8215cf04918b. 300 ms for up to 120
+#           candidates (L4-class or better). On failure: BM25-only retrieval (Step 12).
+#
+# Model revisions are pinned in infra/compose.yaml. A change of embedding model needs a new corpus
+# snapshot (Step 11), and a change of either model needs re-calibrated gate thresholds (Step 12).

@@ -7,6 +7,27 @@ x-healthcheck: &healthcheck
   timeout: 5s
   retries: 30
 
+# Embedding and rerank models (TEI, CPU). The adapter calls them directly, never through the
+# model gateway. The default tag is arm64-only; amd64 hosts set TEI_IMAGE=…:cpu-1.9.4. Weights
+# are pinned by revision and downloaded once into tei-models on the first start.
+# Memory, for an 8 GB Docker VM (both models together need about 5 GB):
+# - --tokenization-workers=2: TEI starts one tokenizer per CPU by default, and each copy of the
+#   XLM-R vocabulary both models share costs a few hundred MB; 11 copies OOM-killed the VM.
+# - --max-batch-tokens=2048 also caps each input (auto-truncate is on). The longest real input
+#   is a rerank pair, about 1,200 tokens (a 500-token query and a 600-token chunk with its
+#   breadcrumb), so nothing real is cut. GPU deployments size both knobs to their hardware.
+x-tei: &tei
+  image: ${TEI_IMAGE:-ghcr.io/huggingface/text-embeddings-inference:cpu-arm64-1.9.4}
+  profiles: [core]
+  volumes:
+    - tei-models:/data
+  healthcheck:
+    <<: *healthcheck
+    test: ["CMD", "curl", "-fsS", "http://127.0.0.1:80/health"]
+    # The first start downloads about 2.9 GB of weights, at 0.5-2 MB/s from the Hub on a slow
+    # link. Once cached, a start takes seconds and the first passing check ends this period.
+    start_period: 60m
+
 services:
   postgres:
     image: postgres:16.15-trixie
@@ -143,6 +164,29 @@ services:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/actuator/health"]
       start_period: 60s
 
+  tei-embed:
+    <<: *tei
+    command:
+      - --json-output
+      - --model-id=BAAI/bge-m3
+      - --revision=5617a9f61b028005a4858fdac845db406aefb181
+      - --max-batch-tokens=2048
+      - --tokenization-workers=2
+    ports: ["127.0.0.1:8081:80"]
+
+  tei-rerank:
+    <<: *tei
+    command:
+      - --json-output
+      - --model-id=Alibaba-NLP/gte-multilingual-reranker-base
+      - --revision=8215cf04918ba6f7b6a62bb44238ce2953d8831c
+      - --max-batch-tokens=2048
+      - --tokenization-workers=2
+      # Retrieval reranks up to 120 candidates in one call; TEI's default limit is 32.
+      - --max-client-batch-size=128
+    ports: ["127.0.0.1:8082:80"]
+
+  # Stand-in for the model gateway (chat routes only) until Step 9 puts OmniRoute in front.
   stubs:
     build: ../tools/stubs
     profiles: [core]
@@ -161,3 +205,4 @@ volumes:
   pgdata:
   qdrant:
   minio:
+  tei-models:
