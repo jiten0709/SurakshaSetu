@@ -14,6 +14,7 @@ APP_RW_PASSWORD ?= surakshasetu-dev-app-rw
 KEYVAULT_RW_PASSWORD ?= surakshasetu-dev-keyvault-rw
 MINIO_ROOT_USER ?= surakshasetu
 MINIO_ROOT_PASSWORD ?= surakshasetu-dev-minio
+OMNIROUTE_INITIAL_PASSWORD ?= surakshasetu-dev-omniroute
 DATABASES := surakshasetu surakshasetu_test
 MINIO_ENV := SS_MINIO_ACCESS_KEY="$(MINIO_ROOT_USER)" SS_MINIO_SECRET_KEY="$(MINIO_ROOT_PASSWORD)"
 # What the db- and stack-marked tests connect with (tests/conftest.py).
@@ -22,7 +23,8 @@ TEST_ENV := SS_TEST_PG_DSN_ADMIN="postgresql://postgres:$(POSTGRES_PASSWORD)@127
 	$(MINIO_ENV)
 
 .PHONY: up down logs check check-py check-java check-stubs check-db check-stack check-contracts \
-	db-migrate seed-catalog contracts contracts-lint contract-test verify-audit $(PLACEHOLDERS)
+	db-migrate seed-catalog contracts contracts-lint contract-test verify-audit gateway-up \
+	gateway-verify $(PLACEHOLDERS)
 
 # Postgres first, then the migrations, so domain-services finds its domain_rw role on a fresh
 # volume. `up --wait` treats an exited one-shot as a failure, so the one-shots run on their own.
@@ -33,7 +35,20 @@ up:
 	$(COMPOSE) run --rm minio-init
 
 down:
-	$(COMPOSE) down
+	$(COMPOSE) --profile gateway down
+
+# SurakshaSetu's hardened OmniRoute (profile gateway, 127.0.0.1:20130), in front of the stubs for
+# the chat routes: start it, then apply infra/omniroute/seed.json and read every value back.
+# Idempotent. Separate from `up`, which never needs it.
+SEED := cd orchestrator && OMNIROUTE_INITIAL_PASSWORD="$(OMNIROUTE_INITIAL_PASSWORD)" \
+	SS_LOG_FORMAT=text uv run --locked python scripts/omniroute_seed.py
+gateway-up:
+	$(COMPOSE) --profile gateway up -d --build --wait omniroute
+	@$(SEED) apply
+
+# Exit 1 if any seeded value has drifted (every drift is logged).
+gateway-verify:
+	@$(SEED) verify
 
 logs:
 	$(COMPOSE) logs -f

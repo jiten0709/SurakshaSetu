@@ -1,0 +1,118 @@
+{
+  "$comment": "SurakshaSetu's OmniRoute 3.8.50 configuration, seeded from Git. orchestrator/scripts/omniroute_seed.py applies each section through the admin API (make gateway-up) and reads every value back (make gateway-verify). HARDENING.md maps each TDD §1.6 row to the keys below and the test that checks it. The app key's value is not here: the script takes SS_GATEWAY_API_KEY.",
+  "import": {
+    "providerConnections": [
+      {
+        "id": "0199a900-0000-7000-8000-000000000001",
+        "provider": "vllm",
+        "authType": "apikey",
+        "name": "surakshasetu-stubs",
+        "priority": 1,
+        "isActive": true,
+        "providerSpecificData": { "baseUrl": "http://stubs:8090/v1" }
+      }
+    ],
+    "combos": [
+      {
+        "id": "ss-guard-input",
+        "name": "guard-input",
+        "strategy": "priority",
+        "models": ["vllm/stub-guard"],
+        "config": { "maxRetries": 0 }
+      },
+      {
+        "id": "ss-nlu-extract",
+        "name": "nlu-extract",
+        "strategy": "priority",
+        "models": ["vllm/stub-nlu"],
+        "config": { "maxRetries": 0 }
+      },
+      {
+        "id": "ss-gen-converse",
+        "name": "gen-converse",
+        "strategy": "priority",
+        "models": ["vllm/stub-gen"],
+        "config": { "maxRetries": 0 }
+      },
+      {
+        "id": "ss-gen-recommend",
+        "name": "gen-recommend",
+        "strategy": "priority",
+        "models": ["vllm/stub-recommend"],
+        "config": { "maxRetries": 0 }
+      },
+      {
+        "id": "ss-verify-claims",
+        "name": "verify-claims",
+        "strategy": "priority",
+        "models": ["vllm/stub-verify"],
+        "config": { "maxRetries": 0 }
+      },
+      {
+        "id": "ss-summarise",
+        "name": "summarise",
+        "strategy": "priority",
+        "models": ["vllm/stub-summarise"],
+        "config": { "maxRetries": 0 }
+      }
+    ],
+    "apiKeys": [{ "id": "0199a900-0000-7000-8000-0000000000a1", "name": "surakshasetu-app" }],
+    "settings": { "semanticCacheEnabled": false }
+  },
+  "settings": {
+    "autoRoutingEnabled": false,
+    "adaptiveVolumeRouting": false,
+    "mcpEnabled": false,
+    "a2aEnabled": false,
+    "proxyEnabled": false,
+    "perKeyProxyEnabled": false,
+    "cliCompatProviders": [],
+    "customSystemPromptEnabled": false,
+    "echoRequestedModelName": false,
+    "blockedProviders": [
+      "devin-cli-agentic", "dva",
+      "opencode", "oc",
+      "duckduckgo-web", "ddgw",
+      "cloudflare-playground", "cfp",
+      "felo-web", "felo",
+      "theoldllm", "tllm",
+      "chipotle", "pepper",
+      "veoaifree-web", "veo-free",
+      "auggie", "aug",
+      "zcode", "zc",
+      "codex-app-server", "cxa",
+      "uncloseai", "unc",
+      "aihorde", "horde"
+    ],
+    "noAuthFallbackDisabledProviders": ["kilocode", "pollinations", "opencode-zen", "opencode-go"]
+  },
+  "database": {
+    "logs": { "detailedLogsEnabled": false, "callLogPipelineEnabled": false },
+    "cache": { "semanticCacheEnabled": false, "promptCacheEnabled": false }
+  },
+  "resilience": {
+    "requestQueue": { "autoEnableApiKeyProviders": false },
+    "waitForCooldown": { "enabled": false },
+    "comboCooldownWait": { "enabled": false }
+  },
+  "memory": { "enabled": false, "skillsEnabled": false },
+  "compression": { "enabled": false, "defaultMode": "off", "autoTriggerTokens": 0, "comboOverrides": {} },
+  "featureFlags": {
+    "REQUIRE_API_KEY": "true",
+    "INJECTION_GUARD_MODE": "warn",
+    "PII_REDACTION_ENABLED": "true",
+    "OMNIROUTE_EMERGENCY_FALLBACK": "false"
+  },
+  "appKeyPolicy": {
+    "modelAccessMode": "restricted",
+    "allowedModels": [],
+    "allowedCombos": ["guard-input", "nlu-extract", "gen-converse", "gen-recommend", "verify-claims", "summarise"],
+    "allowedConnections": ["0199a900-0000-7000-8000-000000000001"],
+    "allowedEndpoints": ["chat"],
+    "scopes": ["self:usage"],
+    "noLog": true,
+    "compressionEnabled": false,
+    "cacheDefaultMode": "bypass",
+    "disableNonPublicModels": false
+  }
+}

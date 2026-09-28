@@ -1,5 +1,6 @@
-# Production route table (TDD §1.5), as a sketch. Nothing parses this file: Step 9 expresses the
-# chat routes in OmniRoute's native config, and the frontier endpoints wait for D2.
+# Production route table (TDD §1.5), as a sketch. Nothing parses this file. The local gateway's
+# real config is seed.json (combos -> the stubs), hardened per HARDENING.md; production swaps each
+# combo's target for the pools and endpoints below, which wait for D2.
 #
 # Rules this file encodes:
 # - Application code sends only the combo name as `model`. Models, providers, pools and URLs

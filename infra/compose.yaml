@@ -186,7 +186,7 @@ services:
       - --max-client-batch-size=128
     ports: ["127.0.0.1:8082:80"]
 
-  # Stand-in for the model gateway (chat routes only) until Step 9 puts OmniRoute in front.
+  # Deterministic stand-in for the chat models, behind omniroute. Tests script it directly.
   stubs:
     build: ../tools/stubs
     profiles: [core]
@@ -201,8 +201,49 @@ services:
           "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/healthz', timeout=3)",
         ]
 
+  # The model gateway for the chat routes (TDD §1.5-1.6, Step 9): SurakshaSetu's own OmniRoute,
+  # hardened by the env below and by infra/omniroute/seed.json, which `make gateway-up` applies
+  # through its admin API and verifies. infra/omniroute/HARDENING.md maps each row to its test.
+  # Profile gateway, so `make up` stays independent of it.
+  omniroute:
+    image: diegosouzapw/omniroute:3.8.50@sha256:085c57adf499a8aaa9f35ccde95c0df9c11bd9ecd18d6c9edbf3b68b8079ba9d
+    profiles: [gateway]
+    depends_on:
+      stubs: { condition: service_healthy }
+    environment:
+      # Dummy local secrets; override in infra/.env. INITIAL_PASSWORD is read on first boot only.
+      # OmniRoute refuses to start with a JWT_SECRET under 32 characters or an API_KEY_SECRET
+      # under 16.
+      INITIAL_PASSWORD: ${OMNIROUTE_INITIAL_PASSWORD:-surakshasetu-dev-omniroute}
+      JWT_SECRET: ${OMNIROUTE_JWT_SECRET:-surakshasetu-dev-omniroute-jwt-signing}
+      API_KEY_SECRET: ${OMNIROUTE_API_KEY_SECRET:-surakshasetu-dev-omniroute-api-key}
+      # Unset, credentials are stored in plaintext.
+      STORAGE_ENCRYPTION_KEY: ${OMNIROUTE_STORAGE_ENCRYPTION_KEY:-surakshasetu-dev-omniroute-storage}
+      REQUIRE_API_KEY: "true"
+      # Second-line guardrails (your decision, 2026-09-28): detect injections without blocking,
+      # so guard-input still classifies every attack; mask PII on every route.
+      INPUT_SANITIZER_ENABLED: "true"
+      INJECTION_GUARD_MODE: warn
+      PII_REDACTION_ENABLED: "true"
+      ENABLE_TLS_FINGERPRINT: "false"
+      ENABLE_SOCKS5_PROXY: "false"
+      OMNIROUTE_MCP_ENFORCE_SCOPES: "true"
+      # A budget error would otherwise retry on an external model outside the combo.
+      OMNIROUTE_EMERGENCY_FALLBACK: "false"
+      # OMNIROUTE_API_KEY stays unset: A2A would route with it and bypass the key policy.
+    ports: ["127.0.0.1:20130:20128"]
+    volumes:
+      - omniroute-data:/app/data
+    # Time for SQLite to checkpoint on shutdown.
+    stop_grace_period: 40s
+    healthcheck:
+      <<: *healthcheck
+      test: ["CMD", "node", "healthcheck.mjs"]
+      start_period: 60s
+
 volumes:
   pgdata:
   qdrant:
   minio:
   tei-models:
+  omniroute-data:

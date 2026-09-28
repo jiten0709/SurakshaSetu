@@ -103,7 +103,8 @@ def test_pilot_requires_every_model_path_setting(monkeypatch: pytest.MonkeyPatch
 def test_model_path_dev_defaults_are_the_local_stack() -> None:
     settings = load_settings()
 
-    assert settings.gateway_base_url == "http://127.0.0.1:8090/v1"
+    # compose's OmniRoute (profile gateway), not the stubs behind it
+    assert settings.gateway_base_url == "http://127.0.0.1:20130/v1"
     assert (settings.tei_embed_url, settings.tei_rerank_url) == (
         "http://127.0.0.1:8081",
         "http://127.0.0.1:8082",

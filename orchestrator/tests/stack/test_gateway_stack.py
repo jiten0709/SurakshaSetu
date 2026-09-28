@@ -1,19 +1,28 @@
-"""The model path against the running stack: chat routes through the gateway (the stubs until
-Step 9), embed and rerank on TEI. Needs `make up`; no database settings."""
+"""The model path against the running stack: chat routes through OmniRoute to the stubs, embed and
+rerank straight to TEI. Needs `make up` and `make gateway-up`; no database settings.
+tests/stack/test_omniroute_stack.py checks the gateway's hardening."""
 
 import json
 import math
 import os
 from collections.abc import AsyncIterator
+from typing import Any
 from uuid import UUID, uuid4
 
 import httpx
 import pytest
 import pytest_asyncio
+from pydantic import BaseModel, SecretStr
 
 from surakshasetu.config import Settings
 from surakshasetu.crypto.jcs import sha256_hex
-from surakshasetu.gateway import DataClass, Gateway, RedactionAttestation, Route
+from surakshasetu.gateway import (
+    DataClass,
+    Gateway,
+    GatewayUnavailable,
+    RedactionAttestation,
+    Route,
+)
 from surakshasetu.gateway.adapter import ROUTES
 
 pytestmark = [pytest.mark.stack, pytest.mark.asyncio]
@@ -64,16 +73,74 @@ async def chat(
         (Route.GUARD_INPUT, "stub-guard"),
         (Route.NLU_EXTRACT, "stub-nlu"),
         (Route.GEN_CONVERSE, "stub-gen"),
-        (Route.GEN_RECOMMEND, "stub-gen"),
+        (Route.GEN_RECOMMEND, "stub-recommend"),
         (Route.VERIFY_CLAIMS, "stub-verify"),
-        (Route.SUMMARISE, "stub-nlu"),
+        (Route.SUMMARISE, "stub-summarise"),
     ],
 )
 async def test_every_chat_route_round_trips(gateway: Gateway, route: Route, served: str) -> None:
     served_model, content = await chat(gateway, route, "I am 34 and want term cover [R1] [E1]")
 
+    # OmniRoute reports the combo target's model, never the combo asked for.
     assert served_model == served
     assert content
+
+
+class Analysis(BaseModel):
+    intents: list[Any]
+    slots: list[Any]
+    language: str
+
+
+async def test_the_model_receives_exactly_what_the_adapter_sent(gateway: Gateway) -> None:
+    session_id = uuid4()
+    messages = [
+        {"role": "system", "content": "Extract intents and slots as JSON."},
+        {"role": "user", "content": "I am 34 and want term cover"},
+    ]
+
+    result = await gateway.call(
+        Route.NLU_EXTRACT,
+        data_class=DataClass.SELF_HOSTED_RAW,
+        messages=messages,
+        session_id=session_id,
+        turn_id=uuid4(),
+        fsm_state="S1",
+        response_format=Analysis,
+    )
+    async with httpx.AsyncClient(base_url=STUBS_URL) as stubs:
+        received = (await stubs.get(f"/__last/{session_id}")).json()
+        await stubs.delete(f"/__script/{session_id}")
+
+    assert result.parsed is not None and result.parsed.language == "en"
+    # No compression, memory, system prompt or json_schema rewrite on the way: TDD §1.5.
+    assert received["messages"] == messages
+    assert received["user"] == str(session_id)
+    assert received["response_format"] == {
+        "type": "json_schema",
+        "json_schema": {"name": "Analysis", "schema": Analysis.model_json_schema()},
+    }
+    assert received["model"] == "stub-nlu"
+
+
+async def test_a_gateway_that_is_down_is_unavailable() -> None:
+    down = Settings(_env_file=None, gateway_base_url="http://127.0.0.1:9/v1")
+
+    async with Gateway(down) as gateway:
+        with pytest.raises(GatewayUnavailable) as unavailable:
+            await chat(gateway, Route.NLU_EXTRACT, "hello")
+
+    assert unavailable.value.reason == "UNAVAILABLE"
+
+
+async def test_a_wrong_key_is_refused_by_the_gateway() -> None:
+    wrong = Settings(_env_file=None, gateway_api_key=SecretStr("not-the-app-key"))
+
+    async with Gateway(wrong) as gateway:
+        with pytest.raises(GatewayUnavailable) as refused:
+            await chat(gateway, Route.NLU_EXTRACT, "hello")
+
+    assert (refused.value.reason, refused.value.status) == ("HTTP_ERROR", 401)
 
 
 async def test_the_guard_route_sees_self_harm(gateway: Gateway) -> None:

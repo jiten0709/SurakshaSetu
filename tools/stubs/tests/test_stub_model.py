@@ -15,8 +15,10 @@ client = TestClient(app)
 @pytest.fixture(autouse=True)
 def empty_queues() -> Iterator[None]:
     stub_model._queues.clear()
+    stub_model._last.clear()
     yield
     stub_model._queues.clear()
+    stub_model._last.clear()
 
 
 def chat(model: str, text: str, user: str | None = "s-1", **extra: Any) -> dict[str, Any]:
@@ -84,10 +86,11 @@ def test_scripted_json_status_and_headers_pass_through() -> None:
         ("guard-input", "stub-guard"),
         ("nlu-extract", "stub-nlu"),
         ("gen-converse", "stub-gen"),
-        ("gen-recommend", "stub-gen"),
+        ("gen-recommend", "stub-recommend"),
         ("verify-claims", "stub-verify"),
-        ("summarise", "stub-nlu"),
+        ("summarise", "stub-summarise"),
         ("stub-gen", "stub-gen"),
+        ("stub-recommend", "stub-recommend"),
         ("stub-nlu", "stub-nlu"),
     ],
 )
@@ -95,9 +98,35 @@ def test_combo_or_stub_id_is_served_by_its_stub(model: str, served: str) -> None
     assert chat(model, "hello")["model"] == served
 
 
-def test_a_bare_stub_id_plays_its_first_combo() -> None:
-    assert json.loads(content("stub-nlu", "hello")) == stub_model.TURN_ANALYSIS
+def test_every_combo_has_its_own_stub() -> None:
+    assert len(set(stub_model.COMBOS.values())) == len(stub_model.COMBOS)
+
+
+def test_a_stub_id_plays_its_combo_and_reads_that_combos_script() -> None:
+    script("s-1", "gen-recommend", "scripted by route")
+
+    assert content("stub-recommend", "hello") == "scripted by route"
     assert content("stub-gen", "hello") == stub_model.FRIENDLY
+    assert content("stub-summarise", "hello") == stub_model.SUMMARY
+    assert json.loads(content("stub-nlu", "hello")) == stub_model.TURN_ANALYSIS
+
+
+def test_last_returns_the_session_body_exactly_as_received_until_cleared() -> None:
+    body = {
+        "model": "stub-nlu",
+        "messages": [
+            {"role": "system", "content": "s", "name": "x"},
+            {"role": "user", "content": "u"},
+        ],
+        "user": "s-1",
+        "response_format": {"type": "json_schema", "json_schema": {"name": "T", "schema": {}}},
+    }
+    assert client.post("/v1/chat/completions", json=body).status_code == 200
+
+    assert client.get("/__last/s-1").json() == body
+    assert client.get("/__last/s-2").status_code == 404
+    assert client.delete("/__script/s-1").status_code == 204
+    assert client.get("/__last/s-1").status_code == 404
 
 
 def test_unknown_model_and_streaming_are_refused() -> None:

@@ -56,9 +56,10 @@ class Settings(BaseSettings):
     minio_secret_key: SecretStr = SecretStr("surakshasetu-dev-minio")
     tsa_key_path: Path | None = None
     anchor_retention_days: int = Field(default=1, ge=1)
-    # Model path (Step 8). Chat routes go to the gateway (the stubs until Step 9 fronts them).
-    # embed and rerank go straight to the self-hosted TEI services, never through the gateway.
-    gateway_base_url: str = "http://127.0.0.1:8090/v1"
+    # Model path (Steps 8-9). Chat routes go to the gateway: compose's hardened OmniRoute
+    # (`make gateway-up`), which fronts the stubs locally. embed and rerank go straight to the
+    # self-hosted TEI services, never through the gateway.
+    gateway_base_url: str = "http://127.0.0.1:20130/v1"
     gateway_api_key: SecretStr = SecretStr("surakshasetu-dev-gateway-key")
     tei_embed_url: str = "http://127.0.0.1:8081"
     tei_rerank_url: str = "http://127.0.0.1:8082"

@@ -1,9 +1,10 @@
 """Deterministic OpenAI-compatible stand-in for the chat model routes.
 
-Until Step 9 puts the gateway in front, the combo -> model mapping lives here: `model` may be a
-combo (route) name or a stub id, and the response's `model` names the stub that served it. Tests
-and golden conversations script replies per (session, route) through /__script; the session is
-the request's `user` field. Unscripted replies are fixed functions of the request.
+`model` is a combo (route) name when called directly, or the combo's own stub id when OmniRoute
+calls it (infra/omniroute/seed.json targets each combo at its stub id). Each stub plays exactly
+one combo, so the stub always knows its role, and the response's `model` names the stub. Tests and
+golden conversations script replies per (session, route) through /__script; the session is the
+request's `user` field. Unscripted replies are fixed functions of the request.
 """
 
 import hashlib
@@ -12,22 +13,23 @@ import re
 from collections import deque
 from typing import Any
 
-from fastapi import APIRouter, Response
+from fastapi import APIRouter, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict
 
 router = APIRouter()
 
-# Combo -> the stub that plays it. A bare stub id plays its first combo here.
+# Combo -> the stub that plays it, one to one: OmniRoute sends the stub id, so it must say which
+# combo is calling.
 COMBOS = {
     "guard-input": "stub-guard",
     "nlu-extract": "stub-nlu",
     "gen-converse": "stub-gen",
-    "gen-recommend": "stub-gen",
+    "gen-recommend": "stub-recommend",
     "verify-claims": "stub-verify",
-    "summarise": "stub-nlu",
+    "summarise": "stub-summarise",
 }
-STUB_DEFAULT_COMBO = {stub: combo for combo, stub in reversed(COMBOS.items())}
+STUB_COMBO = {stub: combo for combo, stub in COMBOS.items()}
 
 # ponytail: phrase lists, not a classifier; Step 10 owns the real rails and their tests.
 OVERRIDE_PHRASES = (
@@ -95,6 +97,9 @@ class ChatRequest(BaseModel):
 
 
 _queues: dict[tuple[str, str], deque[Scripted]] = {}
+# The last request body each session sent, exactly as received: tests read it to prove the gateway
+# forwards what the adapter sent. ponytail: one body per session until DELETE /__script clears it.
+_last: dict[str, Any] = {}
 
 
 @router.post("/__script")
@@ -108,20 +113,30 @@ async def queue_script(script: Script) -> dict[str, int]:
 async def clear_script(session_id: str) -> None:
     for key in [k for k in _queues if k[0] == session_id]:
         del _queues[key]
+    _last.pop(session_id, None)
+
+
+@router.get("/__last/{session_id}")
+async def last_request(session_id: str) -> Response:
+    if session_id not in _last:
+        return _error(404, "no request from this session", "not_found")
+    return JSONResponse(_last[session_id])
 
 
 @router.post("/v1/chat/completions")
-async def chat_completions(request: ChatRequest) -> Response:
+async def chat_completions(request: ChatRequest, raw: Request) -> Response:
     if request.stream:
         return _error(400, "streaming is not supported", "invalid_request_error")
     if request.model in COMBOS:
         combo, stub = request.model, COMBOS[request.model]
-    elif request.model in STUB_DEFAULT_COMBO:
-        combo, stub = STUB_DEFAULT_COMBO[request.model], request.model
+    elif request.model in STUB_COMBO:
+        combo, stub = STUB_COMBO[request.model], request.model
     else:
         return _error(404, f"unknown model {request.model}", "model_not_found")
 
-    queue = _queues.get((request.user, request.model)) if request.user else None
+    if request.user:
+        _last[request.user] = await raw.json()
+    queue = _queues.get((request.user, combo)) if request.user else None
     reply = queue.popleft() if queue else Scripted(content=_default(combo, request.messages))
     content = reply.content if isinstance(reply.content, str) else json.dumps(reply.content)
     if reply.status >= 400:

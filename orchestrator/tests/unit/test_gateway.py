@@ -116,7 +116,11 @@ async def test_each_route_has_its_own_timeout(respx_mock: respx.MockRouter) -> N
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("value", ["off", "None", "false", "0"])
+# OmniRoute 3.8.50 sends "<mode>; source=<source>" on every chat response.
+@pytest.mark.parametrize(
+    "value",
+    ["off", "None", "false", "0", "off; source=off", "OFF; source=request-header"],
+)
 @respx.mock
 async def test_a_compression_header_that_did_not_fire_is_accepted(
     respx_mock: respx.MockRouter, value: str
@@ -129,7 +133,20 @@ async def test_a_compression_header_that_did_not_fire_is_accepted(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("value", ["applied", "relevance", "session-dedup", ""])
+@pytest.mark.parametrize(
+    "value",
+    [
+        "applied",
+        "relevance",
+        "session-dedup",
+        "",
+        "standard; source=default",
+        "rtk; source=auto-trigger",
+        # rules rewrote the prompt after an off plan, with or without the plan in front
+        "off; source=off; tokens=812->640; rules: dedupx2",
+        "tokens=812->640; rules: dedupx2",
+    ],
+)
 @respx.mock
 async def test_a_response_whose_compression_fired_is_rejected(
     respx_mock: respx.MockRouter, value: str

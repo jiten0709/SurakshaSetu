@@ -1,7 +1,7 @@
 """The model path. Application code names a Route and a data class, never a model, provider or URL.
 
-Chat routes go to the model gateway over the OpenAI-compatible HTTP API (the stubs until Step 9,
-then OmniRoute). embed and rerank go straight to the self-hosted TEI services: the gateway hosts
+Chat routes go to the model gateway (OmniRoute) over the OpenAI-compatible HTTP API. embed and
+rerank go straight to the self-hosted TEI services: the gateway hosts
 no embedding or rerank models, and query text must stay on the self-hosted network.
 
 Nothing here retries. Every failure raises GatewayUnavailable, so callers fall back to a template
@@ -61,10 +61,12 @@ ROUTES: dict[Route, RouteSpec] = {
     Route.RERANK: RouteSpec(0.300, self_hosted=True),
 }
 
-# OmniRoute names the compression engine that ran in this header. Compression must never fire
-# (TDD §1.6); any value not known to mean "off" counts as fired.
+# OmniRoute sets this on every chat response: "<mode>; source=<source>", plus "; tokens=a->b;
+# rules: …" segments when rules rewrote the prompt (3.8.50; "off; source=off" when disabled).
+# Compression must never fire (TDD §1.6): anything but an off mode with no rewrite counts as fired.
 COMPRESSION_HEADER = "x-omniroute-compression"
 _COMPRESSION_OFF = frozenset({"off", "none", "false", "0"})
+_COMPRESSION_REWRITE = ("tokens=", "rules:")
 
 
 @dataclass(frozen=True)
@@ -83,7 +85,7 @@ class GatewayResult[T: BaseModel]:
     tokens_in: int
     tokens_out: int
     latency_ms: float
-    fallback_hops: int = 0  # Step 9 reads it from the gateway, if the gateway reports it
+    fallback_hops: int = 0  # OmniRoute 3.8.50 reports no fallback count on chat responses
 
 
 class GatewayUnavailable(Exception):
@@ -315,7 +317,7 @@ class Gateway:
             raise _unavailable(route, "UNAVAILABLE") from exc
         latency_ms = (time.perf_counter() - started) * 1000
         compression = response.headers.get(COMPRESSION_HEADER)
-        if compression is not None and compression.strip().lower() not in _COMPRESSION_OFF:
+        if compression is not None and _compression_fired(compression):
             logger.warning("gateway %s rejected: compression fired", route)
             raise GatewayPolicyViolation("COMPRESSION_APPLIED", response.status_code)
         if response.is_error:
@@ -342,6 +344,11 @@ def _check_data_class(
     if reason is not None:
         logger.warning("gateway %s refused: %s", route, reason)
         raise GatewayPolicyViolation(reason)
+
+
+def _compression_fired(value: str) -> bool:
+    mode, *rest = (part.strip().lower() for part in value.split(";"))
+    return mode not in _COMPRESSION_OFF or any(p.startswith(_COMPRESSION_REWRITE) for p in rest)
 
 
 def _unavailable(route: Route, reason: str, status: int | None = None) -> GatewayUnavailable:
