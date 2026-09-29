@@ -72,6 +72,12 @@ class Settings(BaseSettings):
     # Opt-in local extras: per-subsystem JSON files, and a readable console instead of JSON.
     log_dir: Path | None = None
     log_format: Literal["json", "text"] = "json"
+    # Input rails (Step 10). The TDD/guide's global confidence bands: >=0.8 accept a slot outright,
+    # 0.6-0.8 read it back to the customer, below 0.6 escalates after repeated misses.
+    injection_score_threshold: float = Field(default=0.5, ge=0, le=1)
+    normalise_token_cap: int = Field(default=500, ge=1)
+    confidence_accept: float = Field(default=0.8, ge=0, le=1)
+    confidence_readback_floor: float = Field(default=0.6, ge=0, le=1)
 
     @model_validator(mode="after")
     def _require_dependencies_outside_dev(self) -> Self:
