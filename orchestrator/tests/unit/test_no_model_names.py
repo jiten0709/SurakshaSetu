@@ -5,7 +5,8 @@ from pathlib import Path
 
 import surakshasetu
 
-SRC = Path(surakshasetu.__file__).parent
+# All of src/: surakshasetu and surakshasetu_ingest (Step 11) alike.
+SRC = Path(surakshasetu.__file__).parents[1]
 MODEL_NAMES = re.compile(
     r"llama|gpt|claude|qwen|mistral|mixtral|gemma|gemini|bge|e5-|gte-|mgte|minilm|deepseek"
     r"|phi-?\d|anthropic|openai(?!-compatible)|cohere|voyage|huggingface",

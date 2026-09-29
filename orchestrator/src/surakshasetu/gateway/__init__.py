@@ -2,6 +2,7 @@
 
 from surakshasetu.gateway.adapter import (
     DataClass,
+    EmbedModel,
     Gateway,
     GatewayPolicyViolation,
     GatewayResult,
@@ -12,6 +13,7 @@ from surakshasetu.gateway.adapter import (
 
 __all__ = [
     "DataClass",
+    "EmbedModel",
     "Gateway",
     "GatewayPolicyViolation",
     "GatewayResult",

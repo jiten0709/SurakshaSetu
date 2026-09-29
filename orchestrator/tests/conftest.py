@@ -14,6 +14,10 @@ from psycopg_pool import ConnectionPool
 from surakshasetu.config import Settings
 from surakshasetu.crypto.keys import LocalKeyService
 
+# tests/ingest needs the ingest dependency group (docling, dagster, qdrant-client), which check-py
+# and CI never install: only `make check-ingest` (SS_TEST_INGEST=1) collects it.
+collect_ignore = [] if os.environ.get("SS_TEST_INGEST") else ["ingest"]
+
 
 @pytest.fixture
 def restore_logging() -> Iterator[None]:

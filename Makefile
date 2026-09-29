@@ -1,7 +1,7 @@
 # One entry point for local work and CI. Placeholder targets are filled in by later steps.
 COMPOSE := docker compose -f infra/compose.yaml --profile core
 PYTEST_MARKERS := not stack and not golden and not redteam and not live and not db
-PLACEHOLDERS := kb-ingest seed-eval test-invariants e2e-scripted \
+PLACEHOLDERS := seed-eval test-invariants e2e-scripted \
 	verify-release-gate eval eval-live local-setup
 SPEC := contracts/openapi/domain-services.v1.yaml
 MODELS := src/surakshasetu/domain/models.py
@@ -12,6 +12,7 @@ MODELS := src/surakshasetu/domain/models.py
 POSTGRES_PASSWORD ?= surakshasetu-dev
 APP_RW_PASSWORD ?= surakshasetu-dev-app-rw
 KEYVAULT_RW_PASSWORD ?= surakshasetu-dev-keyvault-rw
+CATALOG_LOADER_PASSWORD ?= surakshasetu-dev-catalog-loader
 MINIO_ROOT_USER ?= surakshasetu
 MINIO_ROOT_PASSWORD ?= surakshasetu-dev-minio
 OMNIROUTE_INITIAL_PASSWORD ?= surakshasetu-dev-omniroute
@@ -20,11 +21,12 @@ MINIO_ENV := SS_MINIO_ACCESS_KEY="$(MINIO_ROOT_USER)" SS_MINIO_SECRET_KEY="$(MIN
 # What the db- and stack-marked tests connect with (tests/conftest.py).
 TEST_ENV := SS_TEST_PG_DSN_ADMIN="postgresql://postgres:$(POSTGRES_PASSWORD)@127.0.0.1:5432/surakshasetu_test" \
 	SS_TEST_PG_DSN_KEYVAULT="postgresql://keyvault_rw:$(KEYVAULT_RW_PASSWORD)@127.0.0.1:5432/surakshasetu_test" \
+	SS_TEST_PG_DSN_CATALOG_LOADER="postgresql://catalog_loader:$(CATALOG_LOADER_PASSWORD)@127.0.0.1:5432/surakshasetu_test" \
 	$(MINIO_ENV)
 
 .PHONY: up down logs check check-py check-java check-stubs check-db check-stack check-contracts \
 	db-migrate seed-catalog contracts contracts-lint contract-test verify-audit gateway-up \
-	gateway-verify $(PLACEHOLDERS)
+	gateway-verify kb-ingest kb-verify kb-chunks check-ingest $(PLACEHOLDERS)
 
 # Postgres first, then the migrations, so domain-services finds its domain_rw role on a fresh
 # volume. `up --wait` treats an exited one-shot as a failure, so the one-shots run on their own.
@@ -57,7 +59,7 @@ check: check-py check-java check-stubs
 
 check-py: check-contracts
 	cd orchestrator && uv run --locked ruff check && uv run --locked ruff format --check \
-		&& uv run --locked mypy src && uv run --locked pytest -m "$(PYTEST_MARKERS)"
+		&& uv run --locked mypy src/surakshasetu && uv run --locked pytest -m "$(PYTEST_MARKERS)"
 
 contracts-lint:
 	cd orchestrator && uv run --locked openapi-spec-validator ../$(SPEC)
@@ -96,6 +98,29 @@ db-migrate:
 # with the service's own code (profile catalog-sync), then exit. Idempotent; needs `make up`.
 seed-catalog:
 	$(COMPOSE) run --rm --build -e SPRING_PROFILES_ACTIVE=catalog-sync domain-services
+
+# Knowledge base (Step 11), with the ingest dependency group (docling, dagster, qdrant-client; torch
+# comes with docling), which check-py and CI's python job never install. kb-ingest runs the Dagster
+# assets over content/seed/kb into Qdrant and catalog.corpus_snapshot (as catalog_loader);
+# idempotent per snapshot id. kb-verify checks the result and the golden sets. kb-chunks lists the
+# approved chunk ids, for relabelling golden sets deliberately. All need `make up`.
+INGEST := cd orchestrator && SS_LOG_FORMAT=text \
+	SS_PG_DSN_CATALOG_LOADER="postgresql://catalog_loader:$(CATALOG_LOADER_PASSWORD)@127.0.0.1:5432/surakshasetu" \
+	uv run --locked --group ingest python -m surakshasetu_ingest
+kb-ingest:
+	@$(INGEST) ingest
+
+kb-verify:
+	@$(INGEST) verify
+
+kb-chunks:
+	@$(INGEST) chunks
+
+# mypy on the ingest package, then tests/ingest (the stack-marked one writes to its own Qdrant
+# collections and surakshasetu_test, and cleans up). Needs `make up`.
+check-ingest: db-migrate
+	@cd orchestrator && uv run --locked --group ingest mypy src/surakshasetu_ingest \
+		&& $(TEST_ENV) SS_TEST_INGEST=1 uv run --locked --group ingest pytest tests/ingest
 
 # The db-marked tests: privileges, the audit chain, subject keys. Needs `make up`; kept out of
 # check-py because CI's python job has no database.

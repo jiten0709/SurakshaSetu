@@ -1,0 +1,6 @@
+# The scripted S0-S3 conversation of TDD §7.4: a placeholder. Step 21 fills it (greeting and AI
+# disclosure, consent, eligibility, needs, recommendation with disclosures, hand-off), and
+# `make e2e-scripted` runs it end to end.
+conversation: scripted_s0_s3
+status: placeholder
+turns: []

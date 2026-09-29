@@ -36,6 +36,13 @@ dev = [
     "respx>=0.23.1",
     "ruff>=0.16.8",
     "schemathesis>=4.28.0",
+    "types-pyyaml>=6.0.12.20260906",
+]
+ingest = [
+    "dagster>=1.13.24",
+    "docling>=2.131.0",
+    "pyyaml>=6.0.3",
+    "qdrant-client>=1.19.1",
 ]
 
 [tool.ruff]

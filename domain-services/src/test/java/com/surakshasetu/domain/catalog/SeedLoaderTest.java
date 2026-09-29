@@ -24,7 +24,7 @@ class SeedLoaderTest extends DomainApiTestSupport {
     assertThat(count("SELECT count(*) FROM catalog.product WHERE uin NOT LIKE '999N09%'"))
         .isEqualTo(3);
     assertThat(count("SELECT count(*) FROM catalog.rider")).isEqualTo(3);
-    assertThat(count("SELECT count(*) FROM catalog.product_document")).isEqualTo(6);
+    assertThat(count("SELECT count(*) FROM catalog.product_document")).isEqualTo(12);
     assertThat(
             count(
                 "SELECT count(*) FROM catalog.disclosure WHERE disclosure_id LIKE 'DISC-%'"

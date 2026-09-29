@@ -19,7 +19,7 @@ from surakshasetu.gateway import (
     RedactionAttestation,
     Route,
 )
-from surakshasetu.gateway.adapter import ROUTES
+from surakshasetu.gateway.adapter import ROUTES, EmbedModel
 from surakshasetu.logging import configure_logging
 
 GATEWAY = "http://gateway.test/v1"
@@ -373,6 +373,47 @@ async def test_embed_and_rerank_time_out_on_their_own_budgets(
 
     assert embed_failed.value.reason == "TIMEOUT"
     assert scores == [0.5]
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_batch_ingestion_can_widen_the_embed_budget(respx_mock: respx.MockRouter) -> None:
+    async def slow(request: httpx.Request) -> httpx.Response:
+        await asyncio.sleep(0.2)
+        return httpx.Response(200, json=embeddings([1.0]))
+
+    respx_mock.post(f"{EMBED}/v1/embeddings").mock(side_effect=slow)
+
+    async with Gateway(settings(embed_dim=1)) as gateway:
+        vectors = await gateway.embed(["a"], kind="document", timeout_s=1.0)
+
+    assert vectors == [[1.0]]
+
+
+@pytest.mark.asyncio
+@respx.mock(assert_all_called=True)
+async def test_embed_model_reads_tei_info(respx_mock: respx.MockRouter) -> None:
+    respx_mock.get(f"{EMBED}/info").respond(
+        200, json={"model_id": "org/model", "model_sha": "abc123", "max_input_length": 8192}
+    )
+
+    async with Gateway(settings()) as gateway:
+        served = await gateway.embed_model()
+
+    assert served == EmbedModel(model_id="org/model", model_sha="abc123")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("response", [httpx.Response(200, json={"x": 1}), httpx.Response(503)])
+@respx.mock
+async def test_embed_model_failures_are_unavailable(
+    respx_mock: respx.MockRouter, response: httpx.Response
+) -> None:
+    respx_mock.get(f"{EMBED}/info").mock(return_value=response)
+
+    async with Gateway(settings()) as gateway:
+        with pytest.raises(GatewayUnavailable):
+            await gateway.embed_model()
 
 
 @pytest.mark.asyncio

@@ -1,0 +1,88 @@
+# Retrieval golden set, kb_tax: DUMMY, over the fictitious seed corpus. Each gold list holds every
+# chunk that supports an answer (usually 1-4), so precision@8 must be read rank-aware (Step 12).
+# Gold ids are deterministic chunk ids of snapshot_id below: after a content change, list the new
+# ids with `make kb-chunks` and relabel deliberately; never relabel to make a metric pass.
+# tax-01 is the TDD §2.6 worked example (80C -> section 123 and Schedule XV, old regime only).
+collection: tax
+snapshot_id: tax-2026-09-29
+questions:
+  - id: tax-01
+    language: en
+    question: How does section 80C affect the tax benefit on my life insurance premium?
+    gold_chunk_ids: [tax:cbdt-transition-faq-2026:2:1dc464, tax:ita2025-s123:123(1):911e9f, tax:ita2025-s123:123(5):18e0a8, tax:ita2025-sch-xv:1:916a35, tax:counsel-note-2026:1:54842b, tax:ita2025-sch-xv:7:c4043d]
+  - id: tax-02
+    language: en
+    question: What is the maximum deduction for life insurance premium under the old regime?
+    gold_chunk_ids: [tax:ita2025-s123:123(1):911e9f, tax:ita2025-sch-xv:6:9debe4, tax:cbdt-transition-faq-2026:2:1dc464, tax:ita1961-s80c:80C(1):cde28d]
+  - id: tax-03
+    language: en
+    question: Can I claim the life insurance premium deduction if I am in the new tax regime?
+    gold_chunk_ids: [tax:ita2025-s123:123(5):18e0a8, tax:ita2025-s202:202(2):a6dd8b, tax:cbdt-transition-faq-2026:3:73270f, tax:counsel-note-2026:1:54842b, tax:ita1961-s80c:80C:2896b0]
+  - id: tax-04
+    language: en
+    question: What is the premium to sum assured limit for a policy bought in 2015?
+    gold_chunk_ids: [tax:ita2025-s123:123(3):785d81, tax:ita1961-s80c:80C(3):1fb257, tax:cbdt-transition-faq-2026:2:1dc464]
+  - id: tax-05
+    language: en
+    question: Is the death benefit of a term policy taxable for the nominee?
+    gold_chunk_ids: [tax:ita2025-sch-ii-li:5:2cb843, tax:ita1961-s10-10d:10(10D)(e):213657, tax:cbdt-transition-faq-2026:4:197ed0]
+  - id: tax-06
+    language: en
+    question: Are maturity proceeds tax-free if my annual premium on a non-linked policy exceeds five lakh rupees?
+    gold_chunk_ids: [tax:ita2025-sch-ii-li:4:439e79, tax:ita1961-s10-10d:10(10D)(d):5d43c8, tax:counsel-note-2026:3:9a0c72, tax:cbdt-transition-faq-2026:4:197ed0]
+  - id: tax-07
+    language: en
+    question: What happens to my deduction if I stop paying premiums in the first year of the policy?
+    gold_chunk_ids: [tax:ita2025-s123:123(4):85ce9f, tax:ita1961-s80c:80C(5):3df29e]
+  - id: tax-08
+    language: en
+    question: Which Income-tax Act applies to premiums I paid in the financial year 2025-26?
+    gold_chunk_ids: [tax:cbdt-transition-faq-2026:1:bcd2e0, tax:ita1961-s80c:80C(1):cde28d]
+  - id: tax-09
+    language: en
+    question: Which section replaced section 115BAC?
+    gold_chunk_ids: [tax:ita2025-s202:202(1):6242ad, tax:cbdt-transition-faq-2026:3:73270f, tax:ita1961-s80c:80C:2896b0, tax:ita2025-s123:123(5):18e0a8]
+  - id: tax-10
+    language: en
+    question: Is tax deducted at source on life insurance maturity payouts?
+    gold_chunk_ids: [tax:ita2025-sch-ii-li:6:45ee98, tax:ita1961-s10-10d:194DA:7c4e5e, tax:counsel-note-2026:3:9a0c72]
+  - id: tax-11
+    language: en
+    question: Can I claim a deduction for the premium I pay on my parents' life insurance policy?
+    gold_chunk_ids: [tax:ita2025-s123:123(2):769f53, tax:ita1961-s80c:80C(2):0a0656]
+  - id: tax-12
+    language: en
+    question: Is the return of premium received on maturity tax-free?
+    gold_chunk_ids: [tax:counsel-note-2026:2:c76b30, tax:ita2025-sch-ii-li:1:10aba9]
+  - id: tax-13
+    language: hi
+    question: धारा 80C के तहत जीवन बीमा प्रीमियम पर कितनी कटौती मिलती है?
+    gold_chunk_ids: [tax:ita1961-s80c:80C(1):cde28d, tax:ita2025-s123:123(1):911e9f, tax:cbdt-transition-faq-2026:2:1dc464, tax:counsel-note-2026:1:54842b]
+  - id: tax-14
+    language: hi
+    question: क्या नई कर व्यवस्था में जीवन बीमा प्रीमियम पर कटौती मिलती है?
+    gold_chunk_ids: [tax:ita2025-s202:202(2):a6dd8b, tax:ita2025-s123:123(5):18e0a8, tax:cbdt-transition-faq-2026:3:73270f, tax:counsel-note-2026:1:54842b, tax:ita1961-s80c:80C:2896b0]
+  - id: tax-15
+    language: hi
+    question: मृत्यु पर नॉमिनी को मिलने वाली राशि पर टैक्स लगता है क्या?
+    gold_chunk_ids: [tax:ita2025-sch-ii-li:5:2cb843, tax:ita1961-s10-10d:10(10D)(e):213657, tax:cbdt-transition-faq-2026:4:197ed0]
+  - id: tax-16
+    language: hi
+    question: पुरानी पॉलिसी के दस्तावेज़ों में लिखे धारा 80C का अब क्या मतलब है?
+    gold_chunk_ids: [tax:cbdt-transition-faq-2026:5:f74c49, tax:ita2025-sch-xv:7:c4043d, tax:cbdt-transition-faq-2026:2:1dc464]
+  - id: tax-17
+    language: hi-Latn
+    question: section 80CCC pension plan ka deduction ab kis section mein milta hai?
+    gold_chunk_ids: [tax:ita2025-sch-xv:2:1d1776, tax:ita1961-s80ccc:80CCC(1):02b2cf, tax:ita2025-sch-xv:7:c4043d]
+  - id: tax-18
+    language: hi-Latn
+    question: ULIP ka premium 2.5 lakh se zyada ho to maturity par tax lagega kya?
+    gold_chunk_ids: [tax:ita2025-sch-ii-li:3:e84f4a, tax:ita1961-s10-10d:10(10D)(c):a5763e]
+  - id: tax-19
+    language: hi-Latn
+    question: old regime choose karne ke liye kya karna padega?
+    gold_chunk_ids: [tax:ita2025-s202:202(4):e128d4, tax:cbdt-transition-faq-2026:3:73270f, tax:ita2025-s123:123(5):18e0a8]
+  - id: tax-20
+    language: hi-Latn
+    question: kya assistant bata sakta hai ki mera kitna tax bachega?
+    gold_chunk_ids: [tax:counsel-note-2026:4:25d8b6, tax:cbdt-transition-faq-2026:6:5dd288, tax:ita2025-s202:202(3):d2b77b]

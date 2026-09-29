@@ -1,0 +1,87 @@
+# Retrieval golden set, kb_product: DUMMY, over the fictitious seed corpus. Each gold list holds
+# every chunk that supports an answer (usually 1-3), so precision@8 must be read rank-aware (Step 12).
+# Gold ids are deterministic chunk ids of snapshot_id below: after a content change, list the new
+# ids with `make kb-chunks` and relabel deliberately; never relabel to make a metric pass.
+collection: product
+snapshot_id: product-2026-09-29
+questions:
+  - id: prod-01
+    language: en
+    question: Does Suraksha Term Shield pay anything if I survive to the end of the policy term?
+    gold_chunk_ids: [product:999N001V02:pw-v2:2:95aaaa, product:999N001V02:cis-v2:2:9a2048, product:999N001V02:cis-v2:1:c8422d, product:999N001V02:br-v1:1:602dcc]
+  - id: prod-02
+    language: en
+    question: What is the suicide exclusion in Suraksha Term Shield?
+    gold_chunk_ids: [product:999N001V02:pw-v2:3:411cde, product:999N001V02:cis-v2:2:9a2048, product:999N001V02:br-v1:1:602dcc]
+  - id: prod-03
+    language: en
+    question: How much is paid back on maturity under Suraksha Term Shield ROP?
+    gold_chunk_ids: [product:999N002V01:pw-v2:2:1a1493, product:999N002V01:cis-v2:2:592320, product:999N002V01:br-v1:1:8859af]
+  - id: prod-04
+    language: en
+    question: What is the waiting period for the critical illness rider?
+    gold_chunk_ids: [product:999A009V01:rw-v1:3:48141f, product:999N001V02:pw-v2:3:411cde, product:999N001V02:br-v1:2:f50668]
+  - id: prod-05
+    language: en
+    question: Which riders can I attach to Suraksha Term Shield ROP?
+    gold_chunk_ids: [product:999N002V01:cis-v2:1:560f11, product:999A007V01:rw-v1:1:b0b808, product:999N002V01:pw-v2:3:d3a8cc, product:999N002V01:br-v1:2:ebb4c3]
+  - id: prod-06
+    language: en
+    question: Does the accidental death rider pay if death happens two hundred days after the accident?
+    gold_chunk_ids: [product:999A007V01:rw-v1:3:780de9, product:999A007V01:rw-v1:1:b0b808, product:999N001V02:pw-v2:3:411cde, product:999N002V01:pw-v2:3:d3a8cc, product:999N002V01:br-v1:2:ebb4c3]
+  - id: prod-07
+    language: en
+    question: Is there a surrender value on a regular pay Suraksha Term Shield policy?
+    gold_chunk_ids: [product:999N001V02:pw-v2:5:0b7907, product:999N001V02:cis-v2:3:c91e67, product:999N001V02:br-v1:2:f50668]
+  - id: prod-08
+    language: en
+    question: What documents are needed for a death claim under Suraksha Term Shield?
+    gold_chunk_ids: [product:999N001V02:pw-v2:6:813f90]
+  - id: prod-09
+    language: en
+    question: Can I take a loan against Suraksha Saver Guarantee?
+    gold_chunk_ids: [product:999N010V01:pw-v2:6:ad2817, product:999N010V01:cis-v2:3:357ce1, product:999N010V01:br-v1:2:b927ca]
+  - id: prod-10
+    language: en
+    question: How long is the grace period for monthly premiums under the ROP plan?
+    gold_chunk_ids: [product:999N002V01:pw-v2:4:c80422, product:999N002V01:cis-v2:3:e2b1cf]
+  - id: prod-11
+    language: en
+    question: What does the waiver of premium rider cover?
+    gold_chunk_ids: [product:999A008V01:rw-v1:1:2eb301, product:999N001V02:br-v1:2:f50668, product:999N010V01:br-v1:2:b927ca]
+  - id: prod-12
+    language: en
+    question: What happens if I stop paying premiums on the ROP plan after three years?
+    gold_chunk_ids: [product:999N002V01:pw-v2:5:48f204, product:999N002V01:pw-v2:4:c80422, product:999N002V01:cis-v2:3:e2b1cf, product:999N002V01:br-v1:2:ebb4c3]
+  - id: prod-13
+    language: hi
+    question: सुरक्षा टर्म शील्ड प्लान में आत्महत्या से जुड़ा अपवर्जन क्या है?
+    gold_chunk_ids: [product:999N001V02:pw-v2:3:411cde, product:999N001V02:cis-v2:2:9a2048, product:999N001V02:br-v1:1:602dcc]
+  - id: prod-14
+    language: hi
+    question: क्रिटिकल इलनेस राइडर में किन बीमारियों पर भुगतान नहीं होता?
+    gold_chunk_ids: [product:999A009V01:rw-v1:2:40978c, product:999N001V02:cis-v2:2:9a2048]
+  - id: prod-15
+    language: hi
+    question: मैच्योरिटी पर आरओपी प्लान में कितना पैसा वापस मिलता है?
+    gold_chunk_ids: [product:999N002V01:pw-v2:2:1a1493, product:999N002V01:cis-v2:2:592320, product:999N002V01:br-v1:1:8859af]
+  - id: prod-16
+    language: hi
+    question: सुरक्षा टर्म शील्ड की लैप्स हुई पॉलिसी को कितने साल के अंदर दोबारा चालू कर सकते हैं?
+    gold_chunk_ids: [product:999N001V02:pw-v2:5:0b7907, product:999N001V02:cis-v2:3:c91e67]
+  - id: prod-17
+    language: hi-Latn
+    question: term shield mein death benefit monthly income ke roop mein le sakte hain kya?
+    gold_chunk_ids: [product:999N001V02:pw-v2:2:95aaaa, product:999N001V02:cis-v2:2:9a2048, product:999N001V02:cis-v2:1:c8422d, product:999N001V02:br-v1:1:602dcc]
+  - id: prod-18
+    language: hi-Latn
+    question: accidental death rider mein sharab peekar accident ho to claim milega?
+    gold_chunk_ids: [product:999A007V01:rw-v1:2:4f51ed, product:999N002V01:pw-v2:3:d3a8cc, product:999N002V01:cis-v2:2:592320]
+  - id: prod-19
+    language: hi-Latn
+    question: saver guarantee plan mein bonus milta hai kya?
+    gold_chunk_ids: [product:999N010V01:cis-v2:2:28e031, product:999N010V01:cis-v2:1:2e4d0b, product:999N010V01:br-v1:1:c25a39]
+  - id: prod-20
+    language: hi-Latn
+    question: waiver of premium rider ka waiting period kitna hai?
+    gold_chunk_ids: [product:999A008V01:rw-v1:3:fa8ff4, product:999N010V01:pw-v2:3:7729ac, product:999N001V02:pw-v2:3:411cde, product:999N010V01:cis-v2:2:28e031]

@@ -1,0 +1,34 @@
+# Questions the seed corpus cannot answer: DUMMY. Retrieval must abstain on every one (TDD §5.2's
+# abstention accuracy). una-02 is answerable only from the PENDING exposure draft, so it also proves
+# that the review gate kept that document out of the index.
+questions:
+  - id: una-01
+    language: en
+    question: What was Suraksha Life's claim settlement ratio for 2025?
+  - id: una-02
+    language: en
+    question: What cooling-off period does the IRDAI exposure draft on conversational AI propose?
+  - id: una-03
+    language: en
+    question: What is the annual premium for a thirty-year-old non-smoker for one crore of cover?
+  - id: una-04
+    language: en
+    question: What GST rate applies to rider premiums?
+  - id: una-05
+    language: en
+    question: Which hospitals are in Suraksha Life's cashless network?
+  - id: una-06
+    language: en
+    question: How are life insurance maturity proceeds taxed for a non-resident Indian?
+  - id: una-07
+    language: hi
+    question: सुरक्षा लाइफ की नज़दीकी शाखा का पता क्या है?
+  - id: una-08
+    language: hi
+    question: सुरक्षा लाइफ के सीईओ कौन हैं?
+  - id: una-09
+    language: hi-Latn
+    question: health insurance ka premium 80D mein kitna claim kar sakte hain?
+  - id: una-10
+    language: hi-Latn
+    question: Suraksha Life ka customer care number kya hai?

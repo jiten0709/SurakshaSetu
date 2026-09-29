@@ -64,7 +64,8 @@ class CatalogTest extends DomainApiTestSupport {
     p.get("riders").forEach(r -> riders.add(r.get("uin").asString()));
     assertThat(riders).containsExactly("999A007V01", "999A008V01", "999A009V01");
 
-    assertThat(p.get("documents")).hasSize(2);
+    // v1 placeholders (Step 5) and the v2 seed corpus (Step 11): a CIS and a wording each.
+    assertThat(p.get("documents")).hasSize(4);
     for (JsonNode doc : p.get("documents")) {
       String uri = doc.get("uri").asString();
       assertThat(uri).startsWith("content/seed/kb/product/999N001V02-");

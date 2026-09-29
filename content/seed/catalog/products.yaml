@@ -80,3 +80,11 @@ documents:
   - {uin: 999N002V01, kind: POLICY_WORDING, version: v1, language: en-IN, path: kb/product/999N002V01-policy-wording.md, is_dummy: true}
   - {uin: 999N010V01, kind: CIS, version: v1, language: en-IN, path: kb/product/999N010V01-cis.md, is_dummy: true}
   - {uin: 999N010V01, kind: POLICY_WORDING, version: v1, language: en-IN, path: kb/product/999N010V01-policy-wording.md, is_dummy: true}
+  # v2 (Step 11): the seed corpus. The v1 placeholders above stay, because a document version is
+  # immutable once loaded; only the documents in kb/review-manifest.yaml are indexed for retrieval.
+  - {uin: 999N001V02, kind: CIS, version: v2, language: en-IN, path: kb/product/999N001V02-cis-v2.md, is_dummy: true}
+  - {uin: 999N001V02, kind: POLICY_WORDING, version: v2, language: en-IN, path: kb/product/999N001V02-policy-wording-v2.md, is_dummy: true}
+  - {uin: 999N002V01, kind: CIS, version: v2, language: en-IN, path: kb/product/999N002V01-cis-v2.md, is_dummy: true}
+  - {uin: 999N002V01, kind: POLICY_WORDING, version: v2, language: en-IN, path: kb/product/999N002V01-policy-wording-v2.md, is_dummy: true}
+  - {uin: 999N010V01, kind: CIS, version: v2, language: en-IN, path: kb/product/999N010V01-cis-v2.md, is_dummy: true}
+  - {uin: 999N010V01, kind: POLICY_WORDING, version: v2, language: en-IN, path: kb/product/999N010V01-policy-wording-v2.md, is_dummy: true}

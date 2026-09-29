@@ -88,6 +88,15 @@ class GatewayResult[T: BaseModel]:
     fallback_hops: int = 0  # OmniRoute 3.8.50 reports no fallback count on chat responses
 
 
+@dataclass(frozen=True)
+class EmbedModel:
+    """What tei-embed serves (its GET /info). A corpus snapshot is stamped with it at ingestion, so
+    retrieval can refuse a snapshot embedded by another model."""
+
+    model_id: str
+    model_sha: str
+
+
 class GatewayUnavailable(Exception):
     """No usable model answer; the caller takes its template path. status is the HTTP status when
     a response arrived."""
@@ -139,12 +148,18 @@ class _Hit(BaseModel):
 _HITS = TypeAdapter(list[_Hit])
 
 
+class _Info(BaseModel):  # TEI's GET /info; the other keys are ignored
+    model_id: str
+    model_sha: str
+
+
 class Gateway:
     def __init__(
         self, settings: Settings, transport: httpx.AsyncBaseTransport | None = None
     ) -> None:
         self._chat_url = f"{settings.gateway_base_url.rstrip('/')}/chat/completions"
         self._embed_url = f"{settings.tei_embed_url.rstrip('/')}/v1/embeddings"
+        self._embed_info_url = f"{settings.tei_embed_url.rstrip('/')}/info"
         self._rerank_url = f"{settings.tei_rerank_url.rstrip('/')}/rerank"
         self._api_key = settings.gateway_api_key
         self._embed_dim = settings.embed_dim
@@ -253,14 +268,22 @@ class Gateway:
         )
 
     async def embed(
-        self, texts: list[str], *, kind: Literal["query", "document"]
+        self,
+        texts: list[str],
+        *,
+        kind: Literal["query", "document"],
+        timeout_s: float | None = None,
     ) -> list[list[float]]:
-        """One embed_dim vector per text, in order. Queries get the model's instruction prefix."""
+        """One embed_dim vector per text, in order. Queries get the model's instruction prefix.
+        timeout_s replaces the route's per-query budget; only batch ingestion passes it."""
         if not texts:
             return []
         inputs = [self._query_prefix + t for t in texts] if kind == "query" else texts
         response, latency_ms = await self._post(
-            Route.EMBED, self._embed_url, {"model": Route.EMBED.value, "input": inputs}
+            Route.EMBED,
+            self._embed_url,
+            {"model": Route.EMBED.value, "input": inputs},
+            timeout_s=timeout_s,
         )
         try:
             result = _Embeddings.model_validate_json(response.content)
@@ -279,6 +302,14 @@ class Gateway:
             latency_ms,
         )
         return [e.embedding for e in data]
+
+    async def embed_model(self) -> EmbedModel:
+        response, _ = await self._post(Route.EMBED, self._embed_info_url, None)
+        try:
+            info = _Info.model_validate_json(response.content)
+        except ValidationError as exc:
+            raise _unavailable(Route.EMBED, "MALFORMED_RESPONSE") from exc
+        return EmbedModel(info.model_id, info.model_sha)
 
     async def rerank(self, query: str, docs: list[str]) -> list[float]:
         """A relevance score in [0, 1] per doc, in the order given."""
@@ -303,14 +334,23 @@ class Gateway:
         self,
         route: Route,
         url: str,
-        body: dict[str, Any],
+        body: dict[str, Any] | None,
         headers: dict[str, str] | None = None,
+        *,
+        timeout_s: float | None = None,
     ) -> tuple[httpx.Response, float]:
+        """POST body, or GET when there is none."""
         # Never log the body, the URL or str(exc): they carry customer text and endpoints.
+        timeout = timeout_s or ROUTES[route].timeout_s
         started = time.perf_counter()
         try:
-            async with asyncio.timeout(ROUTES[route].timeout_s):
-                response = await self._http.post(url, json=body, headers=headers)
+            async with asyncio.timeout(timeout):
+                if body is None:
+                    response = await self._http.get(url, headers=headers, timeout=timeout)
+                else:
+                    response = await self._http.post(
+                        url, json=body, headers=headers, timeout=timeout
+                    )
         except TimeoutError as exc:
             raise _unavailable(route, "TIMEOUT") from exc
         except httpx.TransportError as exc:

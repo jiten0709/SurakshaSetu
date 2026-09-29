@@ -1,0 +1,84 @@
+# Knowledge-base review record: FICTITIOUS, like every document it lists. Nothing is searchable until
+# compliance approves it (TDD §2.2): `make kb-ingest` indexes only documents whose status here is
+# `approved`, into the snapshot named for their collection below.
+#
+# - snapshots: one release per collection. Sessions pin the snapshot_id. A snapshot id already
+#   recorded in catalog.corpus_snapshot is immutable: changing any approved document (or its status)
+#   needs a new snapshot_id here, which supersedes the old one; the old points stay searchable.
+# - documents: doc_id is the chunk ids' document key; path is relative to this directory. Each file's
+#   front matter says what the document is; this file says whether it may be served.
+# - Gold chunk ids in content/golden/retrieval/*.yaml come from these documents: after a content
+#   change, list the new ids with `make kb-chunks` and relabel the golden sets deliberately.
+
+snapshots:
+  regulatory: {snapshot_id: regulatory-2026-09-29, approved_by: DUMMY-compliance}
+  product: {snapshot_id: product-2026-09-29, approved_by: DUMMY-product.compliance}
+  tax: {snapshot_id: tax-2026-09-29, approved_by: DUMMY-tax.advisory}
+
+documents:
+  # --- regulatory ---------------------------------------------------------------------------
+  - {doc_id: irdai-ppi-mc-2024, collection: regulatory, path: regulatory/irdai-ppi-master-circular-2024.md,
+     version: "2024", effective_from: 2024-09-05, effective_to: null, status: approved, by: DUMMY-legal, at: 2026-09-22}
+  - {doc_id: irdai-lp-mc-2024, collection: regulatory, path: regulatory/irdai-life-products-master-circular-2024.md,
+     version: "2024", effective_from: 2024-06-12, effective_to: null, status: approved, by: DUMMY-legal, at: 2026-09-22}
+  - {doc_id: ss-privacy-notice-2026.09.1, collection: regulatory, path: regulatory/suraksha-privacy-consent-notice.md,
+     version: 2026.09.1, effective_from: 2026-09-01, effective_to: null, status: approved, by: DUMMY-compliance, at: 2026-09-22}
+  - {doc_id: ss-grievance-policy-v3, collection: regulatory, path: regulatory/suraksha-grievance-policy.md,
+     version: v3, effective_from: 2026-04-01, effective_to: null, status: approved, by: DUMMY-compliance, at: 2026-09-22}
+  - {doc_id: dpdp-act-2023-rules-2025, collection: regulatory, path: regulatory/dpdp-act-2023-rules-2025-excerpt.md,
+     version: "2025", effective_from: 2025-11-14, effective_to: null, status: approved, by: DUMMY-legal, at: 2026-09-22}
+  - {doc_id: insurance-act-1938, collection: regulatory, path: regulatory/insurance-act-1938-excerpt.md,
+     version: "2015-amended", effective_from: 2015-03-26, effective_to: null, status: approved, by: DUMMY-legal, at: 2026-09-22}
+  - {doc_id: insurance-ombudsman-rules-2017, collection: regulatory, path: regulatory/insurance-ombudsman-rules-2017-excerpt.md,
+     version: "2017", effective_from: 2017-04-25, effective_to: null, status: approved, by: DUMMY-legal, at: 2026-09-22}
+  # Pending on purpose: proves the review gate (kb-verify fails if any of its chunks is indexed).
+  - {doc_id: irdai-ed-ai-2026, collection: regulatory, path: regulatory/irdai-exposure-draft-conversational-ai-2026.md,
+     version: draft-1, effective_from: 2026-10-01, effective_to: null, status: pending, by: DUMMY-legal, at: 2026-09-23}
+
+  # --- product ------------------------------------------------------------------------------
+  - {doc_id: "999N001V02:pw-v2", collection: product, path: product/999N001V02-policy-wording-v2.md,
+     version: v2, effective_from: 2026-09-01, effective_to: null, status: approved, by: DUMMY-product.compliance, at: 2026-09-24}
+  - {doc_id: "999N001V02:cis-v2", collection: product, path: product/999N001V02-cis-v2.md,
+     version: v2, effective_from: 2026-09-01, effective_to: null, status: approved, by: DUMMY-product.compliance, at: 2026-09-24}
+  - {doc_id: "999N001V02:br-v1", collection: product, path: product/999N001V02-brochure-v1.md,
+     version: v1, effective_from: 2026-09-01, effective_to: null, status: approved, by: DUMMY-product.compliance, at: 2026-09-24}
+  - {doc_id: "999N002V01:pw-v2", collection: product, path: product/999N002V01-policy-wording-v2.md,
+     version: v2, effective_from: 2026-09-01, effective_to: null, status: approved, by: DUMMY-product.compliance, at: 2026-09-24}
+  - {doc_id: "999N002V01:cis-v2", collection: product, path: product/999N002V01-cis-v2.md,
+     version: v2, effective_from: 2026-09-01, effective_to: null, status: approved, by: DUMMY-product.compliance, at: 2026-09-24}
+  - {doc_id: "999N002V01:br-v1", collection: product, path: product/999N002V01-brochure-v1.md,
+     version: v1, effective_from: 2026-09-01, effective_to: null, status: approved, by: DUMMY-product.compliance, at: 2026-09-24}
+  - {doc_id: "999N010V01:pw-v2", collection: product, path: product/999N010V01-policy-wording-v2.md,
+     version: v2, effective_from: 2026-09-01, effective_to: null, status: approved, by: DUMMY-product.compliance, at: 2026-09-24}
+  - {doc_id: "999N010V01:cis-v2", collection: product, path: product/999N010V01-cis-v2.md,
+     version: v2, effective_from: 2026-09-01, effective_to: null, status: approved, by: DUMMY-product.compliance, at: 2026-09-24}
+  - {doc_id: "999N010V01:br-v1", collection: product, path: product/999N010V01-brochure-v1.md,
+     version: v1, effective_from: 2026-09-01, effective_to: null, status: approved, by: DUMMY-product.compliance, at: 2026-09-24}
+  - {doc_id: "999A007V01:rw-v1", collection: product, path: product/999A007V01-rider-wording-v1.md,
+     version: v1, effective_from: 2026-09-01, effective_to: null, status: approved, by: DUMMY-product.compliance, at: 2026-09-24}
+  - {doc_id: "999A008V01:rw-v1", collection: product, path: product/999A008V01-rider-wording-v1.md,
+     version: v1, effective_from: 2026-09-01, effective_to: null, status: approved, by: DUMMY-product.compliance, at: 2026-09-24}
+  - {doc_id: "999A009V01:rw-v1", collection: product, path: product/999A009V01-rider-wording-v1.md,
+     version: v1, effective_from: 2026-09-01, effective_to: null, status: approved, by: DUMMY-product.compliance, at: 2026-09-24}
+
+  # --- tax ----------------------------------------------------------------------------------
+  # The 1961-Act sections stay in force as documents (effective_to null): questions about the tax
+  # years 2025-26 and earlier retrieve them through tax_years (TDD §2.6).
+  - {doc_id: ita2025-s123, collection: tax, path: tax/ita2025-section-123.md,
+     version: "2025", effective_from: 2026-04-01, effective_to: null, status: approved, by: DUMMY-tax.advisory, at: 2026-09-25}
+  - {doc_id: ita2025-sch-xv, collection: tax, path: tax/ita2025-schedule-xv.md,
+     version: "2025", effective_from: 2026-04-01, effective_to: null, status: approved, by: DUMMY-tax.advisory, at: 2026-09-25}
+  - {doc_id: ita2025-s202, collection: tax, path: tax/ita2025-section-202.md,
+     version: "2025", effective_from: 2026-04-01, effective_to: null, status: approved, by: DUMMY-tax.advisory, at: 2026-09-25}
+  - {doc_id: ita2025-sch-ii-li, collection: tax, path: tax/ita2025-schedule-ii-life-insurance.md,
+     version: "2025", effective_from: 2026-04-01, effective_to: null, status: approved, by: DUMMY-tax.advisory, at: 2026-09-25}
+  - {doc_id: ita1961-s80c, collection: tax, path: tax/ita1961-section-80c.md,
+     version: "1961-as-amended-2025", effective_from: 2024-04-01, effective_to: null, status: approved, by: DUMMY-tax.advisory, at: 2026-09-25}
+  - {doc_id: ita1961-s80ccc, collection: tax, path: tax/ita1961-section-80ccc.md,
+     version: "1961-as-amended-2025", effective_from: 2024-04-01, effective_to: null, status: approved, by: DUMMY-tax.advisory, at: 2026-09-25}
+  - {doc_id: ita1961-s10-10d, collection: tax, path: tax/ita1961-section-10-10d.md,
+     version: "1961-as-amended-2025", effective_from: 2024-04-01, effective_to: null, status: approved, by: DUMMY-tax.advisory, at: 2026-09-25}
+  - {doc_id: cbdt-transition-faq-2026, collection: tax, path: tax/cbdt-transition-faq-2026.md,
+     version: "2026.1", effective_from: 2026-04-01, effective_to: null, status: approved, by: DUMMY-tax.advisory, at: 2026-09-25}
+  - {doc_id: counsel-note-2026, collection: tax, path: tax/tax-counsel-note-life-insurance.md,
+     version: "2026.1", effective_from: 2026-09-01, effective_to: null, status: approved, by: DUMMY-tax.advisory, at: 2026-09-25}

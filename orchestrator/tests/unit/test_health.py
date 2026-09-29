@@ -28,6 +28,7 @@ def test_healthz_is_liveness_only() -> None:
         gateway_api_key=SecretStr("pilot-gateway-key"),
         tei_embed_url="http://unreachable.invalid:8081",
         tei_rerank_url="http://unreachable.invalid:8082",
+        qdrant_url="http://unreachable.invalid:6333",
     )
     client = TestClient(create_app(settings))
 

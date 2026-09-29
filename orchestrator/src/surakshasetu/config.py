@@ -23,6 +23,7 @@ REQUIRED_OUTSIDE_DEV = (
     "gateway_api_key",
     "tei_embed_url",
     "tei_rerank_url",
+    "qdrant_url",
 )
 
 
@@ -68,6 +69,8 @@ class Settings(BaseSettings):
     # model.
     embed_dim: int = Field(default=1024, ge=1)
     embed_query_prefix: str = ""
+    # Knowledge base (Step 11): the three collections, written by ingestion, read by retrieval.
+    qdrant_url: str = "http://127.0.0.1:6333"
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
     # Opt-in local extras: per-subsystem JSON files, and a readable console instead of JSON.
     log_dir: Path | None = None

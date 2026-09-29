@@ -69,6 +69,9 @@ services:
     ports: ["127.0.0.1:6333:6333", "127.0.0.1:6334:6334"]
     volumes:
       - qdrant:/qdrant/storage
+      # Collection snapshots taken by kb-ingest (Step 11); outside the image, so they survive a
+      # container recreate.
+      - qdrant-snapshots:/qdrant/snapshots
     healthcheck:
       <<: *healthcheck
       # The image ships no HTTP client.
@@ -244,6 +247,7 @@ services:
 volumes:
   pgdata:
   qdrant:
+  qdrant-snapshots:
   minio:
   tei-models:
   omniroute-data:
