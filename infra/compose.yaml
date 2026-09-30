@@ -83,8 +83,11 @@ services:
           "exec 3<>/dev/tcp/127.0.0.1/6333 && printf 'GET /readyz HTTP/1.0\\r\\n\\r\\n' >&3 && grep -q ' 200 ' <&3",
         ]
 
+  # Built from source (MinIO no longer publishes images); infra/minio/Dockerfile pins the server
+  # and mc releases, and the image tag names the server's.
   minio:
-    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+    build: ./minio
+    image: surakshasetu/minio:RELEASE.2025-09-07T16-13-09Z
     profiles: [core]
     command: ["server", "/data"]
     environment:
@@ -98,9 +101,10 @@ services:
       test: ["CMD", "mc", "ready", "local"]
 
   # One-shot: its exit code is its health. Fails if either bucket lacks object lock, which can
-  # only be enabled at bucket creation.
+  # only be enabled at bucket creation. Runs minio's image, which bundles mc; Compose builds it for
+  # minio and never tries to pull it for this service.
   minio-init:
-    image: quay.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
+    image: surakshasetu/minio:RELEASE.2025-09-07T16-13-09Z
     profiles: [core]
     depends_on:
       minio: { condition: service_healthy }
@@ -188,6 +192,34 @@ services:
       # Retrieval reranks up to 120 candidates in one call; TEI's default limit is 32.
       - --max-client-batch-size=128
     ports: ["127.0.0.1:8082:80"]
+
+  # The Step 12 bake-off challengers (guide 7b; the human makes the call): profile bakeoff only, the
+  # same TEI image, flags and model volume as the services they challenge. `make bakeoff-embed` and
+  # `make bakeoff-rerank` start them; nothing else calls them. Each downloads its weights on first
+  # start (Qwen3-Embedding-0.6B about 1.2 GB, bge-reranker-v2-m3 about 2.3 GB). The Docker VM may
+  # need tei-rerank stopped while a challenger runs.
+  tei-embed-challenger:
+    <<: *tei
+    profiles: [bakeoff]
+    command:
+      - --json-output
+      - --model-id=Qwen/Qwen3-Embedding-0.6B
+      - --revision=97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3
+      - --max-batch-tokens=2048
+      - --tokenization-workers=2
+    ports: ["127.0.0.1:8083:80"]
+
+  tei-rerank-challenger:
+    <<: *tei
+    profiles: [bakeoff]
+    command:
+      - --json-output
+      - --model-id=BAAI/bge-reranker-v2-m3
+      - --revision=953dc6f6f85a1b2dbfca4c34a2796e7dde08d41e
+      - --max-batch-tokens=2048
+      - --tokenization-workers=2
+      - --max-client-batch-size=128
+    ports: ["127.0.0.1:8084:80"]
 
   # Deterministic stand-in for the chat models, behind omniroute. Tests script it directly.
   stubs:
