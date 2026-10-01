@@ -35,7 +35,7 @@ from qdrant_client import QdrantClient, models
 
 from surakshasetu.config import Settings
 from surakshasetu.crypto.jcs import sha256_hex
-from surakshasetu.gateway import EmbedModel, Gateway
+from surakshasetu.gateway import Gateway, TeiModel
 from surakshasetu.kb.chunker import (
     SIZE_BOUNDS,
     Block,
@@ -54,7 +54,7 @@ from surakshasetu.kb.manifest import (
     read_source,
     review_gate,
 )
-from surakshasetu.kb.payload import KbPayload, point_id
+from surakshasetu.kb.payload import KbPayload, indexed_text, point_id
 from surakshasetu.retrieval import bm25
 
 # Named into surakshasetu.kb so SS_LOG_DIR files it with the rest of the knowledge base (kb.log).
@@ -136,13 +136,8 @@ class Point:
 class Vectors:
     points: list[Point]
     avgdl: dict[str, float]
-    embed_model: EmbedModel
+    embed_model: TeiModel
     embed_dim: int
-
-
-def indexed_text(payload: KbPayload) -> str:
-    """What is embedded and BM25-indexed: the breadcrumb, then the text (TDD §2.2)."""
-    return " › ".join(payload.section_path) + "\n\n" + payload.text
 
 
 @asset

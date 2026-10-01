@@ -3032,6 +3032,7 @@ dependencies = [
     { name = "psycopg", extra = ["binary", "pool"] },
     { name = "pydantic" },
     { name = "pydantic-settings" },
+    { name = "qdrant-client" },
     { name = "rfc8785" },
     { name = "spacy" },
     { name = "uvicorn", extra = ["standard"] },
@@ -3055,7 +3056,6 @@ ingest = [
     { name = "dagster" },
     { name = "docling" },
     { name = "pyyaml" },
-    { name = "qdrant-client" },
 ]
 
 [package.metadata]
@@ -3071,6 +3071,7 @@ requires-dist = [
     { name = "psycopg", extras = ["binary", "pool"], specifier = ">=3" },
     { name = "pydantic", specifier = ">=2" },
     { name = "pydantic-settings", specifier = ">=2.15.0" },
+    { name = "qdrant-client", specifier = ">=1.19.1" },
     { name = "rfc8785", specifier = ">=0.1.4" },
     { name = "spacy", specifier = ">=3.8.0,<3.9" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.53.0" },
@@ -3094,7 +3095,6 @@ ingest = [
     { name = "dagster", specifier = ">=1.13.24" },
     { name = "docling", specifier = ">=2.131.0" },
     { name = "pyyaml", specifier = ">=6.0.3" },
-    { name = "qdrant-client", specifier = ">=1.19.1" },
 ]
 
 [[package]]

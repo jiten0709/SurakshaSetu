@@ -19,7 +19,7 @@ from surakshasetu.gateway import (
     RedactionAttestation,
     Route,
 )
-from surakshasetu.gateway.adapter import ROUTES, EmbedModel
+from surakshasetu.gateway.adapter import ROUTES, TeiModel
 from surakshasetu.logging import configure_logging
 
 GATEWAY = "http://gateway.test/v1"
@@ -377,6 +377,40 @@ async def test_embed_and_rerank_time_out_on_their_own_budgets(
 
 @pytest.mark.asyncio
 @respx.mock
+async def test_the_tei_timeout_scale_widens_embed_and_rerank_only(
+    respx_mock: respx.MockRouter,
+) -> None:
+    async def slow(request: httpx.Request) -> httpx.Response:
+        await asyncio.sleep(0.25)
+        if request.url.path.endswith("/rerank"):
+            return httpx.Response(200, json=[{"index": 0, "score": 0.5}])
+        if request.url.path.endswith("/embeddings"):
+            return httpx.Response(200, json=embeddings([1.0]))
+        return httpx.Response(200, json=completion())
+
+    respx_mock.post(f"{EMBED}/v1/embeddings").mock(side_effect=slow)
+    respx_mock.post(f"{RERANK}/rerank").mock(side_effect=slow)
+    respx_mock.post(f"{GATEWAY}/chat/completions").mock(side_effect=slow)
+
+    async with Gateway(settings(embed_dim=1, tei_timeout_scale=4)) as gateway:
+        vectors = await gateway.embed(["a"], kind="query")  # 150 ms x 4
+        scores = await gateway.rerank("q", ["a"])
+        with pytest.raises(GatewayUnavailable) as guard_failed:  # 200 ms, unscaled
+            await gateway.call(
+                Route.GUARD_INPUT,
+                data_class=DataClass.SELF_HOSTED_RAW,
+                messages=MESSAGES,
+                session_id=SESSION,
+                turn_id=TURN,
+                fsm_state="S1",
+            )
+
+    assert (vectors, scores) == ([[1.0]], [0.5])
+    assert guard_failed.value.reason == "TIMEOUT"
+
+
+@pytest.mark.asyncio
+@respx.mock
 async def test_batch_ingestion_can_widen_the_embed_budget(respx_mock: respx.MockRouter) -> None:
     async def slow(request: httpx.Request) -> httpx.Response:
         await asyncio.sleep(0.2)
@@ -400,7 +434,20 @@ async def test_embed_model_reads_tei_info(respx_mock: respx.MockRouter) -> None:
     async with Gateway(settings()) as gateway:
         served = await gateway.embed_model()
 
-    assert served == EmbedModel(model_id="org/model", model_sha="abc123")
+    assert served == TeiModel(model_id="org/model", model_sha="abc123")
+
+
+@pytest.mark.asyncio
+@respx.mock(assert_all_called=True)
+async def test_rerank_model_reads_the_reranker_info(respx_mock: respx.MockRouter) -> None:
+    respx_mock.get(f"{RERANK}/info").respond(
+        200, json={"model_id": "org/reranker", "model_sha": "def456", "model_type": {}}
+    )
+
+    async with Gateway(settings()) as gateway:
+        served = await gateway.rerank_model()
+
+    assert served == TeiModel(model_id="org/reranker", model_sha="def456")
 
 
 @pytest.mark.asyncio

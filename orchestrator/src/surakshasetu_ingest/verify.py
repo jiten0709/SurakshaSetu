@@ -4,14 +4,15 @@ the DUMMY marker and the golden sets."""
 import logging
 from collections import Counter
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 import psycopg
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import ValidationError
 from qdrant_client import QdrantClient, models
 
-from surakshasetu.kb.payload import COLLECTIONS, PAYLOAD, Collection, point_id
+from surakshasetu.kb.golden import GoldenSet, UnanswerableSet
+from surakshasetu.kb.payload import COLLECTIONS, PAYLOAD, point_id
 from surakshasetu_ingest.assets import REPO, IngestSettings, Kb
 
 logger = logging.getLogger("surakshasetu.kb.verify")
@@ -19,33 +20,6 @@ logger = logging.getLogger("surakshasetu.kb.verify")
 GOLDEN = REPO / "content" / "golden"
 GOLDEN_PER_COLLECTION = 20
 UNANSWERABLE = 10
-
-
-class _Strict(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-
-class GoldenQuestion(_Strict):
-    id: str
-    question: str
-    language: Literal["en", "hi", "hi-Latn"]
-    gold_chunk_ids: list[str] = Field(min_length=1)
-
-
-class GoldenSet(_Strict):
-    collection: Collection
-    snapshot_id: str  # the snapshot the gold ids were read from
-    questions: list[GoldenQuestion]
-
-
-class UnanswerableQuestion(_Strict):
-    id: str
-    question: str
-    language: Literal["en", "hi", "hi-Latn"]
-
-
-class UnanswerableSet(_Strict):
-    questions: list[UnanswerableQuestion]
 
 
 def verify(kb: Kb, settings: IngestSettings, golden: Path = GOLDEN) -> list[str]:

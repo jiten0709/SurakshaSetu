@@ -1,0 +1,12 @@
+# Legacy-to-new section aliases for retrieval's query rewrite (TDD §2.2 "legacy-to-new section alias
+# map", §2.4 step 1). Owner: tax advisory. A query that names a key gets its expansions appended,
+# for BM25, dense search and rerank alike. Keys and expansions go through the shared BM25 analyzer,
+# so "sec. 80C" and "u/s 80C" match too.
+#
+# Seeded with the TDD-stated aliases ONLY (§2.4, §2.6): 80C -> section 123 and Schedule XV of the
+# Income-tax Act 2025; 115BAC -> section 202. Every other legacy section (80CCC, 10(10D), 194DA and
+# so on) is for tax advisory to add and approve; a change ships through the governed release
+# pipeline (TDD §4.5), like any content release.
+aliases:
+  80C: [section 123, Schedule XV]
+  115BAC: [section 202]

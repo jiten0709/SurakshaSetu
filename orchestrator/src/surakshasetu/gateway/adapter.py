@@ -89,9 +89,10 @@ class GatewayResult[T: BaseModel]:
 
 
 @dataclass(frozen=True)
-class EmbedModel:
-    """What tei-embed serves (its GET /info). A corpus snapshot is stamped with it at ingestion, so
-    retrieval can refuse a snapshot embedded by another model."""
+class TeiModel:
+    """What a TEI service serves (its GET /info). A corpus snapshot is stamped with the embedding
+    model at ingestion, and the retrieval thresholds with the reranker at calibration, so retrieval
+    can refuse either when another model is served."""
 
     model_id: str
     model_sha: str
@@ -161,12 +162,16 @@ class Gateway:
         self._embed_url = f"{settings.tei_embed_url.rstrip('/')}/v1/embeddings"
         self._embed_info_url = f"{settings.tei_embed_url.rstrip('/')}/info"
         self._rerank_url = f"{settings.tei_rerank_url.rstrip('/')}/rerank"
+        self._rerank_info_url = f"{settings.tei_rerank_url.rstrip('/')}/info"
         self._api_key = settings.gateway_api_key
         self._embed_dim = settings.embed_dim
         self._query_prefix = settings.embed_query_prefix
+        # Dev and test only (pilot and prod refuse anything but 1): CPU TEI misses the GPU budgets.
+        self._tei_scale = settings.tei_timeout_scale
         # Backstop only; each call's route timeout is the real limit.
         self._http = httpx.AsyncClient(
-            transport=transport, timeout=max(s.timeout_s for s in ROUTES.values())
+            transport=transport,
+            timeout=max(self._timeout(route) for route in ROUTES),
         )
 
     async def __aenter__(self) -> Self:
@@ -303,13 +308,23 @@ class Gateway:
         )
         return [e.embedding for e in data]
 
-    async def embed_model(self) -> EmbedModel:
-        response, _ = await self._post(Route.EMBED, self._embed_info_url, None)
+    async def embed_model(self) -> TeiModel:
+        return await self._info(Route.EMBED, self._embed_info_url)
+
+    async def rerank_model(self) -> TeiModel:
+        return await self._info(Route.RERANK, self._rerank_info_url)
+
+    async def _info(self, route: Route, url: str) -> TeiModel:
+        response, _ = await self._post(route, url, None)
         try:
             info = _Info.model_validate_json(response.content)
         except ValidationError as exc:
-            raise _unavailable(Route.EMBED, "MALFORMED_RESPONSE") from exc
-        return EmbedModel(info.model_id, info.model_sha)
+            raise _unavailable(route, "MALFORMED_RESPONSE") from exc
+        return TeiModel(info.model_id, info.model_sha)
+
+    def _timeout(self, route: Route) -> float:
+        scale = self._tei_scale if route in (Route.EMBED, Route.RERANK) else 1.0
+        return ROUTES[route].timeout_s * scale
 
     async def rerank(self, query: str, docs: list[str]) -> list[float]:
         """A relevance score in [0, 1] per doc, in the order given."""
@@ -341,7 +356,7 @@ class Gateway:
     ) -> tuple[httpx.Response, float]:
         """POST body, or GET when there is none."""
         # Never log the body, the URL or str(exc): they carry customer text and endpoints.
-        timeout = timeout_s or ROUTES[route].timeout_s
+        timeout = timeout_s or self._timeout(route)
         started = time.perf_counter()
         try:
             async with asyncio.timeout(timeout):

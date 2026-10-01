@@ -2,18 +2,18 @@
 
 from surakshasetu.gateway.adapter import (
     DataClass,
-    EmbedModel,
     Gateway,
     GatewayPolicyViolation,
     GatewayResult,
     GatewayUnavailable,
     RedactionAttestation,
     Route,
+    TeiModel,
 )
 
 __all__ = [
     "DataClass",
-    "EmbedModel",
+    "TeiModel",
     "Gateway",
     "GatewayPolicyViolation",
     "GatewayResult",

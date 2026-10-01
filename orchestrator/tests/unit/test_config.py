@@ -120,3 +120,31 @@ def test_invalid_env_names_the_variable(monkeypatch: pytest.MonkeyPatch) -> None
 
     with pytest.raises(ConfigError, match="SS_ENV"):
         load_settings()
+
+
+@pytest.mark.parametrize("env", ["pilot", "prod"])
+def test_the_tei_timeout_scale_is_dev_and_test_only(
+    monkeypatch: pytest.MonkeyPatch, env: str
+) -> None:
+    monkeypatch.setenv("SS_TEI_TIMEOUT_SCALE", "400")
+    assert load_settings().tei_timeout_scale == 400
+
+    monkeypatch.setenv("SS_ENV", env)
+    monkeypatch.setenv("SS_PG_DSN_APP", "postgresql://app_rw:x@postgres:5432/surakshasetu")
+    monkeypatch.setenv("SS_REDIS_URL", "redis://valkey:6379/0")
+    monkeypatch.setenv("SS_DOMAIN_TOKEN", "pilot-token")
+    for name, value in (KEY_AND_ANCHOR_ENV | GATEWAY_ENV | KB_ENV).items():
+        monkeypatch.setenv(name, value)
+
+    with pytest.raises(ConfigError, match="SS_TEI_TIMEOUT_SCALE"):
+        load_settings()
+
+    monkeypatch.setenv("SS_TEI_TIMEOUT_SCALE", "1")
+    assert load_settings().tei_timeout_scale == 1
+
+
+def test_the_tei_timeout_scale_cannot_shrink_a_budget(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SS_TEI_TIMEOUT_SCALE", "0.5")
+
+    with pytest.raises(ConfigError, match="SS_TEI_TIMEOUT_SCALE"):
+        load_settings()

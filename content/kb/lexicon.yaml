@@ -1,0 +1,164 @@
+# Hindi and Hinglish -> English for retrieval's lexical query (TDD §2.4 step 1: "normalise Hinglish
+# into an English lexical query, keeping the original for dense search"). The corpus is English, so
+# BM25 only matches a Hindi or Hinglish question through these terms; BGE-M3 and the reranker read
+# the original. DUMMY-era glossary: general life-insurance, tax and privacy vocabulary, written as a
+# glossary and not fitted to golden questions. Linguistic review replaces it before pilot.
+#
+# Each key must be one token of the shared BM25 analyzer (surakshasetu/retrieval/bm25.py) and not a
+# stopword; the loader refuses anything else. Words that are also common verbs ("kar", "कर") are
+# left out on purpose: they would send non-tax questions to the tax route.
+
+# Phrases that mean "the plan in focus" (TDD §2.4: "this plan" becomes the UIN in focus).
+references:
+  - this plan
+  - this policy
+  - this product
+  - that plan
+  - that policy
+  - the same plan
+  - yeh plan
+  - ye plan
+  - is plan
+  - iss plan
+  - yeh policy
+  - is policy
+  - iss policy
+  - यह प्लान
+  - ये प्लान
+  - इस प्लान
+  - यह पॉलिसी
+  - इस पॉलिसी
+
+terms:
+  # Hinglish (hi-Latn)
+  beema: insurance
+  bima: insurance
+  jeevan: life
+  jivan: life
+  bhugtan: payment
+  rashi: amount
+  wapas: refund return
+  vapas: refund return
+  lautana: refund return
+  din: days
+  saal: years
+  sal: years
+  mahina: month
+  mahine: months monthly
+  maut: death
+  mrityu: death
+  dawa: claim
+  daava: claim
+  atmahatya: suicide
+  durghatna: accident
+  bimari: illness disease
+  bimariyon: illnesses diseases
+  sharab: alcohol
+  nasha: intoxication
+  katauti: deduction
+  chhoot: exemption
+  chhut: exemption
+  vyavastha: regime
+  nayi: new
+  naya: new
+  nai: new
+  purani: old
+  purana: old
+  sahmati: consent
+  gopniyata: privacy
+  shikayat: complaint grievance
+  samadhan: resolution
+  lokpal: ombudsman
+  umar: age
+  umr: age
+  bachche: children
+  bacche: children
+  patni: wife spouse
+  pati: husband spouse
+  zaroori: mandatory required
+  jaruri: mandatory required
+  salah: advice
+  dastavez: documents
+  labh: benefit
+  fayda: benefit
+  paripakvata: maturity
+  avadhi: period term
+  kist: instalment
+  chalu: revive
+  dobara: again revival
+  # Hindi (Devanagari)
+  बीमा: insurance
+  जीवन: life
+  पॉलिसी: policy
+  प्रीमियम: premium
+  भुगतान: payment
+  राशि: amount
+  वापस: refund return
+  दिन: days
+  दिनों: days
+  साल: years
+  वर्ष: years
+  महीने: months monthly
+  मासिक: monthly
+  मृत्यु: death
+  मौत: death
+  नॉमिनी: nominee
+  दावा: claim
+  दावे: claim
+  क्लेम: claim
+  अस्वीकार: reject
+  आत्महत्या: suicide
+  अपवर्जन: exclusion
+  बहिष्करण: exclusion
+  दुर्घटना: accident
+  बीमारी: illness disease
+  बीमारियों: illnesses diseases
+  रोग: disease
+  गंभीर: critical
+  राइडर: rider
+  प्रतीक्षा: waiting
+  अवधि: period term
+  लैप्स: lapse
+  दोबारा: again revival
+  चालू: revive
+  मैच्योरिटी: maturity
+  परिपक्वता: maturity
+  सरेंडर: surrender
+  ऋण: loan
+  लोन: loan
+  बोनस: bonus
+  टैक्स: tax
+  आयकर: income tax
+  कटौती: deduction
+  छूट: exemption
+  धारा: section
+  नई: new
+  नया: new
+  पुरानी: old
+  पुराना: old
+  व्यवस्था: regime
+  सहमति: consent
+  डेटा: data
+  गोपनीयता: privacy
+  निजता: privacy
+  शिकायत: complaint grievance
+  समाधान: resolution
+  लोकपाल: ombudsman
+  उम्र: age
+  आयु: age
+  नाबालिग: minor
+  बच्चे: children
+  बच्चों: children
+  माता: parents
+  पिता: parents
+  पति: spouse
+  पत्नी: spouse
+  दस्तावेज़: documents
+  दस्तावेज़ों: documents
+  लाभ: benefit
+  आय: income
+  शराब: alcohol
+  नशा: intoxication
+  रद्द: cancel
+  आरओपी: rop
+  शील्ड: shield

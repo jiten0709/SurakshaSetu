@@ -1,0 +1,82 @@
+# Retrieval routing (TDD §2.4 step 2): which collections a question searches, and how many chunks of
+# each the evidence must hold. Read by surakshasetu/retrieval/routing.py; strict (unknown keys fail).
+
+# TDD §2.4 and §1.5: dense top-40 plus BM25 top-40 prefetch per collection, RRF-fused to 40; up to
+# 120 candidates reranked; the top 8 kept; evidence within the ~3,000-token envelope section.
+limits:
+  per_collection: 40
+  rerank_max: 120
+  keep: 8
+  evidence_budget_tokens: 3000
+
+# I3 (decided 2026-09-29): product chunks name the product and its UIN, so kb_product is searched only
+# in these states, or when the customer named a product (the caller's focus_uins). A rule whose
+# quota needs kb_product then abstains (I3_PRODUCT_GATED).
+product_states: [S3]
+
+# TDD §2.5: when sources disagree, regulation, then policy wording, then CIS, then brochure. Every
+# evidence chunk carries this rank (1 is highest) so Step 14's claim check can cite the higher
+# source. A doc_type missing here ranks below all of them.
+precedence:
+  act: 1
+  rules: 1
+  regulation: 1
+  master_circular: 1
+  circular: 1
+  statute: 1
+  policy_wording: 2
+  rider_wording: 2
+  board_policy: 2
+  privacy_notice: 2
+  faq: 2
+  cis: 3
+  explainer: 3
+  brochure: 4
+  exposure_draft: 5
+
+# Topic words, matched as BM25 analyzer tokens against the rewritten lexical query (so Hindi and
+# Hinglish questions match through content/kb/lexicon.yaml). The caller's entities join these.
+topics:
+  exclusion: [exclusion, exclusions, excluded, exclude, excludes, suicide, waiting, alcohol, intoxication]
+  tax: [tax, taxable, taxed, taxation, deduction, deductions, exemption, exempt, regime, tds, 80c, 80ccc, 80d, 115bac, 10(10d), 194da]
+  privacy: [privacy, consent, data, personal, erase, erasure, delete, retention, retain, dpdp]
+  claims: [claim, claims, nominee, settlement, settle, settled, repudiation, repudiate, reject, rejected]
+  # A named product or rider, or a feature only a product defines.
+  product_feature: [rider, riders, bonus, loan, revival, revive, lapse, lapsed, rop, shield, saver]
+
+# First match wins; `when` tests fsm_state, intents and topics (each a list: any of; keys: all of).
+# The last rule must match everything.
+rules:
+  - id: RT-S0-PRIVACY # S0 answers only the approved privacy FAQ path (Step 22)
+    when: {fsm_state: [S0], topics: [privacy]}
+    collections: [regulatory]
+    quotas: {regulatory: 1}
+  - id: RT-S0-NONE
+    when: {fsm_state: [S0]}
+    collections: []
+  - id: RT-EXCLUSION
+    when: {topics: [exclusion]}
+    collections: [product, regulatory]
+    quotas: {product: 1}
+  - id: RT-TAX
+    when: {topics: [tax]}
+    collections: [tax, product]
+    quotas: {tax: 1}
+  - id: RT-PRIVACY
+    when: {topics: [privacy]}
+    collections: [regulatory]
+    quotas: {regulatory: 1}
+  - id: RT-CLAIMS
+    when: {topics: [claims]}
+    collections: [product, regulatory]
+  - id: RT-PLAN # the customer asked about a plan by name
+    when: {intents: [SPECIFIC_PLAN]}
+    collections: [product]
+    quotas: {product: 1}
+  - id: RT-PRODUCT-FEATURE
+    when: {topics: [product_feature]}
+    collections: [product]
+    quotas: {product: 1}
+  - id: RT-DEFAULT
+    when: {}
+    collections: [regulatory, product, tax]

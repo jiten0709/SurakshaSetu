@@ -69,6 +69,9 @@ class Settings(BaseSettings):
     # model.
     embed_dim: int = Field(default=1024, ge=1)
     embed_query_prefix: str = ""
+    # Dev and test only: multiplies the embed and rerank budgets, because CPU TEI misses the TDD's
+    # GPU budgets (a 40-candidate rerank takes 20-40 s on CPU). Pilot and prod require exactly 1.
+    tei_timeout_scale: float = Field(default=1.0, ge=1)
     # Knowledge base (Step 11): the three collections, written by ingestion, read by retrieval.
     qdrant_url: str = "http://127.0.0.1:6333"
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
@@ -92,6 +95,8 @@ class Settings(BaseSettings):
             ]
             if missing:
                 raise ValueError(f"env={self.env} requires {', '.join(missing)}")
+            if self.tei_timeout_scale != 1:
+                raise ValueError(f"env={self.env} requires {ENV_PREFIX}TEI_TIMEOUT_SCALE=1")
         return self
 
 

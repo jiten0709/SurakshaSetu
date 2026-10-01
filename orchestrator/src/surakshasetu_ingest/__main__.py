@@ -1,7 +1,8 @@
-"""`python -m surakshasetu_ingest ingest|verify|chunks` (make kb-ingest, make kb-verify).
+"""`python -m surakshasetu_ingest ingest|verify|chunks|bakeoff-embed` (make kb-ingest, kb-verify,
+kb-chunks, bakeoff-embed).
 
 chunks lists the approved chunk ids and breadcrumbs without indexing anything, so golden sets can be
-relabelled deliberately after a content change.
+relabelled deliberately after a content change. bakeoff-embed is Step 12's embedder comparison.
 """
 
 import argparse
@@ -11,6 +12,7 @@ from dagster import materialize
 
 from surakshasetu.logging import configure_logging
 from surakshasetu_ingest import assets
+from surakshasetu_ingest.bakeoff import bakeoff_embed
 from surakshasetu_ingest.verify import verify
 
 logger = logging.getLogger("surakshasetu.kb.main")
@@ -18,10 +20,12 @@ logger = logging.getLogger("surakshasetu.kb.main")
 
 def main() -> int:
     parser = argparse.ArgumentParser(prog="python -m surakshasetu_ingest")
-    parser.add_argument("command", choices=["ingest", "verify", "chunks"])
+    parser.add_argument("command", choices=["ingest", "verify", "chunks", "bakeoff-embed"])
     command = parser.parse_args().command
     settings = assets.IngestSettings()
     configure_logging(settings.log_level, settings.log_dir, settings.log_format)
+    if command == "bakeoff-embed":
+        return bakeoff_embed(settings)
     kb = assets.Kb()
     if command == "verify":
         return 1 if verify(kb, settings) else 0

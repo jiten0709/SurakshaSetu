@@ -1,0 +1,50 @@
+# Sufficiency-gate thresholds (TDD §2.4 step 5), keyed by corpus snapshot: written by
+# `make calibrate-retrieval`, never by hand. rerank is on the reranker's 0-1 score, bm25
+# on Qdrant's BM25 score (the rerank-down fallback); degraded retrieval multiplies either
+# by degraded_factor. Valid only for the reranker below: another one needs recalibration.
+# Calibrated 2026-09-30 on product-2026-09-29, regulatory-2026-09-29, tax-2026-09-29,
+# with the golden answerable sets plus content/golden/unanswerable.yaml. Metrics at these
+# thresholds:
+#   collection language   n  recall@8  precision@8  answered
+#   regulatory all       20     0.875        0.775   20/20
+#   regulatory en        12     0.958        0.836   12/12
+#   regulatory hi         4     1.000        1.000    4/4
+#   regulatory hi-Latn    4     0.500        0.369    4/4
+#   product    all       20     0.921        0.859   19/20
+#   product    en        12     0.910        0.886   12/12
+#   product    hi         4     0.875        0.812    3/4
+#   product    hi-Latn    4     1.000        0.826    4/4
+#   tax        all       20     0.784        0.667   20/20
+#   tax        en        12     0.778        0.668   12/12
+#   tax        hi         4     0.754        0.749    4/4
+#   tax        hi-Latn    4     0.833        0.585    4/4
+#   abstention accuracy 0.957 (67/70); unanswerable abstained 8/10 (§5.2 subset)
+# BM25-only (embed and rerank down, degraded_factor applied):
+#   collection language   n  recall@8  precision@8  answered
+#   regulatory all       20     0.900        0.701   15/20
+#   regulatory en        12     0.958        0.776   11/12
+#   regulatory hi         4     1.000        0.634    3/4
+#   regulatory hi-Latn    4     0.625        0.543    1/4
+#   product    all       20     0.767        0.642   14/20
+#   product    en        12     0.819        0.576    9/12
+#   product    hi         4     0.583        0.598    2/4
+#   product    hi-Latn    4     0.792        0.882    3/4
+#   tax        all       20     0.656        0.518   14/20
+#   tax        en        12     0.647        0.495    9/12
+#   tax        hi         4     0.754        0.740    3/4
+#   tax        hi-Latn    4     0.583        0.363    2/4
+#   abstention accuracy 0.714 (50/70); unanswerable abstained 7/10 (§5.2 subset)
+degraded_factor: 1.25
+reranker:
+  model_id: Alibaba-NLP/gte-multilingual-reranker-base
+  model_sha: 8215cf04918ba6f7b6a62bb44238ce2953d8831c
+snapshots:
+  product-2026-09-29:
+    rerank: 0.54517
+    bm25: 4.465888
+  regulatory-2026-09-29:
+    rerank: 0.533916
+    bm25: 6.183241
+  tax-2026-09-29:
+    rerank: 0.505791
+    bm25: 4.610288

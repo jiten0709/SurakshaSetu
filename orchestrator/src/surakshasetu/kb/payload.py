@@ -116,3 +116,8 @@ KbPayload = Annotated[
     RegulatoryPayload | ProductPayload | TaxPayload, Field(discriminator="domain")
 ]
 PAYLOAD: TypeAdapter[KbPayload] = TypeAdapter(KbPayload)
+
+
+def indexed_text(payload: KbPayload) -> str:
+    """What is embedded, BM25-indexed and reranked: the breadcrumb, then the text (TDD §2.2)."""
+    return " › ".join(payload.section_path) + "\n\n" + payload.text

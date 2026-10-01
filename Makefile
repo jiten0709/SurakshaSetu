@@ -17,16 +17,20 @@ MINIO_ROOT_USER ?= surakshasetu
 MINIO_ROOT_PASSWORD ?= surakshasetu-dev-minio
 OMNIROUTE_INITIAL_PASSWORD ?= surakshasetu-dev-omniroute
 DATABASES := surakshasetu surakshasetu_test
+# The knowledge base's corpus snapshots live in the dev database; retrieval reads them as app_rw.
+PG_DSN_KB := postgresql://app_rw:$(APP_RW_PASSWORD)@127.0.0.1:5432/surakshasetu
 MINIO_ENV := SS_MINIO_ACCESS_KEY="$(MINIO_ROOT_USER)" SS_MINIO_SECRET_KEY="$(MINIO_ROOT_PASSWORD)"
 # What the db- and stack-marked tests connect with (tests/conftest.py).
 TEST_ENV := SS_TEST_PG_DSN_ADMIN="postgresql://postgres:$(POSTGRES_PASSWORD)@127.0.0.1:5432/surakshasetu_test" \
 	SS_TEST_PG_DSN_KEYVAULT="postgresql://keyvault_rw:$(KEYVAULT_RW_PASSWORD)@127.0.0.1:5432/surakshasetu_test" \
 	SS_TEST_PG_DSN_CATALOG_LOADER="postgresql://catalog_loader:$(CATALOG_LOADER_PASSWORD)@127.0.0.1:5432/surakshasetu_test" \
+	SS_TEST_PG_DSN_KB="$(PG_DSN_KB)" \
 	$(MINIO_ENV)
 
 .PHONY: up down logs check check-py check-java check-stubs check-db check-stack check-contracts \
 	db-migrate seed-catalog contracts contracts-lint contract-test verify-audit gateway-up \
-	gateway-verify kb-ingest kb-verify kb-chunks check-ingest $(PLACEHOLDERS)
+	gateway-verify kb-ingest kb-verify kb-chunks check-ingest calibrate-retrieval eval-retrieval \
+	bakeoff-embed bakeoff-rerank $(PLACEHOLDERS)
 
 # Postgres first, then the migrations, so domain-services finds its domain_rw role on a fresh
 # volume. `up --wait` treats an exited one-shot as a failure, so the one-shots run on their own.
@@ -121,6 +125,34 @@ kb-chunks:
 check-ingest: db-migrate
 	@cd orchestrator && uv run --locked --group ingest mypy src/surakshasetu_ingest \
 		&& $(TEST_ENV) SS_TEST_INGEST=1 uv run --locked --group ingest pytest tests/ingest
+
+# Retrieval (Step 12): the golden sets through the real pipeline (Qdrant, TEI, the dev catalog as
+# app_rw). calibrate-retrieval picks the sufficiency thresholds and writes content/kb/thresholds.yaml;
+# eval-retrieval prints the metrics and exits 1 below the gates (recall@8 >= 0.90, precision@8 >=
+# 0.80, abstention >= 0.95). CPU TEI misses the GPU budgets, so both scale the embed and rerank
+# timeouts (dev and test only; pilot and prod refuse it). Rerank scores are cached in
+# orchestrator/.cache/rerank, so only the first run is slow (about an hour on CPU). Need `make up`
+# and `make kb-ingest`.
+EVAL := cd orchestrator && SS_LOG_FORMAT=text SS_TEI_TIMEOUT_SCALE=1000 SS_PG_DSN_APP="$(PG_DSN_KB)" \
+	uv run --locked python -m surakshasetu.eval.retrieval_metrics
+calibrate-retrieval:
+	@$(EVAL) calibrate
+
+eval-retrieval:
+	@$(EVAL) eval
+
+# The Step 12 bake-off (guide 7b; the human makes the call): the challenger TEI services run in
+# profile bakeoff (:8083 embed, :8084 rerank), pinned in infra/compose.yaml. bakeoff-embed indexes
+# the approved chunks with the challenger embedder into bakeoff_kb_* collections (no catalog row)
+# and compares first-stage recall; bakeoff-rerank reranks one candidate pool with both rerankers
+# (hours on CPU). Each downloads its model on first start.
+bakeoff-embed:
+	$(COMPOSE) --profile bakeoff up -d --wait tei-embed-challenger
+	@export SS_TEI_TIMEOUT_SCALE=1000 && $(INGEST) bakeoff-embed
+
+bakeoff-rerank:
+	$(COMPOSE) --profile bakeoff up -d --wait tei-rerank-challenger
+	@$(EVAL) bakeoff-rerank
 
 # The db-marked tests: privileges, the audit chain, subject keys. Needs `make up`; kept out of
 # check-py because CI's python job has no database.
