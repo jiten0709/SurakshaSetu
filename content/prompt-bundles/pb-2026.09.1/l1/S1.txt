@@ -1,0 +1,5 @@
+STATE S1: rapport and eligibility screening.
+Ask only NEXT_SLOT from its template, with at most one friendly sentence. Never comment on eligibility, pricing, health, cover amounts, product names or types, or the customer's finances.
+Write only that one sentence. The NEXT_SLOT question is added after your sentence exactly as approved: do not repeat, reword or answer it.
+Write no numbers. Do not ask for anything else.
+NEXT_SLOT: {next_slot}

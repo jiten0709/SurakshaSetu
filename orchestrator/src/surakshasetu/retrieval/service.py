@@ -170,6 +170,8 @@ class RetrievalResult(_Frozen):
     abstained: bool
     abstain_reason: str | None
     audit: RetrievalAudit
+    # The route's per-domain minimum: the envelope trims evidence to its budget, never below these.
+    quotas: dict[Collection, int]
 
 
 @dataclass(frozen=True)
@@ -345,7 +347,11 @@ class RetrievalService:
                 " (degraded)" if selection.degraded else "",
             )
         return RetrievalResult(
-            evidence=evidence, abstained=abstained, abstain_reason=reason, audit=audit
+            evidence=evidence,
+            abstained=abstained,
+            abstain_reason=reason,
+            audit=audit,
+            quotas=selection.decision.quotas,
         )
 
     def _chunk(self, handle: str, item: Scored, scoring: Scoring) -> EvidenceChunk:

@@ -1,0 +1,69 @@
+# One question per slot, keyed by the DMN tables' reason_line_id, each with its one-line reason. The
+# system asks `question` then `reason` verbatim; the model only adds one sentence before them.
+# RL-S1-TOBACCO is the TDD §3.6 material-fact question, verbatim. RL-S1-HEALTH is a material-fact
+# question that underwriting has not supplied: it stays a DUMMY placeholder until it does.
+
+RL-S1-AGE:
+  question: "How old are you?"
+  reason: "Plans have age limits, and age affects the premium."
+RL-S1-GENDER:
+  question: "What is your gender: male, female or transgender?"
+  reason: "This plan's premium rates differ by gender."
+RL-S1-RESIDENCY:
+  question: "Are you a resident of India, a non-resident Indian, or an OCI or PIO cardholder?"
+  reason: "Residency decides which plans can be arranged in this chat."
+RL-S1-PINCODE:
+  question: "What is your six-digit pincode?"
+  reason: "We check that we can serve your area."
+RL-S1-TOBACCO:
+  question: "Have you used tobacco or nicotine in any form in the last 12 months, such as cigarettes, bidis or gutka?"
+  reason: "Premium rates differ, so an accurate answer matters."
+RL-S1-OCCUPATION:
+  question: "What is your occupation?"
+  reason: "Some occupations carry different risks, which affects underwriting."
+RL-S1-HEALTH:
+  question: "DUMMY: Approved health screening question pending from underwriting."
+  reason: "DUMMY: Approved reason line pending."
+RL-S1-PROPOSER:
+  question: "Is this cover for your own life?"
+  reason: "We need to know whose life the policy would cover."
+RL-S1-LA-AGE:
+  question: "How old is the person whose life would be covered?"
+  reason: "Plans have age limits for the person covered."
+RL-S1-LA-RELATIONSHIP:
+  question: "How are you related to the person whose life would be covered?"
+  reason: "Some relationships are arranged with a licensed advisor."
+RL-S1-BUSINESS-COVER:
+  question: "Is this cover for a business purpose, such as key-person or partnership cover?"
+  reason: "Business cover is arranged with a licensed advisor."
+
+RL-S2-GOALS:
+  question: "What should this cover do for you? You can choose more than one: protect your family's income, pay off a loan, fund a child's education, retirement, or savings."
+  reason: "Your goals decide which types of plan fit."
+RL-S2-INCOME:
+  question: "What is your annual income?"
+  reason: "Cover is usually sized against income, and it helps check what is affordable."
+RL-S2-INCOME-TYPE:
+  question: "Are you salaried, self-employed, a homemaker, a student or retired?"
+  reason: "It decides how cover is worked out and what proof is needed later."
+RL-S2-DEPENDANTS:
+  question: "Who depends on you financially, and how old is each of them?"
+  reason: "Dependants decide how long the cover needs to last."
+RL-S2-LIABILITIES:
+  question: "Do you have any loans? If so, what kind, how much is still owed and how many years are left?"
+  reason: "Cover can be sized to repay loans."
+RL-S2-EXISTING-COVER:
+  question: "How much life cover do you already have in your own policies?"
+  reason: "Existing cover is counted against what you need."
+RL-S2-EMPLOYER-COVER:
+  question: "Does your employer give you group life cover? If so, how much?"
+  reason: "Part of employer cover may count towards what you need."
+RL-S2-EXISTING-PREMIUM:
+  question: "How much do you pay each year in premiums for the policies you already have?"
+  reason: "It helps check that a new premium stays affordable."
+RL-S2-ASSETS:
+  question: "Have you set aside savings or investments for your family's needs? You can skip this."
+  reason: "Money set aside reduces the cover you need."
+RL-S2-BUDGET:
+  question: "Do you have a yearly premium budget in mind? You can skip this."
+  reason: "It helps keep the options within what you can afford."

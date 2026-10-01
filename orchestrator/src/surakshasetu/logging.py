@@ -25,7 +25,14 @@ MAX_BYTES = 5_000_000  # per file before it rolls; BACKUP_COUNT rolled files are
 BACKUP_COUNT = 3
 # httpx logs every request URL at INFO, query string included, and our paths and queries carry
 # customer data (/v1/reference/pincodes/{pincode}, occupations?q=). Pinning it is a PII guard.
-NOISY_LOGGERS = ("httpx", "httpx2", "httpcore")  # httpx2: langsmith, via langgraph
+# PII guards: below WARNING, httpx logs full URLs and Presidio the words around each match.
+NOISY_LOGGERS = (
+    "httpx",
+    "httpx2",  # langsmith, via langgraph
+    "httpcore",
+    "presidio-analyzer",
+    "presidio-anonymizer",
+)
 
 _PACKAGE = "surakshasetu"
 _COLORS = {

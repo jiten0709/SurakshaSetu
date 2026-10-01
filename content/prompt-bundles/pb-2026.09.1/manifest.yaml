@@ -1,0 +1,27 @@
+# Prompt bundle manifest (TDD §3.4, §4.5). The loader refuses the bundle unless the files below are
+# exactly the files present, each with this SHA-256 of its bytes. Released content is immutable:
+# change anything and it becomes a new version. DUMMY content: compliance replaces it before pilot,
+# and the loader refuses a DUMMY bundle in pilot or prod.
+version: pb-2026.09.1
+is_dummy: true
+insurer: DUMMY Insurer
+# Two-person sign-off (TDD §4.5). Staff identities go only into CONFIG_RELEASE's encrypted payload.
+approved_by:
+  - {role: compliance, by: DUMMY-compliance, at: 2026-10-01}
+  - {role: product_owner, by: DUMMY-product-owner, at: 2026-10-01}
+# TDD §1.5's envelope budgets, in tokens, and the rolling summary's cadence in turns.
+budgets: {constitution: 1500, state: 500, facts: 600, summary: 400, recent_turns: 1500, evidence: 3000, user_turn: 500}
+summary_every_turns: 6
+files:
+  l0/constitution.txt: c549ee1163e37a46c9051bca3dd04931d66b043945082563612473700412b465
+  l1/S1.txt: f28137cb1dc2a32f176eff8d48bbada3bbbddea420368510b51f17b6d7778abd
+  l1/S2.txt: ecc2a4d4a8c2e06733085d2e97b49882a8e7b2ebc9c6b30ec36f148e5428fd77
+  l1/S3.txt: 85b03f5b8d6f2f36bfef085a83659b3baad3fb3fa005232e568a74a9323a297e
+  l1/side-query.txt: c3508119b941cc4a28382dc0dbbeac3cf22ff481993b1900102ecffd0f58e270
+  l1/summarise.txt: 6507a0fae009eed560f3efdfe32b8f8257b45813bd07ed52bc2a1f07aa7c1617
+  templates/en-IN/recommendation.yaml: ef8b58d59a36dec792b061914895083b972733b3b3b74ece2670431e27aca29c
+  templates/en-IN/scripts.yaml: 404b8968e746cab14ab4754b16cf72aa6b3290da75d143106b88e425e5a7de27
+  templates/en-IN/slots.yaml: 76c80cb63adb8d12dcf03f6d31bdf1d95ca2b4061bd8d78ec1474d452562f5b6
+  templates/hi-IN/recommendation.yaml: 41ae272df201fc0384c5661577202429e9c8860bc9948486422a21290c9ca1a1
+  templates/hi-IN/scripts.yaml: 6ee09f588352d6144fcb3ac11a039ac5b8c27fc0e95bfd8ec0aa159daabea661
+  templates/hi-IN/slots.yaml: efef5a622febc827386ecec79f13ce6d9ce4d46eee11c07f7a60e629c7d16f36

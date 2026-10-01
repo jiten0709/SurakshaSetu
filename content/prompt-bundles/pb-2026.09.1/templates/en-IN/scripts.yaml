@@ -1,0 +1,58 @@
+# Fixed conversational text, rendered from templates and never generated (TDD §3.4). `{name}` fields
+# are filled by the system from slots and engine values. The hand-off and crisis scripts are legally
+# significant and not yet supplied: they stay DUMMY placeholders until compliance approves them.
+
+readback: "To confirm: {facts}. Correct?"
+money_readback: "Just to check: {amount} a year. Is that right?"
+needs_summary: |-
+  Here is what you told me, and the assumptions used:
+  Goals: {goals}
+  Annual income: {income}
+  Dependants: {dependants}
+  Loans: {liabilities}
+  Existing cover counted: {existing_cover}
+  Assumptions: cover to age {cover_to_age}, {dependency_years} years of dependency, income growth of {growth} a year and a discount rate of {discount} a year.
+  Is this correct?
+clarify: "Sorry, I didn't quite follow. {question}"
+ask_to_shorten: "That message is too long for me to read in one go. Could you shorten it and send it again?"
+abstain: "I can't confirm that from the documents I have. A licensed advisor can help with this question."
+advisor_offer: "Would you like a licensed advisor to contact you?"
+handoff: "DUMMY: Approved hand-off script pending. A licensed advisor will continue this conversation."
+safety: "DUMMY: Approved crisis script and helpline numbers pending. If you are in danger, please contact local emergency services now."
+# I6: the body is the registry's DISC-GLOBAL-AI-06, verbatim; the first line is the TDD §3.5 greeting.
+ai_redisclosure: |-
+  I'm SurakshaSetu, an AI assistant from {insurer}. I'm not a human advisor.
+  {disclosure}
+side_query_caveat:
+  S0: "At this stage I can only answer questions about privacy and how your information is used."
+  S1: "This is general information, not a decision about your eligibility."
+  S2: "This is general information; any recommendation will be based on your own answers."
+  S3: "This is general information; the policy wording decides."
+  QUOTE_ONLY: "This is general information; the quote is indicative."
+labels:
+  goals:
+    income_protection: "Protect your family's income"
+    loan_cover: "Repay loans"
+    child_education: "Fund a child's education"
+    retirement: "Retirement"
+    savings: "Savings"
+  ppt:
+    regular: "Regular pay"
+    limited_10: "Limited pay (10 years)"
+    single: "Single premium"
+  benefit_payment:
+    lumpsum: "Lump sum"
+    monthly_income: "Monthly income"
+    lumpsum_plus_income: "Lump sum plus income"
+  product_types:
+    TERM: "Term"
+    TERM_ROP: "Term with return of premium"
+    NON_PAR_SAVINGS: "Non-participating savings"
+    PAR: "Participating"
+    ULIP: "Unit-linked"
+  documents:
+    CIS: "Customer information sheet"
+    BI: "Benefit illustration"
+    POLICY_WORDING: "Policy wording"
+  none: "None"
+  or_more: "{amount} or more"
