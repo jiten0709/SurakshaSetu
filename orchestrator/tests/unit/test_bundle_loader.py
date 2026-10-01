@@ -13,11 +13,15 @@ import yaml
 
 from surakshasetu.compose.bundle import (
     L1_ROUTES,
+    LOCALES,
     PROMPT_BUNDLES,
     BundleError,
     load_bundle,
     load_pinned,
 )
+from surakshasetu.config import Settings
+from surakshasetu.rails.normalise import normalise
+from surakshasetu.rails.output import load_pack
 
 VERSION = "pb-2026.09.1"
 DMN = PROMPT_BUNDLES.parents[1] / "domain-services" / "src" / "main" / "resources" / "dmn"
@@ -41,15 +45,6 @@ TDD_TOBACCO = (
     "Have you used tobacco or nicotine in any form in the last 12 months, such as cigarettes,"
     " bidis or gutka? Premium rates differ, so an accurate answer matters."
 )
-# TDD §4.2's blocking lexicon rules: no fixed text of ours may trip them.
-LEXICON_BLOCKS = {
-    "LX-GUAR-01": r"(?i)\b(guarantee[ds]?|assured|fixed)\s+(returns?|income|profits?|bonus)",
-    "LX-SUP-02": r"(?i)\b(best|no\.?\s?1|number one|top)\s+(plan|policy|insurer|company)\b",
-    "LX-URG-03": r"(?i)\b(last chance|limited (time|period)|hurry|offer ends"
-    r"|prices? will (rise|go up))\b",
-    "LX-ADV-04": r"(?i)\b(you should|i recommend you)\s+"
-    r"(surrender|stop paying|switch|redeem|invest in)\b",
-}
 
 
 @pytest.fixture
@@ -230,18 +225,22 @@ def test_hi_in_bodies_are_dummy_with_the_en_in_fields() -> None:
         assert fields(text) == fields(en[path]), path
 
 
-def test_no_customer_facing_template_trips_the_tdd_lexicon() -> None:
-    # Templates only: L0 and L1 are model instructions ("never promise guaranteed returns").
-    templates = load_bundle(VERSION, env="dev").templates["en-IN"]
-    corpus = [text for _, text in texts(templates.model_dump())]
+def test_no_customer_facing_template_trips_the_output_lexicon() -> None:
+    # Templates only: L0 and L1 are model instructions ("never promise guaranteed returns"). Every
+    # blocking rule of the pack in force, TDD §4.2's and Step 14's, in both locales.
+    templates = load_bundle(VERSION, env="dev").templates
+    corpus = [text for loc in LOCALES for _, text in texts(templates[loc].model_dump())]
+    pack = load_pack(Settings(_env_file=None).output_lexicon)
 
     hits = [
-        (rule, text)
-        for rule, pattern in LEXICON_BLOCKS.items()
+        (rule.id, text)
+        for rule in pack.rules
+        if rule.require_domain is None
         for text in corpus
-        if re.search(pattern, text)
+        if rule.pattern.search(normalise(text).text)
     ]
 
+    assert len([r for r in pack.rules if r.require_domain is None]) >= 4
     assert not hits
 
 

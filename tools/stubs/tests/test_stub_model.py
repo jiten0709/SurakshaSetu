@@ -159,6 +159,24 @@ def test_guard_heuristics(text: str, score: float, safety: str) -> None:
     }
 
 
+def test_guard_output_mode_classifies_the_assistant_reply() -> None:
+    def guard(reply: str) -> dict[str, Any]:
+        body = {
+            "model": "guard-input",
+            "messages": [
+                {"role": "user", "content": "I want to end my life"},
+                {"role": "assistant", "content": reply},
+            ],
+            "user": "s-1",
+        }
+        response = client.post("/v1/chat/completions", json=body)
+        assert response.status_code == 200, response.text
+        return json.loads(response.json()["choices"][0]["message"]["content"])
+
+    assert guard("Here is the cover you asked about.")["safety"] == "safe"
+    assert guard("Self-harm instructions follow.")["safety"] == "unsafe S11"
+
+
 def test_verify_entails_unless_the_claim_is_marked_unsupported() -> None:
     assert json.loads(content("verify-claims", "Cover lasts to age 75.")) == {"verdict": "entailed"}
     assert json.loads(content("verify-claims", "UNSUPPORTED: it pays twice.")) == {

@@ -1,0 +1,262 @@
+pack: output-lexicon
+version: 2026.09.1
+owner: compliance
+rules:
+  - id: LX-GUAR-01 # guaranteed-return claims
+    pattern: '(?i)\b(guarantee[ds]?|assured|fixed)\s+(returns?|income|profits?|bonus)'
+    allow_if: cites_clause_type(guaranteed_benefit)
+    action: block
+  - id: LX-SUP-02 # superlatives and rankings
+    pattern: '(?i)\b(best|no\.?\s?1|number one|top)\s+(plan|policy|insurer|company)\b'
+    action: block
+  - id: LX-URG-03 # pressure selling
+    pattern: '(?i)\b(last chance|limited (time|period)|hurry|offer ends|prices? will (rise|go up))\b'
+    action: block
+  - id: LX-ADV-04 # replacement and investment advice
+    pattern: '(?i)\b(you should|i recommend you)\s+(surrender|stop paying|switch|redeem|invest in)\b'
+    action: block
+  - id: LX-TAX-05 # absolute tax claims
+    pattern: '(?i)\btax[- ]?free\b'
+    action: require_citation(domain=tax)
+  - id: LX-HI-06 # Hindi and Hinglish guarantee claims
+    pattern: '(?i)(गारंटी|guaranteed?)\s*(वाला\s*)?(रिटर्न|return|मुनाफा|munafa)'
+    action: block
+
+  # ---------------------------------------------------------------------------------------------
+  # Everything above is TDD §4.2 byte for byte (tests/unit/test_lexicon.py pins it). Everything
+  # below is the Step 14 extension: more English, Hindi and Hinglish rules, then the clause types,
+  # factual terms and number words the grounding rail reads. The output rail scans only model text,
+  # after NFKC and zero-width/confusable folding (rails.normalise), and applies the same NFKC to
+  # every pattern here, so a Devanagari nukta matches in either form.
+  # Actions: block | require_citation(domain=<regulatory|product|tax>).
+  # allow_if: cites_clause_type(<a clause type defined below>), checked per sentence.
+  # ---------------------------------------------------------------------------------------------
+  - id: LX-GUAR-07 # risk-free and sure-shot claims (extension)
+    pattern: '(?i)\b(risk[- ]?free|zero[- ]?risk|sure[- ]?shot)\b|\b100\s?%\s+(safe|secure|guaranteed|returns?)\b'
+    action: block
+  - id: LX-HI-08 # Hindi and Hinglish "assured returns" (extension)
+    pattern: '(?i)(पक्का|पक्की|पक्के|निश्चित)\s*(रिटर्न|मुनाफा|मुनाफ़ा|कमाई|आय|फायदा|फ़ायदा)|\b(pakka|pakki|pakke|nishchit)\s+(returns?|munafa|kamai|income|fayda|faayda)\b'
+    action: block
+  - id: LX-SUP-09 # more superlatives (extension)
+    pattern: '(?i)\b(cheapest|unbeatable|best[- ]selling|most popular|lowest[- ]priced|best in (the )?(market|india|industry))\b'
+    action: block
+  - id: LX-HI-10 # Hindi and Hinglish superlatives (extension)
+    pattern: '(?i)सबसे\s*(अच्छा|अच्छी|अच्छे|बढ़िया|बेहतर|बेहतरीन|सस्ता|सस्ती|सस्ते)|नंबर\s*(1|१|वन)\s*(प्लान|पॉलिसी|बीमा|कंपनी)|\bsabse\s+(accha|acha|achha|achchha|badhiya|badiya|behtar|sasta|sasti|saste)\b'
+    action: block
+  - id: LX-URG-11 # more pressure selling (extension)
+    pattern: '(?i)\b(act (now|fast|today)|buy (it )?(now|today)|today only|before it[''’]?s too late|don[''’]?t miss (out|this)|only a few (days|hours) left)\b'
+    action: block
+  - id: LX-HI-12 # Hindi and Hinglish pressure selling (extension)
+    pattern: '(?i)जल्दी\s*(करें|कीजिए|करो|करिए)|(आखिरी|आख़िरी|अंतिम)\s*मौका|सीमित\s*समय|ऑफर\s*(खत्म|ख़त्म)|\b(jaldi\s+(karein|karen|karo|kijiye|kariye)|(aakhri|akhri|aakhiri)\s+mauka|offer\s+(khatam|khatm))\b'
+    action: block
+  - id: LX-ADV-13 # more replacement and investment advice (extension)
+    pattern: '(?i)\b(you\s+(must|need\s+to|ought\s+to|had\s+better)|i(\s+would|[''’]d)?\s+(suggest|advise)(\s+that)?\s+you|i\s+recommend\s+that\s+you|(it\s+is|it[''’]s)\s+better\s+to)\s+(surrender|stop\s+paying|switch|redeem|cancel|lapse|discontinue|replace|invest\s+in)\b'
+    action: block
+  - id: LX-HI-14 # Hindi and Hinglish replacement advice (extension)
+    pattern: '(?i)(सरेंडर|बंद|रद्द)\s*कर\s*(दें|दीजिए|दीजिये|दो)|\b(surrender|band|cancel|radd)\s+kar\s+(do|dein|den|dijiye)\b'
+    action: block
+  - id: LX-CLM-15 # claim-outcome guarantees (extension; TDD §3.8 edge cases)
+    pattern: '(?i)\b(claims?\s+(is|are|will\s+be|gets?)\s+(always|definitely|surely|certainly)\s+(paid|settled|approved|accepted)|(will|would|can)\s+never\s+be\s+(rejected|denied|refused)|guaranteed\s+claims?\s+(settlement|approval|payout))\b|\b100\s?%\s+claims?\s+(settlement|approval)\b'
+    action: block
+  - id: LX-HI-16 # Hindi and Hinglish claim-outcome guarantees (extension)
+    pattern: '(?i)(क्लेम|दावा)\s*(पक्का|ज़रूर|जरूर|पास\s*होगा\s*ही|मिलेगा\s*ही)|\bclaim\s+(pakka|zaroor|jaroor|pass\s+hoga\s+hi|milega\s+hi)\b'
+    action: block
+  - id: LX-TAX-17 # Hindi and Hinglish absolute tax claims (extension)
+    pattern: '(?i)(टैक्स|कर)\s*[- ]?(फ्री|फ़्री|मुक्त)|\btax\s*[- ]?(mukt|maaf|maf)\b|\btax\s+nahi\s+(lagega|lagta)\b'
+    action: require_citation(domain=tax)
+  - id: LX-TAX-18 # personal tax-saving claims, in any language (extension)
+    pattern: '(?i)\byou\s+(will|would|are\s+going\s+to)\s+save\b[^.!?।]{0,40}\btax(es)?\b|\b(aapka|aapke|apka)\s+tax\s+bachega\b|आपका\s*(टैक्स|कर)\s*बचेगा'
+    action: block
+  - id: LX-HUM-19 # claiming to be a person (I6) (extension)
+    pattern: '(?i)\b(i\s+am|i[''’]m)\s+(a\s+|an\s+)?(human|real\s+person|licensed\s+(advisor|adviser|agent)|insurance\s+(agent|advisor|adviser))\b|मैं\s*(एक\s*)?(इंसान|इन्सान|मनुष्य|एजेंट)\s*(हूँ|हूं)|\b(main|mai|mein)\s+(ek\s+)?(insaan|insan|human|agent)\s+(hoon|hun|hu)\b'
+    action: block
+  - id: LX-CMP-20 # comparisons with other insurers (extension)
+    pattern: '(?i)\b(better|cheaper|safer|stronger)\s+than\s+(any\s+)?(other|another|competitor[''’]?s?|rival)\s+(insurers?|insurance\s+compan(y|ies)|compan(y|ies)|plans?|polic(y|ies))\b'
+    action: block
+
+# A cited chunk is a clause of this type when it is in `domain`, of one of `doc_types`, its own
+# section heading (section_path[-1]) matches `section`, and its text matches `text` (decided 2026-10-01:
+# config, not a KB field, until a reviewed clause type exists in the corpus).
+clause_types:
+  guaranteed_benefit:
+    domain: product
+    doc_types: [policy_wording, cis]
+    section: '(?i)benefit'
+    text: '(?i)\bguaranteed\b'
+
+# A sentence is factual, and needs at least one handle issued this turn, when it holds one of these
+# terms, a number or a placeholder (TDD §2.5). Specific terms only: generic words ("cover",
+# "disclosures", "consent", Hindi "कर", which also means "do") would make small talk factual.
+factual_terms:
+  product:
+    - sum assured
+    - death benefit
+    - maturity benefit
+    - survival benefit
+    - waiting period
+    - exclusion
+    - exclusions
+    - free-look
+    - free look
+    - grace period
+    - surrender value
+    - paid-up
+    - revival
+    - nominee
+    - policy term
+    - premium paying term
+    - premium
+    - premiums
+    - rider
+    - riders
+    - claim
+    - claims
+    - suicide clause
+    - underwriting
+    - return of premium
+    - bima rashi
+    - beema rashi
+    - बीमा राशि
+    - मृत्यु लाभ
+    - परिपक्वता लाभ
+    - प्रतीक्षा अवधि
+    - अपवाद
+    - फ्री-लुक
+    - फ्री लुक
+    - अनुग्रह अवधि
+    - सरेंडर वैल्यू
+    - समर्पण मूल्य
+    - नॉमिनी
+    - पॉलिसी अवधि
+    - प्रीमियम
+    - राइडर
+    - क्लेम
+    - दावा
+  regulatory:
+    - IRDAI
+    - IRDA
+    - Insurance Act
+    - section 45
+    - master circular
+    - regulation
+    - regulations
+    - ombudsman
+    - DPDP
+    - Data Protection
+    - beema adhiniyam
+    - आईआरडीएआई
+    - बीमा अधिनियम
+    - धारा 45
+    - लोकपाल
+  tax:
+    - tax
+    - taxes
+    - taxable
+    - income tax
+    - income-tax
+    - deduction
+    - exempt
+    - exemption
+    - 80C
+    - 80D
+    - 80CCC
+    - 10(10D)
+    - section 123
+    - section 202
+    - Schedule XV
+    - 115BAC
+    - tax regime
+    - old regime
+    - new regime
+    - TDS
+    - 194DA
+    - tax chhoot
+    - katauti
+    - टैक्स
+    - आयकर
+    - कर छूट
+    - कर कटौती
+    - कर व्यवस्था
+    - कटौती
+
+# Numbers written as words. A number must appear verbatim in a source its sentence cites. "one"
+# and its Hindi/Hinglish forms are left out (too often a pronoun or article), as are the Hinglish
+# forms that are English words ("do", "teen", "char") and Hindi "दो" (also "give").
+number_words:
+  - two
+  - three
+  - four
+  - five
+  - six
+  - seven
+  - eight
+  - nine
+  - ten
+  - eleven
+  - twelve
+  - thirteen
+  - fourteen
+  - fifteen
+  - sixteen
+  - seventeen
+  - eighteen
+  - nineteen
+  - twenty
+  - thirty
+  - forty
+  - fifty
+  - sixty
+  - seventy
+  - eighty
+  - ninety
+  - hundred
+  - thousand
+  - lakh
+  - lakhs
+  - crore
+  - crores
+  - million
+  - billion
+  - percent
+  - per cent
+  - half
+  - double
+  - twice
+  - तीन
+  - चार
+  - पांच
+  - पाँच
+  - छह
+  - सात
+  - आठ
+  - नौ
+  - दस
+  - बीस
+  - तीस
+  - चालीस
+  - पचास
+  - साठ
+  - सत्तर
+  - अस्सी
+  - नब्बे
+  - सौ
+  - हज़ार
+  - हजार
+  - लाख
+  - करोड़
+  - प्रतिशत
+  - आधा
+  - paanch
+  - panch
+  - saat
+  - aath
+  - nau
+  - das
+  - bees
+  - tees
+  - pachas
+  - sau
+  - hazaar
+  - hazar
+  - pratishat
+  - aadha

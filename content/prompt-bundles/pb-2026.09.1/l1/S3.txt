@@ -5,3 +5,4 @@ Never write disclosures, premiums or cover amounts. Write numbers only as these 
 Cite every fact: [E#] for EVIDENCE, [R#] for ENGINE_RESULT. Use only the handles given in this turn.
 When EVIDENCE sections disagree, cite the one with the lower precedence number (1 is highest).
 Do not add a call to action or disclosures: they are shown after your text.
+If VALIDATOR_ERRORS is present, your previous draft failed those checks: write a new draft that fixes every one.

@@ -3,7 +3,8 @@ receives, ordered static to dynamic so the L0 prefix stays cacheable:
 
     system  L0 constitution ({insurer}), then the L1 state instructions ({next_slot})
     user    <session_facts>, <summary>, <recent_turns>, ENGINE_RESULT <engine> blocks,
-            EVIDENCE <evidence> blocks, then the turn's <user_input>
+            EVIDENCE <evidence> blocks, VALIDATOR_ERRORS <error> lines (a regeneration only,
+            Step 14), then the turn's <user_input>
 
 It is built only from redacted text and SessionFacts, which hold no numbers and no identifiers
 (decided 2026-10-01). Every tagged text is escaped, so customer or corpus text cannot close a tag.
@@ -98,6 +99,7 @@ def build(
     retrieval: RetrievalResult | None = None,
     engine: Sequence[EngineFact] = (),
     next_slot: str | None = None,
+    corrections: Sequence[str] = (),  # the output rails' error list, for the one regeneration
 ) -> Envelope:
     route = L1_ROUTES[l1]
     budgets = bundle.manifest.budgets
@@ -135,6 +137,7 @@ def build(
         "summary": _tag("summary", summary) if summary else "",
         "recent_turns": _turns(turns),
         "evidence": _evidence(issued.engine, chunks),
+        "corrections": _corrections(corrections),
         "user_turn": _tag("user_input", user_text),
     }
     tokens = {name: count_tokens(text) for name, text in sections.items()}
@@ -142,7 +145,7 @@ def build(
         if tokens[name] > getattr(budgets, name):
             raise _error(route, f"OVER_BUDGET:{name}")
     system = sections["constitution"].rstrip("\n") + "\n\n" + sections["state"]
-    dynamic = ("facts", "summary", "recent_turns", "evidence", "user_turn")
+    dynamic = ("facts", "summary", "recent_turns", "evidence", "corrections", "user_turn")
     messages = [
         {"role": "system", "content": system},
         {"role": "user", "content": "\n\n".join(sections[s] for s in dynamic if sections[s])},
@@ -225,6 +228,12 @@ def _evidence(engine: Mapping[str, EngineFact], chunks: Sequence[EvidenceChunk])
             for c in chunks
         ]
     return "\n".join(lines)
+
+
+def _corrections(errors: Sequence[str]) -> str:
+    if not errors:
+        return ""
+    return "\n".join(["VALIDATOR_ERRORS:", *(_tag("error", e) for e in errors)])
 
 
 def _spare(

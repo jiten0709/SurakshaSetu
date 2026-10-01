@@ -129,6 +129,7 @@ class Scripts(_Strict):
     ask_to_shorten: str
     abstain: str
     advisor_offer: str
+    release_blocked: str  # an output-rail release block (Step 14), before advisor_offer
     handoff: str
     safety: str
     ai_redisclosure: str

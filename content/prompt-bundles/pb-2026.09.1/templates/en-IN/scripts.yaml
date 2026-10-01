@@ -17,6 +17,7 @@ clarify: "Sorry, I didn't quite follow. {question}"
 ask_to_shorten: "That message is too long for me to read in one go. Could you shorten it and send it again?"
 abstain: "I can't confirm that from the documents I have. A licensed advisor can help with this question."
 advisor_offer: "Would you like a licensed advisor to contact you?"
+release_blocked: "Sorry, I can't show this answer right now."
 handoff: "DUMMY: Approved hand-off script pending. A licensed advisor will continue this conversation."
 safety: "DUMMY: Approved crisis script and helpline numbers pending. If you are in danger, please contact local emergency services now."
 # I6: the body is the registry's DISC-GLOBAL-AI-06, verbatim; the first line is the TDD §3.5 greeting.

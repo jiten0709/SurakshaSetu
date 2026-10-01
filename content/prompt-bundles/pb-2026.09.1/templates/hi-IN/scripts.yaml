@@ -16,6 +16,7 @@ clarify: 'DUMMY: [hi translation pending approval] Sorry, I didn''t quite follow
 ask_to_shorten: 'DUMMY: [hi translation pending approval] That message is too long for me to read in one go. Could you shorten it and send it again?'
 abstain: 'DUMMY: [hi translation pending approval] I can''t confirm that from the documents I have. A licensed advisor can help with this question.'
 advisor_offer: 'DUMMY: [hi translation pending approval] Would you like a licensed advisor to contact you?'
+release_blocked: 'DUMMY: [hi translation pending approval] Sorry, I can''t show this answer right now.'
 handoff: 'DUMMY: [hi translation pending approval] Approved hand-off script pending. A licensed advisor will continue this conversation.'
 safety: 'DUMMY: [hi translation pending approval] Approved crisis script and helpline numbers pending. If you are in danger, please contact local emergency services now.'
 ai_redisclosure: |-

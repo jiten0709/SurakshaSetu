@@ -68,19 +68,34 @@ def evaluate(text: str, guard: GuardVerdict | None, *, threshold: float) -> Inje
 
 
 async def call_guard(
-    gateway: Gateway, *, text: str, session_id: UUID, turn_id: UUID, fsm_state: str
+    gateway: Gateway,
+    *,
+    text: str,
+    session_id: UUID,
+    turn_id: UUID,
+    fsm_state: str,
+    response: str | None = None,
 ) -> GuardVerdict | None:
+    """One guard-input call. With `response`, output mode (Step 14): the guard classifies the
+    assistant's reply to `text`, as a safety classifier reads an agent turn."""
+    messages = [{"role": "user", "content": text}]
+    if response is not None:
+        messages.append({"role": "assistant", "content": response})
     try:
         result = await gateway.call(
             Route.GUARD_INPUT,
             data_class=DataClass.SELF_HOSTED_RAW,
-            messages=[{"role": "user", "content": text}],
+            messages=messages,
             session_id=session_id,
             turn_id=turn_id,
             fsm_state=fsm_state,
             response_format=GuardVerdict,
         )
     except GatewayUnavailable as exc:
-        logger.warning("guard-input unavailable, falling back to heuristics: %s", exc.reason)
+        logger.warning(
+            "guard-input unavailable (%s mode): %s",
+            "output" if response is not None else "input",
+            exc.reason,
+        )
         return None
     return result.parsed

@@ -64,6 +64,7 @@ class GuardVerdictHeader(Header):
     rule_id: str
     score: float | None = None
     action: str
+    pack_version: str | None = None  # the output lexicon pack, on lexicon verdicts (Step 14)
 
 
 class ModelCallHeader(Header):

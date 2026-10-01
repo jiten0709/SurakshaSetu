@@ -168,7 +168,8 @@ async def chat_completions(request: ChatRequest, raw: Request) -> Response:
 def _default(combo: str, messages: list[Message]) -> str:
     text = next((m.content or "" for m in reversed(messages) if m.role == "user"), "")
     if combo == "guard-input":
-        folded = " ".join(text.casefold().split())
+        # The last message, whatever its role: in output mode (Step 14) it is the assistant's reply.
+        folded = " ".join((messages[-1].content or "" if messages else "").casefold().split())
         injection = any(p in folded for p in OVERRIDE_PHRASES)
         self_harm = any(p in folded for p in SELF_HARM_PHRASES)
         return json.dumps(

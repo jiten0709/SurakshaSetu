@@ -84,6 +84,11 @@ class Settings(BaseSettings):
     normalise_token_cap: int = Field(default=500, ge=1)
     confidence_accept: float = Field(default=0.8, ge=0, le=1)
     confidence_readback_floor: float = Field(default=0.6, ge=0, le=1)
+    # Output rails (Step 14). The lexicon pack under content/lexicon/ (picked at deploy time, not a
+    # session pin; each lexicon verdict records it), and the share of gen-converse (S1-S2) turns
+    # whose cited sentences go to verify-claims. gen-recommend (S3, side-queries) always does.
+    output_lexicon: str = Field(default="2026.09.1", pattern=r"^\d{4}\.\d{2}\.\d+$")
+    verify_sample_rate: float = Field(default=0.1, ge=0, le=1)
 
     @model_validator(mode="after")
     def _require_dependencies_outside_dev(self) -> Self:

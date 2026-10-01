@@ -18,7 +18,7 @@ NEVER_STORE = frozenset({"AADHAAR", "CARD", "BANK_ACCOUNT"})
 # Exactly the task's list: our six Indian recognisers plus Presidio's built-in email one. Without
 # this, Presidio's default battery (UK_NHS, US_SSN, PERSON, ORGANIZATION, ...) also fires and wins
 # overlapping spans on its own scoring, well outside what TDD §4.2 asks this rail to catch.
-_ENTITIES = ("AADHAAR", "CARD", "PAN", "IN_MOBILE", "IFSC", "BANK_ACCOUNT", "EMAIL_ADDRESS")
+ENTITIES = ("AADHAAR", "CARD", "PAN", "IN_MOBILE", "IFSC", "BANK_ACCOUNT", "EMAIL_ADDRESS")
 _MASK = "[REDACTED]"
 _BANK_ACCOUNT_MIN_SCORE = 0.5  # below this, no context word was found nearby
 
@@ -30,35 +30,43 @@ class RedactResult:
     reminder: bool  # a never-store entity was found; ask the customer not to share it again
 
 
-def redact(text: str) -> RedactResult:
+def entities(text: str) -> list[tuple[str, int, int]]:
+    """(entity type, start, end) of each match, in order; an overlapping later match is dropped."""
     results = sorted(
         (
             r
-            for r in _analyzer().analyze(text=text, language="en", entities=list(_ENTITIES))
+            for r in _analyzer().analyze(text=text, language="en", entities=list(ENTITIES))
             if r.entity_type != "BANK_ACCOUNT" or r.score >= _BANK_ACCOUNT_MIN_SCORE
         ),
         key=lambda r: r.start,
     )
+    found: list[tuple[str, int, int]] = []
+    for result in results:
+        if found and result.start < found[-1][2]:
+            continue  # an overlapping, lower-priority match; keep the earlier one
+        found.append((result.entity_type, result.start, result.end))
+    return found
+
+
+def redact(text: str) -> RedactResult:
     stored_raw_parts: list[str] = []
     redacted_parts: list[str] = []
     counts: dict[str, int] = {}
     reminder = False
     cursor = 0
-    for result in results:
-        if result.start < cursor:
-            continue  # an overlapping, lower-priority match; keep the earlier one
-        gap = text[cursor : result.start]
+    for entity_type, start, end in entities(text):
+        gap = text[cursor:start]
         stored_raw_parts.append(gap)
         redacted_parts.append(gap)
-        span = text[result.start : result.end]
-        if result.entity_type in NEVER_STORE:
+        span = text[start:end]
+        if entity_type in NEVER_STORE:
             stored_raw_parts.append(_MASK)
             reminder = True
         else:
             stored_raw_parts.append(span)
-        counts[result.entity_type] = counts.get(result.entity_type, 0) + 1
-        redacted_parts.append(f"<{result.entity_type}_{counts[result.entity_type]}>")
-        cursor = result.end
+        counts[entity_type] = counts.get(entity_type, 0) + 1
+        redacted_parts.append(f"<{entity_type}_{counts[entity_type]}>")
+        cursor = end
     stored_raw_parts.append(text[cursor:])
     redacted_parts.append(text[cursor:])
     return RedactResult(

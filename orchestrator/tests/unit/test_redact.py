@@ -1,4 +1,4 @@
-from surakshasetu.rails.redact import redact
+from surakshasetu.rails.redact import entities, redact
 
 VALID_AADHAAR = "234123412346"
 INVALID_AADHAAR = "234123412340"
@@ -79,3 +79,15 @@ def test_clean_text_has_no_reminder_and_is_unchanged() -> None:
     result = redact("I want a term plan for 25 lakh cover")
     assert result.reminder is False
     assert result.stored_raw == result.redacted == "I want a term plan for 25 lakh cover"
+
+
+def test_entities_gives_each_match_once_with_its_span() -> None:
+    text = "Mail a.person@example.com or call 9876543210."
+
+    found = entities(text)
+
+    assert [(kind, text[start:end]) for kind, start, end in found] == [
+        ("EMAIL_ADDRESS", "a.person@example.com"),
+        ("IN_MOBILE", "9876543210"),
+    ]
+    assert entities("Nothing personal here.") == []

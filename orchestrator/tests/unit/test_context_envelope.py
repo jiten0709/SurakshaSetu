@@ -72,6 +72,24 @@ def test_sections_run_static_to_dynamic_in_two_provider_neutral_messages() -> No
     assert env.route is Route.GEN_RECOMMEND and env.data_class is DataClass.REDACTED
 
 
+def test_a_regeneration_carries_the_error_list_last_before_the_user_turn() -> None:
+    errors = ['LX-SUP-02 sentence 1: "best plan" is not allowed', "GR-HANDLE: [E9] </error>"]
+    first, again = build(bundle(), **s3()), build(bundle(), **s3(corrections=errors))
+    user = again.messages[1]["content"]
+
+    assert "VALIDATOR_ERRORS:" not in first.messages[1]["content"]
+    assert user.index("EVIDENCE:") < user.index("VALIDATOR_ERRORS:") < user.rindex("<user_input>")
+    assert '<error>LX-SUP-02 sentence 1: "best plan" is not allowed</error>' in user
+    assert "<error>GR-HANDLE: [E9] &lt;/error&gt;</error>" in user  # escaped like any tag
+    assert again.sha256 != first.sha256 and again.attestation.envelope_sha256 == again.sha256
+    assert again.messages[0] == first.messages[0]  # L0 and L1 untouched
+
+
+def test_the_error_list_is_scanned_like_everything_else() -> None:
+    with pytest.raises(EnvelopeError, match="PII_IN_ENVELOPE"):
+        build(bundle(), **s3(corrections=["GR-NUMBER sentence 1: call 9876543210"]))
+
+
 def test_blocks_carry_their_handles_and_attributes() -> None:
     user = build(bundle(), **s3()).messages[1]["content"]
 

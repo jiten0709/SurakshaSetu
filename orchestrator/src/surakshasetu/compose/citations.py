@@ -83,11 +83,14 @@ def issue(evidence: Sequence[EvidenceChunk], facts: Sequence[EngineFact]) -> Tur
     )
 
 
+def cited(text: str) -> list[str]:
+    """Every handle the text cites, in order, repeats included."""
+    return [h.strip() for group in _CITATION.findall(text) for h in group.split(",")]
+
+
 def render(text: str, handles: TurnHandles) -> Cited:
-    cited = list(
-        dict.fromkeys(h.strip() for group in _CITATION.findall(text) for h in group.split(","))
-    )
-    for handle in cited:
+    cited_handles = list(dict.fromkeys(cited(text)))
+    for handle in cited_handles:
         if handle not in handles.evidence and handle not in handles.engine:
             logger.warning("citation refused: handle not issued this turn")
             raise CitationError(handle)
@@ -100,13 +103,15 @@ def render(text: str, handles: TurnHandles) -> Cited:
     rendered = _CITATION.sub(
         lambda m: " ".join(f"[Source: {label(h.strip())}]" for h in m.group(1).split(",")), text
     )
-    chunks = {handles.evidence[h].chunk_id: handles.evidence[h] for h in cited if h[0] == "E"}
+    chunks = {
+        handles.evidence[h].chunk_id: handles.evidence[h] for h in cited_handles if h[0] == "E"
+    }
     sources = [
         Source(c.doc_title, c.section_path[-1], c.version, c.effective_from, c.source_uri)
         for c in chunks.values()
     ]
-    logger.debug("citations: %d handles cited, %d sources", len(cited), len(sources))
-    return Cited(rendered, cited, sources)
+    logger.debug("citations: %d handles cited, %d sources", len(cited_handles), len(sources))
+    return Cited(rendered, cited_handles, sources)
 
 
 def source_list(sources: Sequence[Source], templates: Recommendation) -> str:

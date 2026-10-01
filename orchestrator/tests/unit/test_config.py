@@ -148,3 +148,30 @@ def test_the_tei_timeout_scale_cannot_shrink_a_budget(monkeypatch: pytest.Monkey
 
     with pytest.raises(ConfigError, match="SS_TEI_TIMEOUT_SCALE"):
         load_settings()
+
+
+def test_the_output_rail_settings_have_safe_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
+    settings = load_settings()
+    assert (settings.output_lexicon, settings.verify_sample_rate) == ("2026.09.1", 0.1)
+
+    monkeypatch.setenv("SS_OUTPUT_LEXICON", "2026.10.2")
+    monkeypatch.setenv("SS_VERIFY_SAMPLE_RATE", "1")
+    assert (load_settings().output_lexicon, load_settings().verify_sample_rate) == ("2026.10.2", 1)
+
+
+@pytest.mark.parametrize(
+    ("name", "value"),
+    [
+        ("SS_VERIFY_SAMPLE_RATE", "1.5"),
+        ("SS_VERIFY_SAMPLE_RATE", "-0.1"),
+        ("SS_OUTPUT_LEXICON", "../2026.09.1"),
+        ("SS_OUTPUT_LEXICON", "latest"),
+    ],
+)
+def test_the_output_rail_settings_refuse_bad_values(
+    monkeypatch: pytest.MonkeyPatch, name: str, value: str
+) -> None:
+    monkeypatch.setenv(name, value)
+
+    with pytest.raises(ConfigError, match=name):
+        load_settings()

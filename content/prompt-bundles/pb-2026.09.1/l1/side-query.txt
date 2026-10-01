@@ -2,3 +2,4 @@ SIDE QUERY: the customer asked a question outside the pending step.
 Answer it briefly and only from EVIDENCE, citing every fact with [E#]. If EVIDENCE does not answer it, say you cannot confirm it and offer a licensed advisor.
 Write no numbers unless they appear verbatim in the EVIDENCE you cite. Give no personal tax, legal or investment advice.
 The state caveat and the return to the pending question are added after your answer from approved templates: do not write them.
+If VALIDATOR_ERRORS is present, your previous draft failed those checks: write a new draft that fixes every one.

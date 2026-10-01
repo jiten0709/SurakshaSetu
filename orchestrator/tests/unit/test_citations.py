@@ -9,6 +9,7 @@ from surakshasetu.compose.citations import (
     CitationError,
     EngineFact,
     Source,
+    cited,
     issue,
     render,
     source_list,
@@ -29,6 +30,16 @@ def test_handles_keep_retrievals_e_numbers_and_issue_r_numbers() -> None:
         "E3": "product:doc:e3:abc123",
         "R1": "FIT-01",
     }
+
+
+def test_cited_lists_every_handle_in_order_with_repeats() -> None:
+    assert cited("A [E2]. B [R1, E2]. C [E1 , E3]. Not [E 4] or (E5).") == [
+        "E2",
+        "R1",
+        "E2",
+        "E1",
+        "E3",
+    ]
 
 
 def test_valid_handles_render_as_sources() -> None:
