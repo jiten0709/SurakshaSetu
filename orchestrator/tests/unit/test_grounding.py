@@ -5,7 +5,6 @@ from typing import Any
 from uuid import uuid4
 
 import pytest
-from compose_support import option, ranking, suitability
 from output_support import ROP, TERM, Models, ctx, gateway, handles, numbers, pack, settings
 
 from surakshasetu.compose.citations import EngineFact, TurnHandles, issue
@@ -70,14 +69,8 @@ def test_a_placeholder_for_a_ranked_option_passes() -> None:
 @pytest.mark.parametrize(
     ("text", "nums", "reason"),
     [
+        # Any other PlaceholderError reason passes through unchanged: test_placeholders pins each.
         ("It pays {{cover:999N002V01}} [R1].", numbers(), "NOT_RANKED"),
-        (
-            "It costs {{premium:999N001V02}} [R1].",
-            Numbers(ranking(option(1, TERM, priced=False)), suitability()),
-            "VALUE_MISSING",
-        ),
-        ("It saves {{discount}} [R1].", numbers(), "UNKNOWN_PLACEHOLDER"),
-        ("It pays {{cover:999N001V02} [R1].", numbers(), "MALFORMED"),
         ("It pays {{cover:999N001V02}} [R1].", None, "write no placeholders here"),
     ],
 )

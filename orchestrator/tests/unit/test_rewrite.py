@@ -44,9 +44,9 @@ def test_a_reference_matches_whole_words_only() -> None:
     assert written("the basis planning", ["999N001V02"]).semantic == "the basis planning"
 
 
-@pytest.mark.parametrize("query", ["How does 80C work?", "deduction u/s 80C", "sec. 80C limit"])
-def test_80c_expands_to_section_123_and_schedule_xv(query: str) -> None:
-    result = written(query)
+def test_80c_expands_to_section_123_and_schedule_xv() -> None:
+    # Aliases match analyzer tokens; test_bm25_analyzer covers the u/s and sec. spellings of 80C.
+    result = written("How does 80C work?")
 
     assert result.semantic.endswith("(section 123; Schedule XV)")
     assert {"123", "schedule_xv"} <= set(result.tokens)

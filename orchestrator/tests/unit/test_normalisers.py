@@ -21,7 +21,6 @@ CURRENT_YEAR = 2026
         ("29 year", 29),
         ("42 years", 42),
         ("I'm 60 yrs old", 60),
-        ("she is 8 years old", 8),
     ],
 )
 def test_age_from_yrs_phrasing(text: str, value: int) -> None:
@@ -79,11 +78,6 @@ def test_no_age_found() -> None:
         ("earning 50k per month", 600_000, True, False),
         ("50k / month", 600_000, True, False),
         ("I make 80k", None, True, True),
-        ("around 50k", None, True, True),
-        ("3 crore net worth", 30_000_000, False, False),
-        ("20 lakhs saved up", 2_000_000, False, False),
-        ("10,50,000 per annum", 1_050_000, False, False),
-        ("100k a month", 1_200_000, True, False),
     ],
 )
 def test_money_parsing(

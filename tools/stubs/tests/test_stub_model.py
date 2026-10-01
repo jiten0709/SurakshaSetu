@@ -89,9 +89,7 @@ def test_scripted_json_status_and_headers_pass_through() -> None:
         ("gen-recommend", "stub-recommend"),
         ("verify-claims", "stub-verify"),
         ("summarise", "stub-summarise"),
-        ("stub-gen", "stub-gen"),
-        ("stub-recommend", "stub-recommend"),
-        ("stub-nlu", "stub-nlu"),
+        ("stub-gen", "stub-gen"),  # a stub id serves itself; every stub id is derived from COMBOS
     ],
 )
 def test_combo_or_stub_id_is_served_by_its_stub(model: str, served: str) -> None:

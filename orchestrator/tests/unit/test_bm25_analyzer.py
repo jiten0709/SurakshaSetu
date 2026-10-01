@@ -17,8 +17,7 @@ from surakshasetu.retrieval.bm25 import (
 @pytest.mark.parametrize(
     ("text", "kept"),
     [
-        ("Deduction under 80C", "80c"),
-        ("pension plans u/s 80CCC", "80ccc"),
+        ("pension plans u/s 80CCC", "80ccc"),  # 80C: test_section_spellings_normalise_to_section
         ("exempt under 10(10D)", "10(10d)"),
         ("TDS under 194DA", "194da"),
         ("listed in Schedule XV", "schedule_xv"),

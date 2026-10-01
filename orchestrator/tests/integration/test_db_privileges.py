@@ -42,7 +42,7 @@ DENIED = [
     ("app_rw", "TRUNCATE audit.audit_event"),
     ("app_rw", "UPDATE conv.slot_value SET status = 'corrected' WHERE false"),
     ("app_rw", "DELETE FROM conv.slot_value WHERE false"),
-    ("app_rw", "INSERT INTO consent.record DEFAULT VALUES"),
+    # app_rw's INSERT into consent: test_only_domain_rw_writes_consent
     ("app_rw", "UPDATE consent.record SET withdrawn_at = now() WHERE false"),
     ("app_rw", "INSERT INTO catalog.product DEFAULT VALUES"),
     ("domain_rw", "UPDATE audit.audit_event SET event_type = 'x' WHERE false"),
@@ -55,7 +55,7 @@ ALLOWED = [
     ("app_rw", "SELECT 1 FROM consent.record"),
     ("app_rw", "SELECT 1 FROM catalog.product"),
     ("app_rw", "DELETE FROM langgraph.checkpoints WHERE false"),
-    ("domain_rw", "UPDATE consent.record SET withdrawn_at = now() WHERE false"),
+    # domain_rw's withdrawal UPDATE: test_domain_rw_records_and_withdraws_consent, on a real row
     ("domain_rw", "SELECT 1 FROM catalog.product"),
     ("catalog_loader", "DELETE FROM catalog.product WHERE false"),
     ("erasure_rw", "DELETE FROM conv.slot_value WHERE false"),

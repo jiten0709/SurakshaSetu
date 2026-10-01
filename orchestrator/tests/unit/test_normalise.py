@@ -34,11 +34,7 @@ def test_the_token_cap_is_a_boundary(token_count: int) -> None:
         ("How much premium will I pay each year?", "en"),
         ("Please tell me about the riders available.", "en"),
         ("I would like to speak to a human agent.", "en"),
-        ("मुझे 25 लाख का टर्म प्लान चाहिए", "hi"),
-        ("मेरी उम्र 34 साल है", "hi"),
-        ("क्या यह पॉलिसी टैक्स फ्री है", "hi"),
-        ("प्रीमियम कितना होगा", "hi"),
-        ("आधार नंबर मत मांगो", "hi"),
+        ("मुझे 25 लाख का टर्म प्लान चाहिए", "hi"),  # no Latin letters: every such text is "hi"
         ("mujhe 25 lakh ka term plan chahiye", "hi-Latn"),
         ("meri age 34 hai aur main tobacco nahi leta", "hi-Latn"),
         ("premium kitna hoga is policy ka", "hi-Latn"),
