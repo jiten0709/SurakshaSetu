@@ -1,7 +1,7 @@
 # One entry point for local work and CI. Placeholder targets are filled in by later steps.
 COMPOSE := docker compose -f infra/compose.yaml --profile core
 PYTEST_MARKERS := not stack and not golden and not redteam and not live and not db
-PLACEHOLDERS := seed-eval test-invariants e2e-scripted \
+PLACEHOLDERS := seed-eval e2e-scripted \
 	verify-release-gate eval eval-live local-setup
 SPEC := contracts/openapi/domain-services.v1.yaml
 MODELS := src/surakshasetu/domain/models.py
@@ -30,7 +30,7 @@ TEST_ENV := SS_TEST_PG_DSN_ADMIN="postgresql://postgres:$(POSTGRES_PASSWORD)@127
 .PHONY: up down logs check check-py check-java check-stubs check-db check-stack check-contracts \
 	db-migrate seed-catalog contracts contracts-lint contract-test verify-audit gateway-up \
 	gateway-verify kb-ingest kb-verify kb-chunks check-ingest calibrate-retrieval eval-retrieval \
-	bakeoff-embed bakeoff-rerank $(PLACEHOLDERS)
+	bakeoff-embed bakeoff-rerank test-invariants $(PLACEHOLDERS)
 
 # Postgres first, then the migrations, so domain-services finds its domain_rw role on a fresh
 # volume. `up --wait` treats an exited one-shot as a failure, so the one-shots run on their own.
@@ -82,6 +82,11 @@ check-contracts: contracts-lint
 
 check-java:
 	cd domain-services && ./mvnw -B verify
+
+# Step 15: the Hypothesis properties and row tables of the pure transition function. Unmarked, so
+# check-py runs them too; this target runs only them.
+test-invariants:
+	cd orchestrator && uv run --locked pytest tests/property
 
 check-stubs:
 	cd tools/stubs && uv run --locked ruff check && uv run --locked ruff format --check \

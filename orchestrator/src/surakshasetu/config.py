@@ -89,6 +89,12 @@ class Settings(BaseSettings):
     # whose cited sentences go to verify-claims. gen-recommend (S3, side-queries) always does.
     output_lexicon: str = Field(default="2026.09.1", pattern=r"^\d{4}\.\d{2}\.\d+$")
     verify_sample_rate: float = Field(default=0.1, ge=0, le=1)
+    # Transition rows (Step 15; surakshasetu.fsm.rows.Thresholds): the S2 -> S3 sufficiency gate
+    # (TDD §3.7), the S3 -> S2 re-discovery loops before Human Escalation (TDD §3.8), and the
+    # consecutive low-confidence turns that escalate (CC2). Deploy-time config, not session pins.
+    profile_sufficiency_min: float = Field(default=0.7, ge=0, le=1)
+    rediscovery_loop_limit: int = Field(default=2, ge=1)
+    low_confidence_streak_limit: int = Field(default=2, ge=1)
 
     @model_validator(mode="after")
     def _require_dependencies_outside_dev(self) -> Self:
