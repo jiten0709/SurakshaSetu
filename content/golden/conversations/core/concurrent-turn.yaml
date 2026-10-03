@@ -1,0 +1,7 @@
+id: concurrent-turn
+description: Two turns at once on one session - one runs, the other gets 409 SESSION_BUSY.
+turns:
+  - text: hello
+    concurrent: true
+  - text: hello again
+    expect: {state: S0, templates: [advisor_offer]}

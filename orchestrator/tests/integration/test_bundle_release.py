@@ -27,7 +27,7 @@ def app_db(db: Conn) -> Conn:
 
 @pytest.fixture
 def bundle() -> PromptBundle:
-    return load_bundle("pb-2026.09.1", env="test")
+    return load_bundle("pb-2026.10.1", env="test")
 
 
 def releases(conn: Conn, bundle: PromptBundle) -> list[AuditEvent]:
@@ -47,7 +47,7 @@ def test_activation_writes_one_config_release(
     assert (event.fsm_state, event.pins, event.key_ref) == ("SYSTEM", {}, SYSTEM_KEY_REF)
     assert event.header == {
         "artefact": "prompt_bundle",
-        "version": "pb-2026.09.1",
+        "version": "pb-2026.10.1",
         "sha256": bundle.sha256,
         "approvals_count": 2,
     }

@@ -1,0 +1,6 @@
+id: erase-action
+description: The ERASE action withdraws without any language analysis.
+given: {consent: {purposes: [P1]}, state: S2}
+turns:
+  - action: {type: ERASE}
+    expect: {state: DATA_ERASURE, templates: [erasure_done], events: [ERASURE_REQUEST, CONSENT_WITHDRAWN], erased: scheduled}

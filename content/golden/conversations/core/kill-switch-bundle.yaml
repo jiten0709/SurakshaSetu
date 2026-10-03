@@ -1,0 +1,11 @@
+id: kill-switch-bundle
+description: >-
+  A session pinned to pb-2026.09.1, retired mid-session by a prompt-bundle kill switch: I7's one
+  exception re-pins it to the active bundle, and the re-pin holds.
+given: {pins: {prompt_bundle: pb-2026.09.1}}
+turns:
+  - kill_switch: {kind: prompt_bundle, target: pb-2026.09.1, reason_code: BUNDLE_RETIRED}
+    text: hello
+    expect: {state: S0, templates: [advisor_offer]}
+  - text: hello again
+    expect: {state: S0, templates: [advisor_offer]}

@@ -1,0 +1,11 @@
+id: withdraw-closed
+description: >-
+  A withdrawal in a closed state (HUMAN_ESCALATION). The FSM stays put (I5 false in
+  STATE_TRANSITION); the turn router's handler erases anyway.
+turns:
+  - text: I want to talk to a person
+    script: {nlu-extract: [{intents: [META_HUMAN]}]}
+    expect: {state: HUMAN_ESCALATION, templates: [contact_options]}
+  - text: never mind, delete my data
+    script: {nlu-extract: [{intents: [META_WITHDRAW]}]}
+    expect: {state: HUMAN_ESCALATION, templates: [erasure_done], events: [ERASURE_REQUEST], erased: scheduled}

@@ -1,6 +1,7 @@
 """The conversation runtime: the dependencies a turn needs, session creation and authentication,
-the turn gate (single-writer lock and rate limit, taken before the graph runs), and the internal
-operations (audit verification, kill switches).
+the turn gate (single-writer lock and rate limit, taken before the graph runs), the erasure that
+follows an erasure turn's commit (as erasure_rw, never app_rw), and the internal operations (audit
+verification, kill switches, the advisor hand-off queue).
 
 Storage stays on sync psycopg (Steps 4, 10 and 14 are sync): a connection is taken from the pool
 off the event loop, and each statement then blocks the loop for one round trip.
@@ -34,16 +35,17 @@ from surakshasetu.audit.events import EventType, KillSwitchHeader
 from surakshasetu.compose.bundle import BundleError, activate, load_bundle
 from surakshasetu.config import ConfigError, Settings
 from surakshasetu.crypto.jcs import canonical_json
-from surakshasetu.crypto.keys import SYSTEM_KEY_REF, KeyService, LocalKeyService
+from surakshasetu.crypto.keys import SYSTEM_KEY_REF, KeyDestroyed, KeyService, LocalKeyService
 from surakshasetu.domain.client import DomainClient, DomainError
 from surakshasetu.domain.models import KillSwitch
 from surakshasetu.gateway import Gateway, GatewayUnavailable
 from surakshasetu.graph.gate import RedisGate
+from surakshasetu.graph.handlers import data_erasure
 from surakshasetu.graph.nodes import Turn, build_graph
 from surakshasetu.graph.state import VersionPins
 from surakshasetu.rails.output import LexiconPack, load_pack
 from surakshasetu.store import conv as store
-from surakshasetu.store.conv import Conn, SessionRow
+from surakshasetu.store.conv import Conn, HandoffRow, SessionRow
 from surakshasetu.uuid7 import uuid7
 
 logger = logging.getLogger(__name__)
@@ -72,6 +74,7 @@ class Runtime:
         settings: Settings,
         *,
         pool: ConnectionPool[Conn],
+        erasure: ConnectionPool[Conn],
         keys: KeyService,
         gate: RedisGate,
         domain: DomainClient,
@@ -79,8 +82,9 @@ class Runtime:
         pack: LexiconPack,
         graph: CompiledStateGraph[Any, Any],
     ) -> None:
-        self.settings, self.pool, self.keys, self.gate = settings, pool, keys, gate
-        self.domain, self.gateway, self.pack, self.graph = domain, gateway, pack, graph
+        self.settings, self.pool, self.erasure, self.keys = settings, pool, erasure, keys
+        self.gate, self.domain, self.gateway, self.pack = gate, domain, gateway, pack
+        self.graph = graph
 
     @classmethod
     @asynccontextmanager
@@ -99,6 +103,13 @@ class Runtime:
             )
             vault: ConnectionPool[Conn] = stack.enter_context(
                 ConnectionPool(settings.pg_dsn_keyvault.get_secret_value(), min_size=1)
+            )
+            erasure: ConnectionPool[Conn] = stack.enter_context(
+                ConnectionPool(
+                    settings.pg_dsn_erasure.get_secret_value(),
+                    min_size=1,
+                    kwargs={"application_name": "orchestrator-erasure"},
+                )
             )
             keys = LocalKeyService(vault, base64.b64decode(settings.kek_b64.get_secret_value()))
             # The checkpointer's own pool, configured as checkpointer_setup.py: autocommit,
@@ -127,10 +138,12 @@ class Runtime:
             with pool.connection() as conn:  # commits on exit
                 activate(conn, keys, bundle)  # CONFIG_RELEASE, once per bundle version
             graph = build_graph(AsyncPostgresSaver(saver_pool))
+            await data_erasure.sweep(pool, erasure, keys, domain, settings)
             logger.info("runtime ready: bundle %s, lexicon %s", bundle.version, pack.version)
             yield cls(
                 settings,
                 pool=pool,
+                erasure=erasure,
                 keys=keys,
                 gate=RedisGate(redis, settings),
                 domain=domain,
@@ -189,11 +202,14 @@ class Runtime:
         }
 
     async def authenticate(self, session_id: UUID, token: str | None) -> SessionRow:
-        """An unknown session and a wrong token are the same 401: the caller learns nothing."""
+        """An unknown session and a wrong token are the same 401: the caller learns nothing. So is
+        an erased session whose rows are not deleted yet (the sweep finishes it)."""
         async with self.connection() as conn:
             row = store.get_session(conn, session_id)
         presented = token_sha256(token) if token else _NO_TOKEN
         if not hmac.compare_digest(row.token_sha256 if row else _NO_TOKEN, presented) or not row:
+            raise ProblemError(401, "UNAUTHORIZED")
+        if row.status == "erased":
             raise ProblemError(401, "UNAUTHORIZED")
         if row.expires_at <= datetime.now(UTC):
             raise ProblemError(410, "SESSION_EXPIRED")
@@ -224,6 +240,8 @@ class Runtime:
                     action=action,
                 )
                 await self._invoke(turn)
+            if turn.erasure is not None and not turn.replayed:
+                await self._erase(row, minor=turn.erasure == "MINOR")
             return canonical_json(turn.response)
         finally:
             try:
@@ -256,6 +274,24 @@ class Runtime:
         if turn.response is None:
             raise RuntimeError("the graph ended without a released response")
 
+    async def _erase(self, row: SessionRow, *, minor: bool) -> None:
+        """The committed erasure turn's hard delete (graph/handlers/data_erasure.py). The reply is
+        already the record of what was released, so a failure here is logged and left to the sweep;
+        the session is marked erased and refused meanwhile."""
+        try:
+            await asyncio.to_thread(
+                data_erasure.erase,
+                self.erasure,
+                self.keys,
+                self.settings,
+                session_id=row.session_id,
+                key_ref=row.key_ref,
+                minor=minor,
+            )
+        except Exception:
+            logger.exception("erasure after the commit failed; the sweep retries it")
+        await data_erasure.sweep(self.pool, self.erasure, self.keys, self.domain, self.settings)
+
     # --- internal -----------------------------------------------------------------------------
     async def verify(self, session_id: UUID) -> VerifyResult:
         async with self.connection() as conn:
@@ -275,6 +311,22 @@ class Runtime:
             }
             for e in events
         ]
+
+    async def handoffs(self, queue: str) -> list[HandoffRow]:
+        async with self.connection() as conn:
+            return store.list_handoffs(conn, queue)
+
+    async def handoff(self, handoff_id: UUID) -> tuple[HandoffRow, dict[str, Any]]:
+        """The decrypted advisor briefing: 404 when unknown (or erased), 410 once the subject's
+        key is destroyed."""
+        async with self.connection() as conn:
+            try:
+                found = store.get_handoff(conn, self.keys, handoff_id)
+            except KeyDestroyed:
+                raise ProblemError(410, "GONE") from None
+        if found is None:
+            raise ProblemError(404, "NOT_FOUND")
+        return found
 
     async def kill_switch(
         self,

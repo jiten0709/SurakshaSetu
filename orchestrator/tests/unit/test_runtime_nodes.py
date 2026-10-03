@@ -31,7 +31,7 @@ from surakshasetu.store.conv import SessionRow
 SID = UUID("0199a1b2-0000-7000-8000-00000000c0de")
 SUBJECT = UUID("0199a1b2-0000-7000-8000-00000000beef")
 KEY = UUID("0199a1b2-0000-7000-8000-0000000000aa")
-BUNDLE = load_bundle("pb-2026.09.1", env="dev")
+BUNDLE = load_bundle("pb-2026.10.1", env="dev")
 SCRIPTS = BUNDLE.templates["en-IN"].scripts
 NOW = datetime.now(UTC)
 SENTINEL = "my PAN is ABCDE1234F and I live at 42 Sentinel Lane"
@@ -118,16 +118,21 @@ def rt(t: Turn) -> Any:
 
 
 async def run(t: Turn) -> None:
-    """input -> route -> (handler | side query) -> state node -> decide -> compose -> validate"""
+    """input -> route -> (routed handler | side query -> state node) -> decide -> [entered
+    handler] -> compose -> validate"""
     state = GraphState()
     await nodes.input_node(state, rt(t))
     goto = (await nodes.route(state, rt(t))).goto
     if goto == "side_query":
         goto = (await nodes.side_query(state, rt(t))).goto
-    if goto not in nodes.HANDLERS:
-        node = states.guarded(str(goto), states.NODES[FsmState(goto)])
-        await node(state, runtime=rt(t))
-    await nodes.decide(state, rt(t))
+    if goto in nodes.ROUTED:
+        await nodes.ROUTED[str(goto)](state, runtime=rt(t))
+    else:
+        fsm_state = FsmState(goto)
+        await states.wrapped(fsm_state, states.NODES[fsm_state])(state, runtime=rt(t))
+    after = (await nodes.decide(state, rt(t))).goto
+    if after != "compose":
+        await nodes.ENTERED[str(after)](state, runtime=rt(t))
     await nodes.compose(state, rt(t))
     await nodes.validate(state, rt(t))
 
@@ -202,6 +207,11 @@ async def test_a_withdrawal_reaches_its_handler_and_data_erasure_in_the_same_tur
         e["header"] for e in recorder.events if e["event_type"] is EventType.STATE_TRANSITION
     )
     assert header.trigger == "CC1" and header.invariants["I5"] is True
+    # No consent in S0: nothing to withdraw, and the live data still goes after the commit.
+    erasure = next(e for e in recorder.events if e["event_type"] is EventType.ERASURE_REQUEST)
+    assert erasure["header"].consent_withdrawal == "none"
+    assert t.erasure == "WITHDRAW"
+    assert t.released is not None and t.released.text == SCRIPTS.erasure_done
 
 
 @pytest.mark.asyncio
@@ -214,7 +224,10 @@ async def test_a_safety_signal_answers_with_the_crisis_template_and_escalates(
     await run(t)
 
     assert t.routed == "safety"
-    assert t.released is not None and t.released.text == SCRIPTS.safety
+    # The crisis script leads, and the escalation's own message follows in the same turn: in S0,
+    # with no consent, contact options only.
+    assert t.released is not None
+    assert t.released.text == f"{SCRIPTS.safety}\n\n{SCRIPTS.contact_options}"
     assert t.transition is not None and t.transition.to is FsmState.HUMAN_ESCALATION
     assert t.transition.reason_code == "HE_SAFETY"
 
@@ -370,7 +383,7 @@ async def test_load_hydrates_from_conv_only_when_the_checkpoint_lags(
 async def test_a_kill_switch_on_the_active_bundle_refuses_the_turn(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    loading(monkeypatch, switches={("prompt_bundle", "pb-2026.09.1")})
+    loading(monkeypatch, switches={("prompt_bundle", "pb-2026.10.1")})
 
     with pytest.raises(BundleError) as excinfo:
         await nodes.load(GraphState(), rt(turn()))

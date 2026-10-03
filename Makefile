@@ -2,7 +2,7 @@
 COMPOSE := docker compose -f infra/compose.yaml --profile core
 PYTEST_MARKERS := not stack and not golden and not redteam and not live and not db
 PLACEHOLDERS := seed-eval e2e-scripted \
-	verify-release-gate eval eval-live local-setup
+	verify-release-gate eval-live local-setup
 SPEC := contracts/openapi/domain-services.v1.yaml
 MODELS := src/surakshasetu/domain/models.py
 
@@ -13,6 +13,9 @@ POSTGRES_PASSWORD ?= surakshasetu-dev
 APP_RW_PASSWORD ?= surakshasetu-dev-app-rw
 KEYVAULT_RW_PASSWORD ?= surakshasetu-dev-keyvault-rw
 CATALOG_LOADER_PASSWORD ?= surakshasetu-dev-catalog-loader
+ERASURE_RW_PASSWORD ?= surakshasetu-dev-erasure-rw
+DOMAIN_TOKEN ?= surakshasetu-dev-domain-token
+DOMAIN_INTERNAL_TOKEN ?= surakshasetu-dev-domain-internal-token
 MINIO_ROOT_USER ?= surakshasetu
 MINIO_ROOT_PASSWORD ?= surakshasetu-dev-minio
 OMNIROUTE_INITIAL_PASSWORD ?= surakshasetu-dev-omniroute
@@ -20,18 +23,21 @@ DATABASES := surakshasetu surakshasetu_test
 # The knowledge base's corpus snapshots live in the dev database; retrieval reads them as app_rw.
 PG_DSN_KB := postgresql://app_rw:$(APP_RW_PASSWORD)@127.0.0.1:5432/surakshasetu
 MINIO_ENV := SS_MINIO_ACCESS_KEY="$(MINIO_ROOT_USER)" SS_MINIO_SECRET_KEY="$(MINIO_ROOT_PASSWORD)"
+# domain-services' tokens as compose starts it (infra/.env, else the dummy defaults).
+DOMAIN_ENV := SS_DOMAIN_TOKEN="$(DOMAIN_TOKEN)" SS_DOMAIN_INTERNAL_TOKEN="$(DOMAIN_INTERNAL_TOKEN)"
 # What the db- and stack-marked tests connect with (tests/conftest.py).
 TEST_ENV := SS_TEST_PG_DSN_ADMIN="postgresql://postgres:$(POSTGRES_PASSWORD)@127.0.0.1:5432/surakshasetu_test" \
 	SS_TEST_PG_DSN_KEYVAULT="postgresql://keyvault_rw:$(KEYVAULT_RW_PASSWORD)@127.0.0.1:5432/surakshasetu_test" \
 	SS_TEST_PG_DSN_CATALOG_LOADER="postgresql://catalog_loader:$(CATALOG_LOADER_PASSWORD)@127.0.0.1:5432/surakshasetu_test" \
 	SS_TEST_PG_DSN_KB="$(PG_DSN_KB)" \
 	SS_TEST_PG_DSN_APP="postgresql://app_rw:$(APP_RW_PASSWORD)@127.0.0.1:5432/surakshasetu_test" \
-	$(MINIO_ENV)
+	SS_TEST_PG_DSN_ERASURE="postgresql://erasure_rw:$(ERASURE_RW_PASSWORD)@127.0.0.1:5432/surakshasetu_test" \
+	$(MINIO_ENV) $(DOMAIN_ENV)
 
 .PHONY: up down logs check check-py check-java check-stubs check-db check-stack check-contracts \
 	db-migrate seed-catalog contracts contracts-lint contract-test verify-audit gateway-up \
 	gateway-verify kb-ingest kb-verify kb-chunks check-ingest calibrate-retrieval eval-retrieval \
-	bakeoff-embed bakeoff-rerank test-invariants $(PLACEHOLDERS)
+	bakeoff-embed bakeoff-rerank test-invariants eval $(PLACEHOLDERS)
 
 # Postgres first, then the migrations, so domain-services finds its domain_rw role on a fresh
 # volume. `up --wait` treats an exited one-shot as a failure, so the one-shots run on their own.
@@ -169,12 +175,26 @@ check-db: db-migrate
 # operation and the spec's links, checking not_a_server_error and response_schema_conformance.
 # Needs `make up`. Consent records it creates land in the dev database.
 contract-test:
-	cd orchestrator && uv run --locked pytest -m stack tests/stack/test_domain_contract.py
+	@cd orchestrator && $(DOMAIN_ENV) uv run --locked pytest -m stack tests/stack/test_domain_contract.py
 
 # The stack-marked tests: the anchor against MinIO's object lock and the Schemathesis contract
 # tests. Needs `make up`.
 check-stack: db-migrate
 	@cd orchestrator && $(TEST_ENV) uv run --locked pytest -m stack
+
+# The golden conversations (Step 17; Step 23 adds the red-team suite) against the running stack: the
+# orchestrator in-process with its real lifespan, over the dev database (domain-services writes
+# consent there), valkey, domain-services and OmniRoute in front of the stubs. Each conversation's
+# rows (conv, checkpoints, audit, consent, its subject key) are deleted after its assertions; the
+# active prompt bundle's CONFIG_RELEASE stays. Needs `make up`, `make gateway-up` and
+# `make seed-catalog`.
+GOLDEN_ENV := SS_EVAL_PG_DSN_ADMIN="postgresql://postgres:$(POSTGRES_PASSWORD)@127.0.0.1:5432/surakshasetu" \
+	SS_PG_DSN_APP="$(PG_DSN_KB)" \
+	SS_PG_DSN_KEYVAULT="postgresql://keyvault_rw:$(KEYVAULT_RW_PASSWORD)@127.0.0.1:5432/surakshasetu" \
+	SS_PG_DSN_ERASURE="postgresql://erasure_rw:$(ERASURE_RW_PASSWORD)@127.0.0.1:5432/surakshasetu" \
+	SS_REDIS_URL="redis://127.0.0.1:6379/0" $(DOMAIN_ENV)
+eval: db-migrate
+	@cd orchestrator && $(GOLDEN_ENV) uv run --locked pytest -m "golden or redteam"
 
 # Verify every audit chain active on DATE (UTC) and anchor the day's Merkle root in MinIO and
 # audit.chain_anchor, as app_rw. DB=surakshasetu_test checks the test database instead.

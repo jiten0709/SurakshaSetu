@@ -1,6 +1,7 @@
 """One customer turn as one LangGraph run (TDD §1.4):
 
-load -> input -> route -> <state node> -> decide -> compose -> validate -> commit -> release
+load -> input -> route -> <state node | handler> -> decide -> [handler] -> compose -> validate
+-> commit -> release
 
 The runtime (graph/runtime.py) takes the single-writer lock and the rate limit before invoking the
 graph, because a run reads and writes the session's checkpoint even when its first node refuses.
@@ -10,7 +11,9 @@ returns a state update. One app_rw transaction spans the run: analyse_turn (Step
 rails.output.release (Step 14) append their audit events as they go, and commit adds the conv rows
 and RESPONSE_RELEASED, then commits. Nothing is released before that commit returns (I8), and the
 checkpoint is written after it (durability="exit"). The next state comes only from
-fsm.transition(), called in decide; edges never decide.
+fsm.transition(), called in decide; edges never decide. The cross-cutting handlers (graph/handlers/)
+run where the router or the transition sends them: a withdrawal or a safety signal skips the state
+node, and entering DATA_ERASURE, HUMAN_ESCALATION or PAUSE runs that handler before compose.
 """
 
 import dataclasses
@@ -51,6 +54,7 @@ from surakshasetu.gateway import Gateway, Route
 from surakshasetu.graph import states
 from surakshasetu.graph.facts import build_facts
 from surakshasetu.graph.gate import RedisGate
+from surakshasetu.graph.handlers import data_erasure, human_escalation, pause, safety
 from surakshasetu.graph.state import Frame, GraphState, SessionState, VersionPins
 from surakshasetu.rails import redact
 from surakshasetu.rails.output import LexiconPack, OutputContext, Released, release
@@ -60,7 +64,14 @@ from surakshasetu.uuid7 import uuid7
 
 logger = logging.getLogger(__name__)
 
-HANDLERS = ("withdraw_consent", "safety")  # cross-cutting handler stubs until Step 17
+# The turn router's pass-through handlers (they skip the state node), and the handlers decide
+# routes to when the transition enters their state.
+ROUTED = {"withdraw_consent": data_erasure.withdraw_consent, "safety": safety.node}
+ENTERED = {
+    "data_erasure": data_erasure.node,
+    "human_escalation": human_escalation.escalate,
+    "pause": pause.pause,
+}
 LANGUAGE = {"en-IN": "en", "hi-IN": "hi"}
 
 
@@ -106,6 +117,10 @@ class Turn:
     slots_pending: list[Any] = dataclasses.field(default_factory=list)  # validated by state nodes
     slot_rows: list[SlotRow] = dataclasses.field(default_factory=list)
     degraded: bool = False
+    safety: bool = False  # a self-harm signal: the crisis script leads the reply
+    # handlers: the template parts to send (id, text), and an erasure to run after the commit
+    parts: list[tuple[str, str]] = dataclasses.field(default_factory=list)
+    erasure: data_erasure.Reason | None = None
     # decide, compose, validate
     transition: Transition | None = None
     draft: str | None = None
@@ -268,14 +283,18 @@ async def input_node(state: GraphState, runtime: Runtime[Turn]) -> None:
 
 
 def turn_router(
-    session: SessionState, pipeline: PipelineResult | None, max_stack: int
+    session: SessionState,
+    pipeline: PipelineResult | None,
+    max_stack: int,
+    action: dict[str, Any] | None = None,
 ) -> tuple[str, Frame | None]:
-    """TDD §2.6: a withdrawal first (I5), then safety, then a side query pushes a frame."""
+    """TDD §2.6: a withdrawal first (I5; free text, or the ERASE action), then safety, then a side
+    query pushes a frame."""
     analysis = pipeline.analysis if pipeline else None
     intents = analysis.intents if analysis else []
-    if "META_WITHDRAW" in intents:
+    if "META_WITHDRAW" in intents or (action or {}).get("type") == data_erasure.ERASE:
         return "withdraw_consent", None
-    if "SAFETY" in intents or (pipeline is not None and pipeline.block_reason == "safety"):
+    if safety.signal(pipeline):
         return "safety", None
     if analysis is not None and analysis.side_query and len(session.stack) < max_stack:
         frame = Frame(
@@ -293,19 +312,14 @@ async def route(state: GraphState, runtime: Runtime[Turn]) -> Command[str]:
     session = _session(turn)
     if turn.pipeline is not None and turn.pipeline.analysis is not None:
         turn.slots_pending = list(turn.pipeline.analysis.slots)
-    goto, frame = turn_router(session, turn.pipeline, turn.settings.side_query_max_stack)
+    turn.safety = safety.signal(turn.pipeline)
+    goto, frame = turn_router(
+        session, turn.pipeline, turn.settings.side_query_max_stack, turn.action
+    )
     if frame is not None:
         session.stack = [*session.stack, frame]
     turn.routed = goto
     return Command(goto=goto)
-
-
-async def withdraw_consent(state: GraphState, runtime: Runtime[Turn]) -> None:
-    """Step 17: the erasure handler. decide still routes the withdrawal to DATA_ERASURE (CC1)."""
-
-
-async def safety(state: GraphState, runtime: Runtime[Turn]) -> None:
-    """Step 17: the safety handler. compose already answers with the crisis template."""
 
 
 async def side_query(state: GraphState, runtime: Runtime[Turn]) -> Command[str]:
@@ -318,7 +332,7 @@ async def side_query(state: GraphState, runtime: Runtime[Turn]) -> Command[str]:
 
 
 # --- decide ---------------------------------------------------------------------------------------
-async def decide(state: GraphState, runtime: Runtime[Turn]) -> None:
+async def decide(state: GraphState, runtime: Runtime[Turn]) -> Command[str]:
     turn = _turn(runtime)
     session, row = _session(turn), cast(SessionRow, turn.row)
     pipeline = turn.pipeline
@@ -327,6 +341,7 @@ async def decide(state: GraphState, runtime: Runtime[Turn]) -> None:
         pipeline.analysis if pipeline else None,
         pipeline.block_reason if pipeline else None,
         turn.settings,
+        action_type=(turn.action or {}).get("type"),
     )
     before = session.fsm_state
     result = transition(facts, before, turn.settings)
@@ -361,30 +376,56 @@ async def decide(state: GraphState, runtime: Runtime[Turn]) -> None:
         session.stack = session.stack[:-1]
     session.fsm_state = result.to
     turn.transition = result
+    return Command(goto=after_decide(turn, before))
+
+
+def after_decide(turn: Turn, before: FsmState) -> str:
+    """The handler for the state the transition entered, else compose. A withdrawal runs the
+    erasure even in a closed state, where the FSM stays (I5 is honoured outside it)."""
+    to = cast(Transition, turn.transition).to
+    if turn.routed == "withdraw_consent" or (
+        to is FsmState.DATA_ERASURE and before is not FsmState.DATA_ERASURE
+    ):
+        return "data_erasure"
+    if to is FsmState.HUMAN_ESCALATION and before is not FsmState.HUMAN_ESCALATION:
+        return "human_escalation"
+    if to is FsmState.PAUSE and before is not FsmState.PAUSE:
+        return "pause"
+    return "compose"
 
 
 # --- compose and validate -------------------------------------------------------------------------
-def template(template_id: str, text: str) -> Rendered:
-    return Rendered(text, text_sha256(text), [(f"template:{template_id}", text)], {}, [], {}, {})
+def templates(parts: list[tuple[str, str]]) -> Rendered:
+    """Template parts as one message: the texts joined by a blank line, hashed as released (I8)."""
+    text = "\n\n".join(t for _, t in parts)
+    return Rendered(
+        text, text_sha256(text), [(f"template:{i}", t) for i, t in parts], {}, [], {}, {}
+    )
 
 
 async def compose(state: GraphState, runtime: Runtime[Turn]) -> None:
     """Template-only until the state steps add cited generation (they set draft, regenerate and
-    render, and append MODEL_CALL)."""
+    render, and append MODEL_CALL). A handler's parts come first; a safety signal puts the crisis
+    script before whatever else the turn says."""
     turn = _turn(runtime)
     session = _session(turn)
     await _status(turn, "composing")
     scripts = cast(PromptBundle, turn.bundle).templates[session.locale].scripts
-    if turn.pipeline is not None and turn.pipeline.overlong:
-        chosen = ("ask_to_shorten", scripts.ask_to_shorten)
-    elif turn.routed == "safety":
-        chosen = ("safety", scripts.safety)
+    chosen: list[tuple[str, str]]
+    if turn.parts:
+        chosen = list(turn.parts)
+    elif turn.pipeline is not None and turn.pipeline.overlong:
+        chosen = [("ask_to_shorten", scripts.ask_to_shorten)]
     elif turn.degraded:
-        chosen = ("release_blocked", scripts.release_blocked)
+        chosen = [("release_blocked", scripts.release_blocked)]
+    elif turn.routed == "safety":
+        chosen = []
     else:
-        chosen = ("advisor_offer", scripts.advisor_offer)
+        chosen = [("advisor_offer", scripts.advisor_offer)]
+    if turn.safety:
+        chosen = [("safety", scripts.safety), *chosen]
     turn.draft = None
-    turn.render = lambda _narrative: template(*chosen)
+    turn.render = lambda _narrative: templates(chosen)
 
 
 async def _no_regeneration(errors: list[str]) -> str | None:
@@ -530,7 +571,7 @@ async def commit(state: GraphState, runtime: Runtime[Turn]) -> dict[str, Any]:
         counters=session.counters,
         pins=session.pins.model_dump(mode="json"),
         locale=session.locale,
-        status=session_status(session.fsm_state),
+        status="erased" if turn.erasure else session_status(session.fsm_state),
         consent_id=consent_id,
     )
     rendered = released.rendered
@@ -574,23 +615,24 @@ def build_graph(checkpointer: BaseCheckpointSaver[Any] | None) -> CompiledStateG
     state_names = tuple(s.value for s in FsmState)
     graph.add_node("load", load, destinations=("input", END))
     graph.add_node("input", input_node)
-    graph.add_node("route", route, destinations=(*HANDLERS, "side_query", *state_names))
-    graph.add_node("withdraw_consent", withdraw_consent)
-    graph.add_node("safety", safety)
+    graph.add_node("route", route, destinations=(*ROUTED, "side_query", *state_names))
     graph.add_node("side_query", side_query, destinations=state_names)
     for fsm_state, node in states.NODES.items():
-        graph.add_node(fsm_state.value, states.guarded(fsm_state.value, node))
+        graph.add_node(fsm_state.value, states.wrapped(fsm_state, node))
         graph.add_edge(fsm_state.value, "decide")
-    graph.add_node("decide", decide)
+    for name, handler in ROUTED.items():
+        graph.add_node(name, handler)
+        graph.add_edge(name, "decide")
+    graph.add_node("decide", decide, destinations=(*ENTERED, "compose"))
+    for name, handler in ENTERED.items():
+        graph.add_node(name, handler)
+        graph.add_edge(name, "compose")
     graph.add_node("compose", compose)
     graph.add_node("validate", validate)
     graph.add_node("commit", commit)
     graph.add_node("release", release_node)
     graph.add_edge(START, "load")
     graph.add_edge("input", "route")
-    for handler in HANDLERS:
-        graph.add_edge(handler, "decide")
-    graph.add_edge("decide", "compose")
     graph.add_edge("compose", "validate")
     graph.add_edge("validate", "commit")
     graph.add_edge("commit", "release")

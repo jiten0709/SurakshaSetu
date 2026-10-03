@@ -1,0 +1,8 @@
+id: minor
+description: >-
+  P1 granted with the 18+ box unticked (V2): CC1b erases at the first turn, the polite exit is
+  shown, and the subject key is destroyed at once.
+given: {consent: {purposes: [P1], adult: false}}
+turns:
+  - text: hi there
+    expect: {state: DATA_ERASURE, templates: [minor_exit], events: [ERASURE_REQUEST], erased: destroyed}

@@ -16,6 +16,8 @@ REQUIRED_OUTSIDE_DEV = (
     "domain_internal_token",
     "ops_api_key",
     "compliance_api_key",
+    "advisor_api_key",
+    "pg_dsn_erasure",
     "kek_b64",
     "pg_dsn_keyvault",
     "minio_endpoint",
@@ -55,6 +57,7 @@ class Settings(BaseSettings):
     # Internal endpoints (Step 16): one API key per role, sent as a bearer. SSO in prod.
     ops_api_key: SecretStr = SecretStr("surakshasetu-dev-ops-key")
     compliance_api_key: SecretStr = SecretStr("surakshasetu-dev-compliance-key")
+    advisor_api_key: SecretStr = SecretStr("surakshasetu-dev-advisor-key")  # Step 17: hand-offs
     # Subject keys (Step 4). The dev KEK is 32 public bytes; the DSN is the compose dummy.
     kek_b64: SecretStr = SecretStr("c3VyYWtzaGFzZXR1LWRldi1rZWstbm90LXNlY3JldCE=")
     pg_dsn_keyvault: SecretStr = SecretStr(
@@ -109,7 +112,7 @@ class Settings(BaseSettings):
     # session TTL (TDD §4.4, D7 open); the single-writer lock and idempotency TTLs (TDD §7.2); turn
     # rate limits per subject as {window seconds: max turns}; the side-query stack depth (TDD §2.6);
     # injection hits before HE_INJECTION (TDD §3.9); the app_rw pool size per process.
-    prompt_bundle: str = Field(default="pb-2026.09.1", pattern=r"^pb-\d{4}\.\d{2}\.\d+$")
+    prompt_bundle: str = Field(default="pb-2026.10.1", pattern=r"^pb-\d{4}\.\d{2}\.\d+$")
     session_ttl_days: int = Field(default=30, ge=1)
     session_lock_ttl_s: int = Field(default=30, ge=1)
     idempotency_ttl_s: int = Field(default=86_400, ge=1)
@@ -117,6 +120,16 @@ class Settings(BaseSettings):
     side_query_max_stack: int = Field(default=2, ge=0)
     injection_hit_limit: int = Field(default=3, ge=1)
     pg_pool_max: int = Field(default=20, ge=1)
+    # Cross-cutting handlers (Step 17). Erasure hard-deletes live conv and checkpoint rows as
+    # erasure_rw, never app_rw. A subject key is destroyed when the longest applicable retention
+    # ends (TDD §4.4): the audit hot store's proposed 13 months, as days that always cover 13
+    # calendar months (D7 open). A closed advisor queue still queues the hand-off, and the customer
+    # gets contact options instead of the hand-off script.
+    pg_dsn_erasure: SecretStr = SecretStr(
+        "postgresql://erasure_rw:surakshasetu-dev-erasure-rw@127.0.0.1:5432/surakshasetu"
+    )
+    key_retention_days: int = Field(default=397, ge=1)
+    advisor_queue_open: bool = True
 
     @model_validator(mode="after")
     def _require_dependencies_outside_dev(self) -> Self:

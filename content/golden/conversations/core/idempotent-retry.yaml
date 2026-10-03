@@ -1,0 +1,8 @@
+id: idempotent-retry
+description: A retry with the same Idempotency-Key replays the committed bytes; a new key is a new turn.
+turns:
+  - text: hello
+    expect: {state: S0}
+  - retry: true
+  - text: hello
+    expect: {state: S0}

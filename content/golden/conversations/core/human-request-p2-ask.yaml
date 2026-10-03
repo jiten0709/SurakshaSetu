@@ -1,0 +1,12 @@
+id: human-request-p2-ask
+description: >-
+  With P1 but not P2, the escalation asks for advisor contact first and shares nothing; the grant
+  is recorded by the Consent Service and the redacted briefing is handed off once.
+given: {consent: {purposes: [P1]}, state: S1}
+turns:
+  - text: I'd rather a person called me on 9876543210
+    script: {nlu-extract: [{intents: [META_HUMAN]}]}
+    expect: {state: HUMAN_ESCALATION, templates: [advisor_consent_ask]}
+  - action: {type: ADVISOR_CONTACT, payload: {granted: true}}
+    expect: {state: HUMAN_ESCALATION, templates: [handoff], events: [CONSENT_CAPTURED, HANDOFF], handoff: HE_REQUEST}
+  - retry: true

@@ -1,0 +1,8 @@
+id: pause-resume-expired
+description: >-
+  Resuming after the consent TTL lapsed: the refreshed record is no longer valid, so G1 re-enters
+  S0 (TDD §3.5).
+given: {consent: {purposes: [P1], captured_days_ago: 31}, state: PAUSE, paused_from: S2}
+turns:
+  - text: hi, I'm back
+    expect: {state: S0, templates: [advisor_offer]}

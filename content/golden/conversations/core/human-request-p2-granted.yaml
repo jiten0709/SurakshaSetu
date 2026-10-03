@@ -1,0 +1,7 @@
+id: human-request-p2-granted
+description: With P2 already granted, the escalation hands off at once.
+given: {consent: {purposes: [P1, P2]}, state: S2}
+turns:
+  - text: please get me a human advisor
+    script: {nlu-extract: [{intents: [META_HUMAN]}]}
+    expect: {state: HUMAN_ESCALATION, templates: [handoff], events: [HANDOFF], handoff: HE_REQUEST}

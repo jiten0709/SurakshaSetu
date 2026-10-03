@@ -30,6 +30,8 @@ AUTH_ENV = {
     "SS_DOMAIN_INTERNAL_TOKEN": "internal-token",
     "SS_OPS_API_KEY": "ops-key",
     "SS_COMPLIANCE_API_KEY": "compliance-key",
+    "SS_ADVISOR_API_KEY": "advisor-key",
+    "SS_PG_DSN_ERASURE": "postgresql://erasure_rw:x@postgres:5432/surakshasetu",
 }
 
 
@@ -197,7 +199,7 @@ def test_pilot_requires_the_internal_token_and_role_keys(monkeypatch: pytest.Mon
 
 def test_the_runtime_settings_have_safe_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     settings = load_settings()
-    assert settings.prompt_bundle == "pb-2026.09.1"
+    assert settings.prompt_bundle == "pb-2026.10.1"
     assert (settings.session_ttl_days, settings.session_lock_ttl_s) == (30, 30)
     assert settings.idempotency_ttl_s == 86_400
     assert settings.rate_limits == {60: 20, 3600: 200}
@@ -207,10 +209,24 @@ def test_the_runtime_settings_have_safe_defaults(monkeypatch: pytest.MonkeyPatch
     assert load_settings().rate_limits == {10: 2}
 
 
+def test_the_handler_settings_have_safe_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
+    settings = load_settings()
+    assert "erasure_rw" in settings.pg_dsn_erasure.get_secret_value()
+    assert settings.key_retention_days == 397  # at least 13 calendar months (TDD §4.4)
+    assert settings.advisor_queue_open is True
+
+    monkeypatch.setenv("SS_ADVISOR_QUEUE_OPEN", "false")
+    monkeypatch.setenv("SS_KEY_RETENTION_DAYS", "0")
+    with pytest.raises(ConfigError, match="SS_KEY_RETENTION_DAYS"):
+        load_settings()
+    monkeypatch.setenv("SS_KEY_RETENTION_DAYS", "400")
+    assert load_settings().advisor_queue_open is False
+
+
 @pytest.mark.parametrize(
     ("name", "value"),
     [
-        ("SS_PROMPT_BUNDLE", "../pb-2026.09.1"),
+        ("SS_PROMPT_BUNDLE", "../pb-2026.10.1"),
         ("SS_SESSION_LOCK_TTL_S", "0"),
         ("SS_RATE_LIMITS", "not-json"),
     ],

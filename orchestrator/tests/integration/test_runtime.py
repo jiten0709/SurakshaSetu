@@ -5,7 +5,6 @@ replay returns the same bytes. The model routes and the domain tier answer throu
 httpx.MockTransport and the Redis gate is in memory. Run with `make check-db`."""
 
 import json
-import os
 from collections.abc import AsyncIterator, Iterator
 from typing import Any
 from uuid import UUID
@@ -15,9 +14,7 @@ import psycopg
 import pytest
 import pytest_asyncio
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
-from psycopg.rows import dict_row
-from psycopg_pool import AsyncConnectionPool, ConnectionPool
-from runtime_support import FakeGate, Models, domain, gateway, settings
+from runtime_support import db_runtime
 
 from surakshasetu.api.app import create_app
 from surakshasetu.audit.chain import SYSTEM_SESSION, verify_session
@@ -25,20 +22,12 @@ from surakshasetu.crypto.keys import LocalKeyService
 from surakshasetu.graph.nodes import build_graph
 from surakshasetu.graph.runtime import ProblemError, Runtime
 from surakshasetu.logging import configure_logging
-from surakshasetu.rails.output import load_pack
 from surakshasetu.store import conv as store
 from surakshasetu.uuid7 import uuid7
 
 pytestmark = pytest.mark.db
 
 SENTINEL_TEXT = "my PAN is ABCDE1234F and I live at 42 Sentinel Lane"
-
-
-def app_dsn() -> str:
-    dsn = os.environ.get("SS_TEST_PG_DSN_APP")
-    if not dsn:
-        pytest.fail("SS_TEST_PG_DSN_APP is not set; run `make up && make check-db`")
-    return dsn
 
 
 class NoCheckpoint(AsyncPostgresSaver):
@@ -68,38 +57,8 @@ def created(admin_dsn: str) -> Iterator[list[UUID]]:
 
 @pytest_asyncio.fixture
 async def runtime(keys: LocalKeyService) -> AsyncIterator[Runtime]:
-    dsn = app_dsn()
-    saver_pool: AsyncConnectionPool[Any] = AsyncConnectionPool(
-        dsn,
-        min_size=1,
-        max_size=4,
-        open=False,
-        kwargs={
-            "autocommit": True,
-            "row_factory": dict_row,
-            "prepare_threshold": 0,
-            "options": "-c search_path=langgraph",
-        },
-    )
-    await saver_pool.open()
-    config = settings()
-    try:
-        with ConnectionPool(dsn, min_size=1, max_size=4) as pool:
-            async with gateway(Models(), config) as gw, domain() as dom:
-                rt = Runtime(
-                    config,
-                    pool=pool,
-                    keys=keys,
-                    gate=FakeGate(),  # type: ignore[arg-type]
-                    domain=dom,
-                    gateway=gw,
-                    pack=load_pack(config.output_lexicon),
-                    graph=build_graph(AsyncPostgresSaver(saver_pool)),
-                )
-                rt.saver_pool = saver_pool  # type: ignore[attr-defined]
-                yield rt
-    finally:
-        await saver_pool.close()
+    async with db_runtime(keys) as rt:
+        yield rt
 
 
 async def new_session(runtime: Runtime, created: list[UUID]) -> tuple[Any, str]:

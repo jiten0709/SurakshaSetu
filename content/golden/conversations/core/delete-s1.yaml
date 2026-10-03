@@ -1,0 +1,11 @@
+id: delete-s1
+description: >-
+  DELETE /v1/sessions/{id} takes the same path as a withdrawal; a repeat finds no session.
+given: {consent: {purposes: [P1]}, state: S1}
+turns:
+  - text: hello
+    expect: {state: S1, templates: [advisor_offer]}
+  - delete: true
+    expect: {state: DATA_ERASURE, templates: [erasure_done], events: [ERASURE_REQUEST, CONSENT_WITHDRAWN], erased: scheduled}
+  - retry: true
+    expect: {status: 401}

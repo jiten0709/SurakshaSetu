@@ -1,0 +1,10 @@
+id: crash-hydrate
+description: >-
+  The process dies after a turn's commit, before its checkpoint: the next turn hydrates from conv,
+  and the record stays whole.
+turns:
+  - text: hello
+  - text: second message
+    checkpoint_lost: true
+  - text: third message
+    expect: {state: S0, templates: [advisor_offer], hydrated: true}

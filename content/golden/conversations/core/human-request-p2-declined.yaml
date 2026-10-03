@@ -1,0 +1,9 @@
+id: human-request-p2-declined
+description: P2 declined - contact options, and nothing reaches an advisor.
+given: {consent: {purposes: [P1]}, state: S1}
+turns:
+  - text: I want to talk to someone
+    script: {nlu-extract: [{intents: [META_HUMAN]}]}
+    expect: {state: HUMAN_ESCALATION, templates: [advisor_consent_ask]}
+  - action: {type: ADVISOR_CONTACT, payload: {granted: false}}
+    expect: {state: HUMAN_ESCALATION, templates: [contact_options]}

@@ -96,7 +96,7 @@ def ctx(**update: Any) -> OutputContext:
         turn_id=TURN,
         subject_ref=SUBJECT,
         fsm_state="S3",
-        pins={"prompt_bundle": "pb-2026.09.1"},
+        pins={"prompt_bundle": "pb-2026.10.1"},
         key_ref="key-ref",
         locale="en-IN",
         route=Route.GEN_RECOMMEND,

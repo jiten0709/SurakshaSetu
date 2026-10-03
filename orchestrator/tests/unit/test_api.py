@@ -14,9 +14,10 @@ from runtime_support import FakeGate, settings
 
 from surakshasetu.api.app import BODY_LIMIT, create_app
 from surakshasetu.audit.chain import VerifyResult
+from surakshasetu.graph.handlers import data_erasure
 from surakshasetu.graph.runtime import ProblemError, Runtime
 from surakshasetu.store import conv as store
-from surakshasetu.store.conv import SessionRow
+from surakshasetu.store.conv import HandoffRow, SessionRow
 
 SID = UUID("0199a1b2-0000-7000-8000-00000000c0de")
 OTHER = UUID("0199a1b2-0000-7000-8000-00000000dead")
@@ -50,12 +51,16 @@ class FakeGraph:
         self.calls = 0
         self.error: BaseException | None = None
         self.commit_first = False
+        self.actions: list[Any] = []
 
     async def ainvoke(self, graph_input: Any, config: Any, *, context: Any, durability: str) -> Any:
         self.calls += 1
+        self.actions.append(context.action)
         assert durability == "exit" and config["configurable"]["thread_id"] == str(SID)
         if self.commit_first or self.error is None:
             context.response = BODY
+            if (context.action or {}).get("type") == "ERASE":
+                context.erasure = "WITHDRAW"  # the data_erasure handler ran
         if self.error is not None:
             raise self.error
         return {}
@@ -90,6 +95,7 @@ def runtime(monkeypatch: pytest.MonkeyPatch) -> Runtime:
     rt = Runtime(
         settings(),
         pool=FakePool(),  # type: ignore[arg-type]
+        erasure=None,  # type: ignore[arg-type]
         keys=None,  # type: ignore[arg-type]
         gate=FakeGate(),  # type: ignore[arg-type]
         domain=None,  # type: ignore[arg-type]
@@ -320,3 +326,111 @@ async def test_a_product_kill_switch_cannot_be_reversed(runtime: Runtime) -> Non
     with pytest.raises(ProblemError) as excinfo:
         await runtime.kill_switch("product", "999N001V02", False, "MISTAKE", "ops")
     assert excinfo.value.code == "KILL_SWITCH_IRREVERSIBLE"
+
+
+# --- erasure (Step 17) ----------------------------------------------------------------------------
+@pytest.fixture
+def erasures(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
+    calls: list[dict[str, Any]] = []
+
+    def erase(pool: Any, keys: Any, settings: Any, **kwargs: Any) -> None:
+        calls.append(kwargs)
+
+    async def sweep(*args: Any) -> None:
+        calls.append({"sweep": True})
+
+    monkeypatch.setattr(data_erasure, "erase", erase)
+    monkeypatch.setattr(data_erasure, "sweep", sweep)
+    return calls
+
+
+def test_delete_runs_the_erase_action_then_erases_after_the_commit(
+    client: TestClient, runtime: Runtime, erasures: list[dict[str, Any]]
+) -> None:
+    response = client.delete(f"/v1/sessions/{SID}", headers={"Authorization": f"Bearer {GOOD}"})
+
+    assert response.status_code == 200 and response.json() == BODY
+    assert runtime.graph.actions == [{"type": "ERASE", "payload": {}}]  # type: ignore[attr-defined]
+    assert erasures == [
+        {"session_id": SID, "key_ref": "key-ref", "minor": False},
+        {"sweep": True},
+    ]
+    assert runtime.gate.released == [SID]  # type: ignore[attr-defined]  # still under the lock
+
+
+def test_delete_needs_the_session_token(
+    client: TestClient, runtime: Runtime, erasures: list[dict[str, Any]]
+) -> None:
+    assert_problem(client.delete(f"/v1/sessions/{SID}"), 401, "UNAUTHORIZED")
+    assert runtime.graph.calls == 0 and erasures == []  # type: ignore[attr-defined]
+
+
+def test_a_failed_erase_after_the_commit_still_releases(
+    client: TestClient, runtime: Runtime, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def broken(*args: Any, **kwargs: Any) -> None:
+        raise psycopg.OperationalError("erasure_rw down")
+
+    async def sweep(*args: Any) -> None:
+        pass
+
+    monkeypatch.setattr(data_erasure, "erase", broken)
+    monkeypatch.setattr(data_erasure, "sweep", sweep)
+
+    response = client.delete(f"/v1/sessions/{SID}", headers={"Authorization": f"Bearer {GOOD}"})
+
+    assert response.status_code == 200 and response.json() == BODY  # committed: released
+
+
+def test_an_erased_session_is_refused_like_an_unknown_one(
+    client: TestClient, runtime: Runtime
+) -> None:
+    runtime.sessions[SID] = row(status="erased")  # type: ignore[attr-defined]
+
+    assert_problem(turn(client), 401, "UNAUTHORIZED")
+    assert runtime.graph.calls == 0  # type: ignore[attr-defined]
+
+
+# --- hand-offs (Step 17) --------------------------------------------------------------------------
+def test_the_handoff_queue_and_briefing_need_the_advisor_key(
+    client: TestClient, runtime: Runtime, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    now = datetime.now(UTC)
+    queued = HandoffRow(OTHER, SID, "HE_REQUEST", "advisor", now, None)
+    queues: list[str] = []
+
+    async def handoffs(queue: str) -> list[HandoffRow]:
+        queues.append(queue)
+        return [queued]
+
+    async def handoff(handoff_id: UUID) -> tuple[HandoffRow, dict[str, Any]]:
+        if handoff_id != OTHER:
+            raise ProblemError(404, "NOT_FOUND")
+        return queued, {"reason_code": "HE_REQUEST", "profile": {}}
+
+    monkeypatch.setattr(runtime, "handoffs", handoffs)
+    monkeypatch.setattr(runtime, "handoff", handoff)
+    advisor = {"Authorization": "Bearer surakshasetu-dev-advisor-key"}
+    ops = {"Authorization": "Bearer surakshasetu-dev-ops-key"}
+
+    listed = client.get("/internal/handoffs?queue=care", headers=advisor)
+    assert listed.status_code == 200 and queues == ["care"]
+    assert listed.json() == [
+        {
+            "handoff_id": str(OTHER),
+            "session_id": str(SID),
+            "reason_code": "HE_REQUEST",
+            "queue": "advisor",
+            "created_at": now.isoformat(),
+            "picked_at": None,
+        }
+    ]
+    assert "briefing" not in listed.json()[0]
+    detail = client.get(f"/internal/handoffs/{OTHER}", headers=advisor)
+    assert detail.json()["briefing"] == {"reason_code": "HE_REQUEST", "profile": {}}
+    assert_problem(client.get(f"/internal/handoffs/{SID}", headers=advisor), 404, "NOT_FOUND")
+    assert_problem(client.get(f"/internal/handoffs/{OTHER}", headers=ops), 403, "FORBIDDEN")
+    assert_problem(client.get("/internal/handoffs", headers=ops), 403, "FORBIDDEN")
+    assert_problem(client.get("/internal/handoffs"), 401, "UNAUTHORIZED")
+    bad_queue = client.get("/internal/handoffs?queue=../x", headers=advisor)
+    assert bad_queue.status_code == 400 and "../x" not in bad_queue.text

@@ -133,6 +133,14 @@ class Scripts(_Strict):
     handoff: str
     safety: str
     ai_redisclosure: str
+    # The cross-cutting handlers (Step 17, pb-2026.10.1 on). Required, so pb-2026.09.1 no longer
+    # loads: it was retired by a kill switch, which re-pins its sessions (I7's exception).
+    erasure_done: str  # withdrawal recorded (or no consent), data deleted, what is kept and why
+    erasure_pending: str  # data deleted, the Consent Service withdrawal still to be recorded
+    minor_exit: str  # under 18: the polite exit, nothing kept
+    contact_options: str  # no consent, P2 declined, or a closed advisor queue
+    advisor_consent_ask: str  # P2, asked before any data reaches an advisor
+    paused: str
     side_query_caveat: dict[str, str]  # fsm state -> caveat
     labels: Labels
 

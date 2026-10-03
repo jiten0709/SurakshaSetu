@@ -55,7 +55,11 @@ def build_facts(
     analysis: TurnAnalysis | None,
     block_reason: Literal["injection", "safety"] | None,
     settings: Settings,
+    *,
+    action_type: str | None = None,
 ) -> Facts:
+    """action_type: a structured action's type. ERASE (and DELETE /v1/sessions/{id}) is a
+    withdrawal that needs no language analysis."""
     intents = set(analysis.intents) if analysis else set()
     record = session.consent
     engine = session.eligibility.engine if session.eligibility else None
@@ -110,7 +114,7 @@ def build_facts(
             if session.fsm_state is FsmState.PAUSE and session.stack
             else None
         ),
-        withdraw=Intent.META_WITHDRAW in intents,
+        withdraw=Intent.META_WITHDRAW in intents or action_type == "ERASE",
         human_request=Intent.META_HUMAN in intents,
         frustration=Intent.FRUSTRATION in intents,
         low_confidence_streak=counters.get("low_confidence_streak", 0),

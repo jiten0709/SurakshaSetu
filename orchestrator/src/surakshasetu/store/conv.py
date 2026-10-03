@@ -302,6 +302,50 @@ def insert_handoff(
     return handoff_id
 
 
+@dataclasses.dataclass(frozen=True)
+class HandoffRow:
+    handoff_id: UUID
+    session_id: UUID
+    reason_code: str
+    queue: str
+    created_at: datetime
+    picked_at: datetime | None
+
+
+def has_handoff(conn: Conn, session_id: UUID) -> bool:
+    row = conn.execute(
+        "SELECT EXISTS (SELECT 1 FROM conv.handoff WHERE session_id = %s)", (session_id,)
+    ).fetchone()
+    return bool(row and row[0])
+
+
+def list_handoffs(conn: Conn, queue: str) -> list[HandoffRow]:
+    """The queue, oldest first. Metadata only: the briefing stays encrypted."""
+    with conn.cursor(row_factory=class_row(HandoffRow)) as cur:
+        return cur.execute(
+            "SELECT handoff_id, session_id, reason_code, queue, created_at, picked_at"
+            " FROM conv.handoff WHERE queue = %s ORDER BY created_at, handoff_id",
+            (queue,),
+        ).fetchall()
+
+
+def get_handoff(
+    conn: Conn, keys: KeyService, handoff_id: UUID
+) -> tuple[HandoffRow, dict[str, Any]] | None:
+    """The row and its decrypted briefing. Raises KeyDestroyed for a shredded subject."""
+    found = conn.execute(
+        "SELECT h.handoff_id, h.session_id, h.reason_code, h.queue, h.created_at, h.picked_at,"
+        " h.payload_enc, s.key_ref FROM conv.handoff h JOIN conv.session s USING (session_id)"
+        " WHERE h.handoff_id = %s",
+        (handoff_id,),
+    ).fetchone()
+    if found is None:
+        return None
+    *columns, payload_enc, key_ref = found
+    briefing = envelope.decrypt(keys.dek(key_ref), bytes(payload_enc), f"conv.handoff:{handoff_id}")
+    return HandoffRow(*columns), json.loads(briefing)
+
+
 def insert_kill_switch(
     conn: Conn, *, kind: str, target: str, active: bool, reason: str, actor: str
 ) -> UUID:

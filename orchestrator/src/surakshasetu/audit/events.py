@@ -125,6 +125,10 @@ class HandoffHeader(Header):
 
 class ErasureRequestHeader(Header):
     reason_code: str
+    # Step 17: whether the Consent Service recorded the withdrawal in this turn. "pending" (the
+    # service was down) is retried later, and a CONSENT_WITHDRAWN follows on success.
+    consent_id: UUID | None = None
+    consent_withdrawal: Literal["done", "pending", "none"] = "none"
 
 
 # Approver identities are staff personal data: they go in the payload, under the system key.

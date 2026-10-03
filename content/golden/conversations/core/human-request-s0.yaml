@@ -1,0 +1,6 @@
+id: human-request-s0
+description: A human request before consent - contact options only, and no data shared.
+turns:
+  - text: can I speak to a real advisor?
+    script: {nlu-extract: [{intents: [META_HUMAN]}]}
+    expect: {state: HUMAN_ESCALATION, templates: [contact_options], events: [STATE_TRANSITION]}

@@ -1,7 +1,7 @@
 """The Conversation API against the running stack: the app in-process with its real lifespan
 (Runtime.open), real valkey, domain-services, OmniRoute -> stubs, and the test database. Needs
-`make up`, `make gateway-up` and `make check-stack`'s env (SS_TEST_PG_DSN_ADMIN, _KEYVAULT, _APP);
-SS_TEST_REDIS_URL defaults to the compose valkey."""
+`make up`, `make gateway-up` and `make check-stack`'s env (SS_TEST_PG_DSN_ADMIN, _KEYVAULT, _APP,
+_ERASURE); SS_TEST_REDIS_URL defaults to the compose valkey."""
 
 import asyncio
 import os
@@ -38,6 +38,7 @@ def stack_settings() -> Settings:
         _env_file=None,
         pg_dsn_app=SecretStr(env("SS_TEST_PG_DSN_APP")),
         pg_dsn_keyvault=SecretStr(env("SS_TEST_PG_DSN_KEYVAULT")),
+        pg_dsn_erasure=SecretStr(env("SS_TEST_PG_DSN_ERASURE")),
         redis_url=SecretStr(REDIS_URL),
     )
 
