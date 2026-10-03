@@ -137,6 +137,7 @@ class RankingApiTest extends DomainApiTestSupport {
       assertThat(strings(fixture, "reason_codes")).contains("RATING_UNAVAILABLE");
 
       api(post("/v1/catalog/products/" + FIXTURE + "/kill-switch")
+              .header("X-Internal-Token", INTERNAL_TOKEN)
               .contentType(MediaType.APPLICATION_JSON)
               .content("{\"reason\":\"test\",\"actor\":\"ops-test\"}"))
           .andExpect(status().isOk());

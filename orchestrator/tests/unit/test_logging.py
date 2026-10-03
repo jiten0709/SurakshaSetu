@@ -116,3 +116,18 @@ async def test_a_real_domain_call_leaks_no_pincode_anywhere(
     assert "getPincode" in stdout and "getPincode" in files
     for leaked in (PINCODE, "/v1/", "t0ken"):
         assert leaked not in stdout + files
+
+
+@pytest.mark.usefixtures("restore_logging")
+def test_uvicorn_access_lines_never_log_a_session_path(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # uvicorn logs each request line at INFO; /v1/sessions/{id}/turns carries the session id.
+    configure_logging("DEBUG", tmp_path)
+    path = "/v1/sessions/0199a1b2-0000-7000-8000-00000000c0de/turns"
+
+    logging.getLogger("uvicorn.access").info(
+        '%s - "%s %s HTTP/%s" %d', "127.0.0.1:1", "POST", path, "1.1", 200
+    )
+
+    assert path not in capsys.readouterr().out + _all_text(tmp_path)

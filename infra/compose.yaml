@@ -162,6 +162,11 @@ services:
       SPRING_DATASOURCE_PASSWORD: ${DOMAIN_RW_PASSWORD:-surakshasetu-dev-domain-rw}
       SURAKSHASETU_CATALOGLOADER_PASSWORD: ${CATALOG_LOADER_PASSWORD:-surakshasetu-dev-catalog-loader}
       SURAKSHASETU_SEED_DIR: /content/seed
+      # Step 16 (common/ServiceAuth): the bearer token every /v1 operation needs, equal to the
+      # orchestrator's SS_DOMAIN_TOKEN, and the kill switch's internal-scope token, equal to its
+      # SS_DOMAIN_INTERNAL_TOKEN. The health check needs neither.
+      SURAKSHASETU_AUTH_SERVICETOKEN: ${DOMAIN_TOKEN:-surakshasetu-dev-domain-token}
+      SURAKSHASETU_AUTH_INTERNALTOKEN: ${DOMAIN_INTERNAL_TOKEN:-surakshasetu-dev-domain-internal-token}
     # Read by `make seed-catalog` (profile catalog-sync) only.
     volumes:
       - ../content/seed:/content/seed:ro

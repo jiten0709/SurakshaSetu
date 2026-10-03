@@ -59,8 +59,8 @@ class CatalogController implements CatalogApi {
   /**
    * Withdraws a product from sale today (IST). Idempotent: a product already withdrawn keeps its
    * earlier effective_to. The orchestrator audits the call (KILL_SWITCH); this tier never audits.
+   * Internal scope: common/ServiceAuth refuses a call without the internal token (403).
    */
-  // Carry-over: "internal scope" is not enforced yet; this tier verifies no token at all.
   @Override
   public ResponseEntity<KillSwitchResult> setProductKillSwitch(String uin, KillSwitch killSwitch) {
     int updated =

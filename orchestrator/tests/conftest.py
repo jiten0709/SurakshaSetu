@@ -60,3 +60,20 @@ def keys() -> Iterator[LocalKeyService]:
     kek = base64.b64decode(Settings(_env_file=None).kek_b64.get_secret_value())
     with ConnectionPool(_env("SS_TEST_PG_DSN_KEYVAULT"), min_size=1) as pool:
         yield LocalKeyService(pool, kek)
+
+
+@pytest.fixture
+def system_chain_tail(admin_dsn: str) -> Iterator[None]:
+    """For tests that commit on the system chain (a runtime's CONFIG_RELEASE, a KILL_SWITCH): the
+    events they add are removed afterwards, tail only, so the chain still verifies and the db
+    tests see the test database's system chain as they left it."""
+    system = "00000000-0000-0000-0000-000000000000"
+    query = "SELECT coalesce(max(seq), 0) FROM audit.audit_event WHERE session_id = %s"
+    with psycopg.connect(admin_dsn, autocommit=True) as conn:
+        row = conn.execute(query, (system,)).fetchone()
+    before = row[0] if row else 0
+    yield
+    with psycopg.connect(admin_dsn, autocommit=True) as conn:
+        conn.execute(
+            "DELETE FROM audit.audit_event WHERE session_id = %s AND seq > %s", (system, before)
+        )

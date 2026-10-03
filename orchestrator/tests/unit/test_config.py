@@ -25,6 +25,12 @@ GATEWAY_ENV = {
 }
 # Step 11's knowledge base.
 KB_ENV = {"SS_QDRANT_URL": "http://qdrant.internal:6333"}
+# Step 16: the domain tier's internal scope and the internal endpoints' role keys.
+AUTH_ENV = {
+    "SS_DOMAIN_INTERNAL_TOKEN": "internal-token",
+    "SS_OPS_API_KEY": "ops-key",
+    "SS_COMPLIANCE_API_KEY": "compliance-key",
+}
 
 
 @pytest.fixture(autouse=True)
@@ -71,7 +77,7 @@ def test_dev_domain_token_default_is_refused_outside_dev(monkeypatch: pytest.Mon
     monkeypatch.setenv("SS_ENV", "pilot")
     monkeypatch.setenv("SS_PG_DSN_APP", "postgresql://app_rw:x@postgres:5432/surakshasetu")
     monkeypatch.setenv("SS_REDIS_URL", "redis://valkey:6379/0")
-    for name, value in (KEY_AND_ANCHOR_ENV | GATEWAY_ENV | KB_ENV).items():
+    for name, value in (KEY_AND_ANCHOR_ENV | GATEWAY_ENV | KB_ENV | AUTH_ENV).items():
         monkeypatch.setenv(name, value)
 
     with pytest.raises(ConfigError, match="requires SS_DOMAIN_TOKEN$"):
@@ -133,7 +139,7 @@ def test_the_tei_timeout_scale_is_dev_and_test_only(
     monkeypatch.setenv("SS_PG_DSN_APP", "postgresql://app_rw:x@postgres:5432/surakshasetu")
     monkeypatch.setenv("SS_REDIS_URL", "redis://valkey:6379/0")
     monkeypatch.setenv("SS_DOMAIN_TOKEN", "pilot-token")
-    for name, value in (KEY_AND_ANCHOR_ENV | GATEWAY_ENV | KB_ENV).items():
+    for name, value in (KEY_AND_ANCHOR_ENV | GATEWAY_ENV | KB_ENV | AUTH_ENV).items():
         monkeypatch.setenv(name, value)
 
     with pytest.raises(ConfigError, match="SS_TEI_TIMEOUT_SCALE"):
@@ -169,6 +175,47 @@ def test_the_output_rail_settings_have_safe_defaults(monkeypatch: pytest.MonkeyP
     ],
 )
 def test_the_output_rail_settings_refuse_bad_values(
+    monkeypatch: pytest.MonkeyPatch, name: str, value: str
+) -> None:
+    monkeypatch.setenv(name, value)
+
+    with pytest.raises(ConfigError, match=name):
+        load_settings()
+
+
+def test_pilot_requires_the_internal_token_and_role_keys(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SS_ENV", "pilot")
+    monkeypatch.setenv("SS_OPS_API_KEY", "ops-key")
+
+    with pytest.raises(ConfigError) as excinfo:
+        load_settings()
+
+    message = str(excinfo.value)
+    assert "SS_DOMAIN_INTERNAL_TOKEN" in message and "SS_COMPLIANCE_API_KEY" in message
+    assert "SS_OPS_API_KEY" not in message and "ops-key" not in message
+
+
+def test_the_runtime_settings_have_safe_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
+    settings = load_settings()
+    assert settings.prompt_bundle == "pb-2026.09.1"
+    assert (settings.session_ttl_days, settings.session_lock_ttl_s) == (30, 30)
+    assert settings.idempotency_ttl_s == 86_400
+    assert settings.rate_limits == {60: 20, 3600: 200}
+    assert (settings.side_query_max_stack, settings.injection_hit_limit) == (2, 3)
+
+    monkeypatch.setenv("SS_RATE_LIMITS", '{"10": 2}')
+    assert load_settings().rate_limits == {10: 2}
+
+
+@pytest.mark.parametrize(
+    ("name", "value"),
+    [
+        ("SS_PROMPT_BUNDLE", "../pb-2026.09.1"),
+        ("SS_SESSION_LOCK_TTL_S", "0"),
+        ("SS_RATE_LIMITS", "not-json"),
+    ],
+)
+def test_the_runtime_settings_refuse_bad_values(
     monkeypatch: pytest.MonkeyPatch, name: str, value: str
 ) -> None:
     monkeypatch.setenv(name, value)

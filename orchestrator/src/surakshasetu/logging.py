@@ -32,6 +32,7 @@ NOISY_LOGGERS = (
     "httpcore",
     "presidio-analyzer",
     "presidio-anonymizer",
+    "uvicorn.access",  # logs every request path, and /v1/sessions/{id}/... carries the session id
 )
 
 _PACKAGE = "surakshasetu"

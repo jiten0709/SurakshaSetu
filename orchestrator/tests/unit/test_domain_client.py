@@ -12,9 +12,15 @@ from openapi_spec_validator.readers import read_from_filename
 
 from surakshasetu.domain import client as client_module
 from surakshasetu.domain.client import DomainClient, DomainError
-from surakshasetu.domain.models import ConsentRecordCreate, ConsentWithdrawal, PurposeGrant
+from surakshasetu.domain.models import (
+    ConsentRecordCreate,
+    ConsentWithdrawal,
+    KillSwitch,
+    PurposeGrant,
+)
 
 BASE = "http://domain.test"
+INTERNAL = "1nternal-scope"
 CONSENT_ID = UUID("0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b")
 RECORD = {
     "consent_id": str(CONSENT_ID),
@@ -173,6 +179,32 @@ async def test_logs_carry_no_path_query_id_body_or_token(
     text = "\n".join(r.getMessage() for r in ours)
     for leaked in ("farmer", "Pune", str(CONSENT_ID), PINCODE, SENTINEL, "/v1/", "t0ken", BASE):
         assert leaked not in text
+
+
+@pytest.mark.asyncio
+@respx.mock(base_url=BASE, assert_all_called=True)
+async def test_the_kill_switch_sends_the_internal_token_and_logs_neither(
+    respx_mock: respx.MockRouter, caplog: pytest.LogCaptureFixture
+) -> None:
+    route = respx_mock.post("/v1/catalog/products/999N001V02/kill-switch").respond(
+        200, json={"uin": "999N001V02", "status": "withdrawn"}
+    )
+    caplog.set_level(logging.DEBUG)
+
+    async with DomainClient(BASE, "t0ken") as client:
+        result = await client.set_product_kill_switch(
+            "999N001V02",
+            KillSwitch(reason="MIS_SELLING_RISK", actor="ops"),
+            internal_token=INTERNAL,
+        )
+
+    sent = route.calls.last.request
+    assert sent.headers["Authorization"] == "Bearer t0ken"
+    assert sent.headers["X-Internal-Token"] == INTERNAL
+    assert result.status == "withdrawn"
+    text = "\n".join(r.getMessage() for r in caplog.records)
+    assert "setProductKillSwitch" in text
+    assert "t0ken" not in text and INTERNAL not in text
 
 
 def test_every_operation_label_is_a_contract_operation_id() -> None:

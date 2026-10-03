@@ -12,7 +12,8 @@ info:
     - **Dates** are ISO 8601 (`date` or `date-time`); date-times are UTC.
     - **Errors** are `application/problem+json` with `type`, `title`, `status`, `detail` and a
       machine-readable `code`.
-    - **Auth**: a bearer token (a shared dev token locally; mTLS in production).
+    - **Auth**: every operation needs the service bearer token (a shared dev token locally; mTLS
+      in production). The kill switch is internal scope: it also needs `X-Internal-Token`.
     - **Decisions** (`POST` eligibility, suitability, ranking and quotes): the request carries
       `pins.rules` and the service evaluates exactly that version, or answers 409
       `RULES_VERSION_UNKNOWN`. The response carries `decision_id`, the version it used
@@ -22,6 +23,8 @@ info:
     ## Problem codes
     | Status | code | When |
     | --- | --- | --- |
+    | 401 | `UNAUTHORIZED` | No service bearer token, or a wrong one. |
+    | 403 | `FORBIDDEN` | An internal-scope operation (the kill switch) without the internal token. |
     | 404 | `NOT_FOUND` | Unknown UIN, consent id, notice, disclosure, pincode or occupation. |
     | 409 | `RULES_VERSION_UNKNOWN` | `pins.rules` names a version the service has not loaded. |
     | 409 | `IDEMPOTENCY_KEY_REUSED` | The same Idempotency-Key arrives with a different body. |
@@ -266,6 +269,9 @@ paths:
       tags: [catalog]
       operationId: setProductKillSwitch
       summary: Withdraw a product from sale immediately. Internal scope.
+      security:
+        - bearerAuth: []
+          internalToken: []
       parameters:
         - $ref: '#/components/parameters/Uin'
       requestBody:
@@ -502,6 +508,11 @@ components:
     bearerAuth:
       type: http
       scheme: bearer
+    internalToken:
+      type: apiKey
+      in: header
+      name: X-Internal-Token
+      description: The internal-scope token (ops only), sent next to the service bearer token.
 
   parameters:
     Language:

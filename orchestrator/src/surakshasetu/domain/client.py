@@ -257,13 +257,17 @@ class DomainClient:
             "getRider", Rider.model_validate_json, "GET", f"/v1/catalog/riders/{uin}"
         )
 
-    async def set_product_kill_switch(self, uin: str, kill_switch: KillSwitch) -> KillSwitchResult:
+    async def set_product_kill_switch(
+        self, uin: str, kill_switch: KillSwitch, *, internal_token: str
+    ) -> KillSwitchResult:
+        """Internal scope: the domain tier answers 403 without X-Internal-Token (Step 16)."""
         return await self._call(
             "setProductKillSwitch",
             KillSwitchResult.model_validate_json,
             "POST",
             f"/v1/catalog/products/{uin}/kill-switch",
             body=kill_switch,
+            headers={"X-Internal-Token": internal_token},
         )
 
     # --- disclosure -------------------------------------------------------------------------

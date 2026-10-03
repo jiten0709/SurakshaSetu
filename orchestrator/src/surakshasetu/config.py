@@ -1,10 +1,11 @@
 """Runtime settings, read from SS_* environment variables and an optional .env file."""
 
+import re
 from pathlib import Path
 from typing import Literal, Self
 
 from pydantic import Field, SecretStr, ValidationError, model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, SettingsConfigDict, SettingsError
 
 ENV_PREFIX = "SS_"
 # Settings with no safe default outside a developer machine: pilot and prod must set them.
@@ -12,6 +13,9 @@ REQUIRED_OUTSIDE_DEV = (
     "pg_dsn_app",
     "redis_url",
     "domain_token",
+    "domain_internal_token",
+    "ops_api_key",
+    "compliance_api_key",
     "kek_b64",
     "pg_dsn_keyvault",
     "minio_endpoint",
@@ -45,6 +49,12 @@ class Settings(BaseSettings):
     redis_url: SecretStr | None = None
     domain_base_url: str = "http://127.0.0.1:8080"
     domain_token: SecretStr = SecretStr("surakshasetu-dev-domain-token")
+    # The domain tier's internal scope (Step 16): only the ops kill-switch endpoint sends it, as
+    # X-Internal-Token next to the service token.
+    domain_internal_token: SecretStr = SecretStr("surakshasetu-dev-domain-internal-token")
+    # Internal endpoints (Step 16): one API key per role, sent as a bearer. SSO in prod.
+    ops_api_key: SecretStr = SecretStr("surakshasetu-dev-ops-key")
+    compliance_api_key: SecretStr = SecretStr("surakshasetu-dev-compliance-key")
     # Subject keys (Step 4). The dev KEK is 32 public bytes; the DSN is the compose dummy.
     kek_b64: SecretStr = SecretStr("c3VyYWtzaGFzZXR1LWRldi1rZWstbm90LXNlY3JldCE=")
     pg_dsn_keyvault: SecretStr = SecretStr(
@@ -95,6 +105,18 @@ class Settings(BaseSettings):
     profile_sufficiency_min: float = Field(default=0.7, ge=0, le=1)
     rediscovery_loop_limit: int = Field(default=2, ge=1)
     low_confidence_streak_limit: int = Field(default=2, ge=1)
+    # Runtime (Step 16). The prompt bundle new sessions pin (deploy-time, like the lexicon pack);
+    # session TTL (TDD §4.4, D7 open); the single-writer lock and idempotency TTLs (TDD §7.2); turn
+    # rate limits per subject as {window seconds: max turns}; the side-query stack depth (TDD §2.6);
+    # injection hits before HE_INJECTION (TDD §3.9); the app_rw pool size per process.
+    prompt_bundle: str = Field(default="pb-2026.09.1", pattern=r"^pb-\d{4}\.\d{2}\.\d+$")
+    session_ttl_days: int = Field(default=30, ge=1)
+    session_lock_ttl_s: int = Field(default=30, ge=1)
+    idempotency_ttl_s: int = Field(default=86_400, ge=1)
+    rate_limits: dict[int, int] = Field(default_factory=lambda: {60: 20, 3600: 200})
+    side_query_max_stack: int = Field(default=2, ge=0)
+    injection_hit_limit: int = Field(default=3, ge=1)
+    pg_pool_max: int = Field(default=20, ge=1)
 
     @model_validator(mode="after")
     def _require_dependencies_outside_dev(self) -> Self:
@@ -121,6 +143,10 @@ def load_settings() -> Settings:
             for err in exc.errors(include_url=False, include_input=False)
         )
         raise ConfigError(f"invalid configuration:\n{problems}") from None
+    except SettingsError as exc:  # a complex value (dict, list) that is not JSON
+        field = re.search(r'field "(\w+)"', str(exc))
+        name = _variable((field.group(1),)) if field else "settings"
+        raise ConfigError(f"invalid configuration:\n  {name}: not valid JSON") from None
 
 
 def _variable(loc: tuple[int | str, ...]) -> str:

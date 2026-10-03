@@ -36,6 +36,10 @@ public abstract class DomainApiTestSupport {
 
   public static final Path SEED = Path.of("..", "content", "seed");
   public static final String ROLE_PASSWORD = "it-only";
+  // common/ServiceAuth's tokens in tests: every api(...) call sends the first; the kill switch
+  // also needs the second (header X-Internal-Token).
+  public static final String SERVICE_TOKEN = "test-token";
+  public static final String INTERNAL_TOKEN = "test-internal-token";
 
   // Same image as infra/compose.yaml. Started once; Testcontainers removes it when the JVM exits.
   private static final PostgreSQLContainer POSTGRES =
@@ -77,6 +81,8 @@ public abstract class DomainApiTestSupport {
     registry.add("spring.datasource.username", () -> "domain_rw");
     registry.add("spring.datasource.password", () -> ROLE_PASSWORD);
     registry.add("surakshasetu.catalog-loader.password", () -> ROLE_PASSWORD);
+    registry.add("surakshasetu.auth.service-token", () -> SERVICE_TOKEN);
+    registry.add("surakshasetu.auth.internal-token", () -> INTERNAL_TOKEN);
   }
 
   /**
@@ -113,13 +119,18 @@ public abstract class DomainApiTestSupport {
 
   /** Performs the request as the orchestrator would, and fails unless it matches the contract. */
   protected ResultActions api(MockHttpServletRequestBuilder request) throws Exception {
-    return mvc.perform(request.header("Authorization", "Bearer test-token"))
+    return mvc.perform(request.header("Authorization", "Bearer " + SERVICE_TOKEN))
         .andExpect(openApi().isValid(CONTRACT));
   }
 
   /** A request that breaks the contract on purpose; the response must still match it. */
   protected ResultActions apiRejecting(MockHttpServletRequestBuilder request) throws Exception {
-    return mvc.perform(request.header("Authorization", "Bearer test-token"))
+    return mvc.perform(request.header("Authorization", "Bearer " + SERVICE_TOKEN))
         .andExpect(openApi().isValid(RESPONSES));
+  }
+
+  /** Exactly the headers given, no service token added; the response must match the contract. */
+  protected ResultActions unauthenticated(MockHttpServletRequestBuilder request) throws Exception {
+    return mvc.perform(request).andExpect(openApi().isValid(RESPONSES));
   }
 }

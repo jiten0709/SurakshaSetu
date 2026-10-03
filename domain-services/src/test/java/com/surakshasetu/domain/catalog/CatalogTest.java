@@ -152,6 +152,7 @@ class CatalogTest extends DomainApiTestSupport {
   private static org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder
       killSwitch(String uin) {
     return post("/v1/catalog/products/" + uin + "/kill-switch")
+        .header("X-Internal-Token", INTERNAL_TOKEN)
         .contentType(MediaType.APPLICATION_JSON)
         .content("{\"reason\":\"test\",\"actor\":\"ops-test\"}");
   }

@@ -25,6 +25,7 @@ TEST_ENV := SS_TEST_PG_DSN_ADMIN="postgresql://postgres:$(POSTGRES_PASSWORD)@127
 	SS_TEST_PG_DSN_KEYVAULT="postgresql://keyvault_rw:$(KEYVAULT_RW_PASSWORD)@127.0.0.1:5432/surakshasetu_test" \
 	SS_TEST_PG_DSN_CATALOG_LOADER="postgresql://catalog_loader:$(CATALOG_LOADER_PASSWORD)@127.0.0.1:5432/surakshasetu_test" \
 	SS_TEST_PG_DSN_KB="$(PG_DSN_KB)" \
+	SS_TEST_PG_DSN_APP="postgresql://app_rw:$(APP_RW_PASSWORD)@127.0.0.1:5432/surakshasetu_test" \
 	$(MINIO_ENV)
 
 .PHONY: up down logs check check-py check-java check-stubs check-db check-stack check-contracts \

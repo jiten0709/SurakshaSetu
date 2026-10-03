@@ -99,6 +99,7 @@ class StateTransitionHeader(Header):
     to_state: str
     trigger: str  # the matched row id
     invariants: dict[str, bool]
+    reason_code: str | None = None  # Transition.reason_code: HE_*, RESUMED, ... (Step 16)
 
 
 class ResponseReleasedHeader(Header):
