@@ -1,7 +1,7 @@
-"""Per-state graph nodes. S0 is State-0 (Step 18); the others are stubs until Steps 19-21 replace
-their entries (S1 and QUOTE_ONLY: Step 19; S2: Step 20; S3: Step 21). Of the support states,
-HUMAN_ESCALATION and PAUSE run their Step 17 handlers (the P2 answer, and resume); the closed ones
-stay stubs.
+"""Per-state graph nodes. S0 is State-0 (Step 18), S1 and QUOTE_ONLY are Step 19's; S2 and S3
+stay stubs until Steps 20 and 21 replace them (each keeps calling s1.correction first, the V4 hook).
+Of the support states, HUMAN_ESCALATION and PAUSE run their Step 17 handlers (the P2 answer, and
+resume); the closed ones stay stubs.
 
 A state node works on the turn's scratch (runtime.context: graph.nodes.Turn) and never chooses the
 next state: decide calls fsm.transition() after it. `guarded` is the dependency-down plumbing of
@@ -52,6 +52,15 @@ def guarded(name: str, node: Node) -> Node:
 def wrapped(state: FsmState, node: Node) -> Node:
     return node if state is FsmState.PAUSE else guarded(state.value, node)
 
+
+# The slot names nlu-extract is told about in each state (PendingSlotSpec.known_slots): S1's and
+# Quote-Only's, and the eligibility facts a later state may correct (V4). Step 20 adds S2's.
+KNOWN_SLOTS: dict[FsmState, tuple[str, ...]] = {
+    FsmState.S1: tuple(sorted(s1.ELIGIBILITY)),
+    FsmState.QUOTE_ONLY: (*quote_only.QUOTE_SLOTS, *quote_only.STATED),
+    FsmState.S2: tuple(sorted(s1.ELIGIBILITY)),
+    FsmState.S3: tuple(sorted(s1.ELIGIBILITY)),
+}
 
 NODES: dict[FsmState, Node] = {state: stub for state in FsmState} | {
     FsmState.S0: s0.node,

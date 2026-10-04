@@ -2,7 +2,8 @@
 
 Additions to the TDD, marked below: VersionPins.params/ranker/registry (recorded for the audit;
 only `rules` is ever sent to the domain tier, which derives params and ranking weights from the
-rules release), and SessionState.last_prompt_id/focus_uins (the §2.6 turn_router reads them).
+rules release), SessionState.last_prompt_id/focus_uins (the §2.6 turn_router reads them), and
+SessionState.quote (Quote-Only's last quote, Step 19).
 
 GraphState is what the LangGraph checkpoint holds. Only the commit node writes it, after the
 conv/audit transaction commits; every other node works on the turn's scratch copy (graph/nodes.py).
@@ -10,6 +11,7 @@ A failed turn therefore leaves the checkpoint exactly as it was, and no customer
 The session is stored as its JSON dump, so the checkpoint serde never deserialises custom types.
 """
 
+import dataclasses
 from datetime import date, datetime
 from typing import Any, Literal
 from uuid import UUID
@@ -20,6 +22,7 @@ from surakshasetu.domain.models import (
     ConsentRecord,
     EligibilityResult,
     NeedsPayload,
+    PremiumQuote,
     RecommendedOption,
     SuitabilityResult,
 )
@@ -94,6 +97,20 @@ class SessionState(BaseModel):
     # addition: read by the §2.6 turn_router when it pushes a frame.
     last_prompt_id: str | None = None
     focus_uins: list[str] = []
+    # addition (Step 19): the last indicative quote shown in Quote-Only, for the exit summary. Like
+    # last_prompt_id it lives in the checkpoint only; hydration drops it, and the summary says less.
+    quote: PremiumQuote | None = None
+
+
+@dataclasses.dataclass
+class SlotRow:
+    """A slot row a state node wants written in the commit (Steps 19-20): appended to
+    conv.slot_value, encrypted, with the session's consent_id (I1)."""
+
+    slot: str
+    value: Any
+    confidence: float
+    status: Literal["proposed", "confirmed", "corrected", "declined"]
 
 
 class GraphState(BaseModel):

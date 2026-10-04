@@ -59,6 +59,13 @@ class CatalogTest extends DomainApiTestSupport {
         .containsExactly("999A007V01", "999A008V01", "999A009V01");
     assertThat(p.get("is_dummy").asBoolean()).isTrue();
     assertThat(p.get("effective_to").isNull()).isTrue();
+    // Step 19: the seeded quote_defaults, which Quote-Only quotes at.
+    JsonNode defaults = p.get("quote_defaults");
+    assertThat(defaults.get("sum_assured_inr").asString()).isEqualTo("10000000");
+    assertThat(defaults.get("term_years").asInt()).isEqualTo(30);
+    assertThat(defaults.get("ppt").asString()).isEqualTo("regular");
+    assertThat(defaults.get("frequency").asString()).isEqualTo("annual");
+    assertThat(defaults.get("rider_uins")).isEmpty();
 
     List<String> riders = new ArrayList<>();
     p.get("riders").forEach(r -> riders.add(r.get("uin").asString()));
@@ -138,6 +145,13 @@ class CatalogTest extends DomainApiTestSupport {
             api(get("/v1/catalog/products/" + FIXTURE).param("as_of", yesterday))
                 .andExpect(status().isOk()));
     assertThat(before.get("status").asString()).isEqualTo("withdrawn");
+    // A row without quote_defaults: the minimum cover and term, no riders, the first PPT, annual.
+    JsonNode fallback = before.get("quote_defaults");
+    assertThat(fallback.get("sum_assured_inr").asString()).isEqualTo("2500000.00");
+    assertThat(fallback.get("term_years").asInt()).isEqualTo(10);
+    assertThat(fallback.get("ppt").asString()).isEqualTo("regular");
+    assertThat(fallback.get("frequency").asString()).isEqualTo("annual");
+    assertThat(fallback.get("rider_uins")).isEmpty();
     assertThat(
             json(api(
                     get("/v1/catalog/products")

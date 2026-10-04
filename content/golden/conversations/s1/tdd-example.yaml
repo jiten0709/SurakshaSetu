@@ -1,0 +1,37 @@
+id: s1-tdd-example
+description: >-
+  The TDD §3.6 example through real S0 turns: each rule-referenced question once, with its reason
+  and one generated sentence; slots proposed from what was typed; the read-back from the slots;
+  confirmed, the Eligibility Service decides ELIGIBLE and S1.4 moves to S2.
+turns:
+  - action: {type: START}
+    expect: {state: S0, templates: [greeting]}
+  - action: {type: CONSENT_SUBMIT, payload: {purposes: {P1: true, P2: false, P3: false}, age_18_plus: true}}
+    expect: {state: S0, templates: [intent_ask]}
+  - action: {type: INTENT, payload: {intent: new_purchase}}
+    expect: {state: S1, row: S0.4, templates: [RL-S1-AGE]}
+  - text: "34"
+    expect: {state: S1, templates: [RL-S1-RESIDENCY], slots: {age_years: proposed}, events: [MODEL_CALL]}
+  - action: {type: SLOT, payload: {slot: residency, value: resident}}
+    expect: {templates: [RL-S1-PINCODE]}
+  - text: "411001"
+    expect: {templates: [RL-S1-TOBACCO], slots: {pincode: proposed}}
+  - text: "no"
+    expect: {templates: [RL-S1-OCCUPATION], slots: {tobacco_12m: proposed}}
+  - text: salaried
+    expect: {templates: [RL-S1-HEALTH], slots: {occupation_code: proposed}}
+  - text: "no"
+    expect: {templates: [RL-S1-PROPOSER]}
+  - text: "yes"
+    expect:
+      templates: [readback]
+      absent: [ENGINE_DECISION]
+      contains: ["To confirm: 34, resident in India, Pune, no tobacco in the last 12 months, Salaried office professional, no to the health question, cover for your own life. Correct?"]
+  - text: "yes"
+    expect:
+      state: S2
+      row: S1.4
+      reason: ELIGIBLE
+      templates: [screening_done]
+      engine: {service: eligibility, outcome: ELIGIBLE, flags: []}
+      slots: {age_years: confirmed, residency: confirmed, pincode: confirmed, tobacco_12m: confirmed, occupation_code: confirmed, health_flags: confirmed, proposer.is_life_assured: confirmed}

@@ -3,7 +3,6 @@ package com.surakshasetu.domain.ranking;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.surakshasetu.domain.catalog.CatalogRepository.QuoteDefaults;
 import com.surakshasetu.domain.contract.model.Frequency;
 import com.surakshasetu.domain.contract.model.Pins;
 import com.surakshasetu.domain.contract.model.PptOption;
@@ -11,6 +10,7 @@ import com.surakshasetu.domain.contract.model.PremiumQuote;
 import com.surakshasetu.domain.contract.model.Product;
 import com.surakshasetu.domain.contract.model.ProductStatus;
 import com.surakshasetu.domain.contract.model.ProductType;
+import com.surakshasetu.domain.contract.model.QuoteDefaults;
 import com.surakshasetu.domain.contract.model.QuoteRequest;
 import com.surakshasetu.domain.contract.model.RankingRequest;
 import com.surakshasetu.domain.contract.model.RecommendedOption;
@@ -285,7 +285,7 @@ class RankerTest {
   private List<Candidate> candidates() {
     return products.values().stream()
         .sorted((a, b) -> a.getUin().compareTo(b.getUin()))
-        .map(p -> new Candidate(p, new QuoteDefaults(PptOption.REGULAR, Frequency.ANNUAL)))
+        .map(p -> new Candidate(p, p.getQuoteDefaults()))
         .toList();
   }
 
@@ -348,7 +348,8 @@ class RankerTest {
         true,
         true,
         attached,
-        List.of());
+        List.of(),
+        new QuoteDefaults("2500000", 10, PptOption.REGULAR, Frequency.ANNUAL, List.of()));
   }
 
   private static List<String> uins(List<RecommendedOption> options) {

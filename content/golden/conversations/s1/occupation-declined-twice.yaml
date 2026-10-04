@@ -1,0 +1,29 @@
+id: s1-occupation-declined-twice
+description: >-
+  The occupation declined: the engine answers RE_ASK (E-06), the question is asked once more; declined
+  again, the engine decides on the confirmed values and S1.1b escalates (HE_RE_ASK_LIMIT).
+turns:
+  - action: {type: START}
+    expect: {state: S0, templates: [greeting]}
+  - action: {type: CONSENT_SUBMIT, payload: {purposes: {P1: true, P2: false, P3: false}, age_18_plus: true}}
+    expect: {state: S0, templates: [intent_ask]}
+  - action: {type: INTENT, payload: {intent: new_purchase}}
+    expect: {state: S1, row: S0.4, templates: [RL-S1-AGE]}
+  - text: "34"
+    expect: {templates: [RL-S1-RESIDENCY]}
+  - action: {type: SLOT, payload: {slot: residency, value: resident}}
+    expect: {templates: [RL-S1-PINCODE]}
+  - text: "411001"
+    expect: {templates: [RL-S1-TOBACCO]}
+  - text: "no"
+    expect: {templates: [RL-S1-OCCUPATION]}
+  - text: I'd prefer not to say
+    expect: {templates: [RL-S1-HEALTH], slots: {occupation_code: declined}}
+  - text: "no"
+    expect: {templates: [RL-S1-PROPOSER]}
+  - text: "yes"
+    expect: {templates: [readback], contains: ["Occupation: Prefer not to say"]}
+  - text: "yes"
+    expect: {state: S1, row: S1.STAY, templates: [reask, RL-S1-OCCUPATION], engine: {service: eligibility, outcome: RE_ASK}, counters: {occupation_reask: 1}}
+  - text: I'd prefer not to say
+    expect: {state: HUMAN_ESCALATION, row: S1.1b, reason: HE_RE_ASK_LIMIT, engine: {service: eligibility, outcome: RE_ASK}}

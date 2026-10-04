@@ -1,11 +1,26 @@
 id: s0-specific-plan
 description: >-
-  Consent plus specific_plan goes to Quote-Only (row S0.3). Until Step 19 the Quote-Only node is
-  a stub, so only the state is expected; Step 19 updates this case.
+  Consent plus specific_plan goes to Quote-Only (row S0.3), which asks the customer to name a plan
+  (I3). The TDD example then: 34, no tobacco, read back, and 999N001V02 quoted at its
+  quote_defaults (₹1 crore, 30 years, regular, annual) for the DUMMY ₹16,000, with
+  DISC-GLOBAL-QUOTE-02 verbatim from the registry.
 turns:
   - action: {type: START}
     expect: {state: S0, templates: [greeting]}
   - action: {type: CONSENT_SUBMIT, payload: {purposes: {P1: true, P2: false, P3: false}, age_18_plus: true}}
     expect: {state: S0, templates: [intent_ask]}
   - action: {type: INTENT, payload: {intent: specific_plan}}
-    expect: {state: QUOTE_ONLY}
+    expect: {state: QUOTE_ONLY, row: S0.3, templates: [plan_ask], lacks: [Suraksha, "999N"]}
+  - text: Suraksha Term Shield
+    expect: {state: QUOTE_ONLY, templates: [RL-S1-AGE]}
+  - text: "34"
+    expect: {templates: [RL-S1-TOBACCO], slots: {age_years: proposed}}
+  - text: "no"
+    expect: {templates: [readback], contains: ["To confirm: 34, no tobacco in the last 12 months. Correct?"], absent: [ENGINE_DECISION]}
+  - text: "yes"
+    expect:
+      state: QUOTE_ONLY
+      parts: [template:quote_card, registry:DISC-GLOBAL-QUOTE-02, template:quote_caveat, template:quote_next]
+      engine: {service: quote}
+      slots: {age_years: confirmed, tobacco_12m: confirmed}
+      contains: ["Indicative premium for Suraksha Term Shield (UIN 999N001V02): ₹16,000 a year.", "Cover: ₹1,00,00,000 for 30 years.", "DUMMY: Premium is indicative, final after underwriting."]

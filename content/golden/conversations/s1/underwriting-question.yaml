@@ -1,0 +1,15 @@
+id: s1-underwriting-question
+description: >-
+  "Will I be rejected because of diabetes?": underwriting decides, said from the template with no
+  speculation, then the pending question again; nothing is recorded.
+turns:
+  - action: {type: START}
+    expect: {state: S0, templates: [greeting]}
+  - action: {type: CONSENT_SUBMIT, payload: {purposes: {P1: true, P2: false, P3: false}, age_18_plus: true}}
+    expect: {state: S0, templates: [intent_ask]}
+  - action: {type: INTENT, payload: {intent: new_purchase}}
+    expect: {state: S1, row: S0.4, templates: [RL-S1-AGE]}
+  - text: "34"
+    expect: {templates: [RL-S1-RESIDENCY]}
+  - text: Will I be rejected because of diabetes?
+    expect: {templates: [underwriting_note, RL-S1-RESIDENCY], slot_rows: 1, lacks: [rejected, accepted]}

@@ -1,0 +1,31 @@
+id: qo-cover-off-step
+description: >-
+  A stated cover off the ₹5 lakh step: the quote adapter's 422 QUOTE_OUT_OF_BOUNDS names the cover,
+  and it is re-asked with the problem's own range and step; a cover on the step is quoted.
+turns:
+  - action: {type: START}
+    expect: {state: S0, templates: [greeting]}
+  - action: {type: CONSENT_SUBMIT, payload: {purposes: {P1: true, P2: false, P3: false}, age_18_plus: true}}
+    expect: {state: S0, templates: [intent_ask]}
+  - action: {type: INTENT, payload: {intent: specific_plan}}
+    expect: {state: QUOTE_ONLY, row: S0.3, templates: [plan_ask], lacks: [Suraksha, "999N"]}
+  - text: Suraksha Term Shield
+    expect: {state: QUOTE_ONLY, templates: [RL-S1-AGE]}
+  - text: "34"
+    expect: {templates: [RL-S1-TOBACCO], slots: {age_years: proposed}}
+  - text: "no"
+    expect: {templates: [readback], contains: ["To confirm: 34, no tobacco in the last 12 months. Correct?"], absent: [ENGINE_DECISION]}
+  - text: "yes"
+    expect:
+      state: QUOTE_ONLY
+      parts: [template:quote_card, registry:DISC-GLOBAL-QUOTE-02, template:quote_caveat, template:quote_next]
+      engine: {service: quote}
+      slots: {age_years: confirmed, tobacco_12m: confirmed}
+      contains: ["Indicative premium for Suraksha Term Shield (UIN 999N001V02): ₹16,000 a year.", "Cover: ₹1,00,00,000 for 30 years.", "DUMMY: Premium is indicative, final after underwriting."]
+  - text: what about 1.23 crore
+    script:
+      nlu-extract:
+        - {intents: [SLOT_ANSWER], slots: [{slot: sum_assured_inr, value: null, confidence: 0.95, evidence_span: 1.23 crore}]}
+    expect: {templates: [cover_bounds], contains: ["cover can be from ₹25,00,000 to ₹10,00,00,000, in steps of ₹5,00,000."], slots: {sum_assured_inr: declined}}
+  - text: 1.25 crore
+    expect: {parts: [template:quote_card, registry:DISC-GLOBAL-QUOTE-02, template:quote_caveat, template:quote_next], contains: ["Cover: ₹1,25,00,000 for 30 years."], engine: {service: quote}}

@@ -31,14 +31,16 @@ def parse_age(text: str, *, current_year: int) -> AgeResult | None:
     if m := _AGE_YRS.search(text):
         return AgeResult(value=int(m.group(1)), needs_confirmation=False)
     if m := _AGE_BORN.search(text):
+        # An age worked out from a birth year is right only to within a year (the birthday may not
+        # have passed), so it is always read back (Step 19).
         digits = m.group(1)
         if len(digits) != 2:
-            return AgeResult(value=current_year - int(digits), needs_confirmation=False)
+            return AgeResult(value=current_year - int(digits), needs_confirmation=True)
         n = int(digits)
         candidates = (current_year - (1900 + n), current_year - (2000 + n))
         plausible = tuple(c for c in candidates if _MIN_PLAUSIBLE_AGE < c < _MAX_PLAUSIBLE_AGE)
         if len(plausible) == 1:
-            return AgeResult(value=plausible[0], needs_confirmation=False)
+            return AgeResult(value=plausible[0], needs_confirmation=True)
         return AgeResult(value=None, needs_confirmation=True, candidates=candidates)
     return None
 

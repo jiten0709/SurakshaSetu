@@ -1,0 +1,19 @@
+id: qo-declined-tobacco
+description: >-
+  Tobacco declined in Quote-Only: no premium and no quote call (the adapter would answer 422
+  TOBACCO_UNDISCLOSED); the reason is explained and full advice is offered.
+turns:
+  - action: {type: START}
+    expect: {state: S0, templates: [greeting]}
+  - action: {type: CONSENT_SUBMIT, payload: {purposes: {P1: true, P2: false, P3: false}, age_18_plus: true}}
+    expect: {state: S0, templates: [intent_ask]}
+  - action: {type: INTENT, payload: {intent: specific_plan}}
+    expect: {state: QUOTE_ONLY, row: S0.3, templates: [plan_ask], lacks: [Suraksha, "999N"]}
+  - text: 999N001V02
+    expect: {templates: [RL-S1-AGE]}
+  - text: "34"
+    expect: {templates: [RL-S1-TOBACCO]}
+  - text: I'd rather not say
+    expect: {templates: [readback], contains: ["tobacco: prefer not to say"], slots: {tobacco_12m: declined}}
+  - text: "yes"
+    expect: {templates: [quote_withheld], absent: [ENGINE_DECISION]}

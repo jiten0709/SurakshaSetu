@@ -37,7 +37,7 @@ def settings(**update: Any) -> Settings:
 
 def pins() -> VersionPins:
     return VersionPins(
-        prompt_bundle="pb-2026.10.2",
+        prompt_bundle="pb-2026.10.3",
         rules="2026.09.1",
         corpus={},
         consent_notice=NOTICE,
@@ -60,8 +60,10 @@ class Models:
         injection: float = 0.01,
         down: tuple[str, ...] = (),
         slots: tuple[dict[str, Any], ...] = (),
+        converse: tuple[str, ...] = (),
     ) -> None:
         self.intents, self.side_query, self.slots = intents, side_query, slots
+        self.converse = list(converse)  # gen-converse drafts, in order; then FRIENDLY
         self.safety, self.injection, self.down = safety, injection, down
         self.routes: list[str] = []
 
@@ -81,13 +83,20 @@ class Models:
             }
         elif route == "verify-claims":
             answer = {"verdict": "entailed"}
+        elif route == "gen-converse":  # Step 19: S1's one friendly sentence
+            return completion(route, self.converse.pop(0) if self.converse else FRIENDLY)
         else:
             raise AssertionError(f"unexpected route {route}")
-        completion = {
-            "model": f"stub-{route}",
-            "choices": [{"message": {"content": json.dumps(answer)}}],
-        }
-        return httpx.Response(200, json=completion)
+        return completion(route, json.dumps(answer))
+
+
+FRIENDLY = "Thanks, that helps me understand what you are looking for."
+
+
+def completion(route: str, content: str) -> httpx.Response:
+    return httpx.Response(
+        200, json={"model": f"stub-{route}", "choices": [{"message": {"content": content}}]}
+    )
 
 
 def gateway(models: Models, config: Settings | None = None) -> Gateway:
@@ -127,8 +136,8 @@ def ai_disclosure_json(language: str = "en-IN") -> dict[str, Any]:
 
 
 def domain_handler(request: httpx.Request) -> httpx.Response:
-    """The reference reads: the two a session needs at creation, and the S0 prompt's notice and AI
-    disclosure (Step 18)."""
+    """The reference reads: the two a session needs at creation, the S0 prompt's notice and AI
+    disclosure (Step 18), and S1's and Quote-Only's calls (Step 19, `screening_handler`)."""
     language = request.url.params.get("language", "en-IN")
     if request.url.path == "/v1/meta/versions":
         return httpx.Response(200, json=VERSIONS)
@@ -136,6 +145,203 @@ def domain_handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json=notice_json(language))
     if request.url.path == "/v1/disclosures/DISC-GLOBAL-AI-06":
         return httpx.Response(200, json=ai_disclosure_json(language))
+    return screening_handler(request)
+
+
+# --- Step 19: a stand-in for the domain tier behind S1 and Quote-Only -----------------------------
+# The DMN's RequiredAttributes rows in order (gender is never asked: no DUMMY product rates by it),
+# a few seed pincodes and occupations, the three seed products, and a small imitation of the
+# eligibility rules and the quote adapter's problems. The real ones run in the golden suites.
+REQUIRED_ATTRIBUTES = [
+    {"attribute": a, "reason_line_id": r, "asked_if": c}
+    for a, r, c in (
+        ("age_years", "RL-S1-AGE", None),
+        ("residency", "RL-S1-RESIDENCY", None),
+        ("pincode", "RL-S1-PINCODE", None),
+        ("tobacco_12m", "RL-S1-TOBACCO", None),
+        ("occupation_code", "RL-S1-OCCUPATION", None),
+        ("health_flags", "RL-S1-HEALTH", None),
+        ("proposer.is_life_assured", "RL-S1-PROPOSER", None),
+        ("proposer.relationship", "RL-S1-LA-RELATIONSHIP", "proposer.is_life_assured = false"),
+        ("proposer.la_age", "RL-S1-LA-AGE", "proposer.is_life_assured = false"),
+        ("proposer.business_cover", "RL-S1-BUSINESS-COVER", "proposer.is_life_assured = false"),
+    )
+]
+PINCODES = {"411001": ("Pune", True), "411014": ("Pune", True), "744101": ("South Andaman", False)}
+OCCUPATIONS = [
+    {"code": "OCC-OFFICE-01", "label": "Salaried office professional", "risk_class": 1},
+    {"code": "OCC-TEACH-02", "label": "Teacher or lecturer", "risk_class": 1},
+    {"code": "OCC-SWE-03", "label": "Software engineer", "risk_class": 1},
+    {"code": "OCC-SALES-04", "label": "Field sales executive", "risk_class": 2},
+]
+TERM, ROP, SAVER = "999N001V02", "999N002V01", "999N010V01"
+PRODUCTS = {
+    TERM: ("Suraksha Term Shield", "TERM", 18, 65, "10000000", 30, True),
+    ROP: ("Suraksha Term Shield ROP", "TERM_ROP", 18, 55, "5000000", 25, True),
+    SAVER: ("Suraksha Saver Guarantee", "NON_PAR_SAVINGS", 18, 55, "1000000", 15, False),
+}
+SIMPLE = {"self", "spouse", "child", "parent"}
+
+
+def problem(status: int, code: str, **extra: Any) -> httpx.Response:
+    body = {"type": "about:blank", "title": code, "status": status, "code": code, **extra}
+    return httpx.Response(status, json=body)
+
+
+def product_json(uin: str) -> dict[str, Any]:
+    name, category, age_min, age_max, cover, term, launched = PRODUCTS[uin]
+    return {
+        "uin": uin,
+        "name": name,
+        "category": category,
+        "status": "in_force",
+        "entry_age_min": age_min,
+        "entry_age_max": age_max,
+        "maturity_age_max": 85,
+        "sa_min_inr": "2500000.00",
+        "sa_max_inr": "100000000.00",
+        "term_years_min": 10,
+        "term_years_max": 40,
+        "ppt_options": ["regular"],
+        "benefit_payment_options": ["lumpsum"],
+        "rider_uins": [],
+        "effective_from": "2026-09-01",
+        "effective_to": None,
+        "launch_enabled": launched,
+        "is_dummy": True,
+        "riders": [],
+        "documents": [],
+        "quote_defaults": {
+            "sum_assured_inr": cover,
+            "term_years": term,
+            "ppt": "regular",
+            "frequency": "annual",
+            "rider_uins": [],
+        },
+    }
+
+
+def eligibility_json(body: dict[str, Any]) -> dict[str, Any]:
+    """The DMN's precedence, roughly: minor, NRI, age band, complex proposer, occupation,
+    pincode."""
+    age, proposer = body["age_years"], body["proposer"]
+    complex_ = not proposer["is_life_assured"] and (
+        proposer.get("relationship") not in SIMPLE or bool(proposer.get("business_cover"))
+    )
+    outcome, reason = "ELIGIBLE", None
+    if age < 18:
+        outcome = "DATA_ERASURE_EXIT"
+    elif body["residency"] != "resident":
+        outcome, reason = "HUMAN_ESCALATION", "HE_NRI"
+    elif age > 65:
+        outcome, reason = "HUMAN_ESCALATION", "HE_AGE_BAND"
+    elif complex_:
+        outcome, reason = "HUMAN_ESCALATION", "HE_COMPLEX_PROPOSER"
+    elif body["occupation_code"] is None:
+        outcome = "RE_ASK"
+    elif not PINCODES.get(body["pincode"], ("", False))[1]:
+        outcome = "NOT_ELIGIBLE"
+    health = body["health_flags"].values()
+    flags = (["MEDICAL_UW"] if True in health else []) + (
+        ["PREMIUM_WITHHELD"] if body["tobacco_12m"] is None or None in health else []
+    )
+    return {
+        "decision_id": "0199a1b2-0000-7000-8000-00000000e11e",
+        "outcome": outcome,
+        "eligible_uins": [TERM, ROP] if outcome == "ELIGIBLE" else [],
+        "uw_path": "manual" if "MEDICAL_UW" in flags else "standard",
+        "flags": flags,
+        "escalation_reason": reason,
+        "rule_ids": ["E-01"],
+        "reason_codes": ["REASON_PIN_UNSERVICEABLE"] if outcome == "NOT_ELIGIBLE" else [],
+        "rules_version": "2026.09.1",
+        "params_version": "actuarial-dummy-2026.09.1",
+        "inputs_sha256": hashlib.sha256(json.dumps(body).encode()).hexdigest(),
+    }
+
+
+def quote_json(body: dict[str, Any]) -> httpx.Response:
+    """The quote adapter's order of checks, for the seed products: tobacco, launch, entry age,
+    cover range and the 5 lakh step. ₹16 per ₹10,000 of cover (the DUMMY ₹16,000 for ₹1 crore)."""
+    uin, cover, age = body["uin"], int(float(body["sum_assured_inr"])), body["age_years"]
+    if body["tobacco_12m"] is None:
+        return problem(422, "TOBACCO_UNDISCLOSED")
+    _, _, age_min, age_max, _, _, launched = PRODUCTS[uin]
+    if not launched:
+        return problem(409, "PRODUCT_WITHDRAWN")
+    if not age_min <= age <= age_max:
+        bounds = {"allowed_min": str(age_min), "allowed_max": str(age_max)}
+        return problem(422, "QUOTE_OUT_OF_BOUNDS", field="age_years", **bounds)
+    if not 2_500_000 <= cover <= 100_000_000 or cover % 500_000:
+        bounds = {"allowed_min": "2500000", "allowed_max": "100000000", "allowed_step": "500000"}
+        return problem(422, "QUOTE_OUT_OF_BOUNDS", field="sum_assured_inr", **bounds)
+    return httpx.Response(
+        200,
+        json={
+            "decision_id": "0199a1b2-0000-7000-8000-0000000004a0",
+            "quote_id": "Q-2026-10-04-0001",
+            "uin": uin,
+            "sum_assured_inr": str(cover),
+            "term_years": body["term_years"],
+            "ppt": body["ppt"],
+            "annual_premium_inr": f"{cover * 16 // 10_000}.00",
+            "frequency": body["frequency"],
+            "valid_until": "2026-11-03",
+            "indicative": True,
+            "rider_premiums": {},
+            "gst_included": True,
+            "rating_version": "rating-dummy-2026.09.1",
+            "inputs_sha256": hashlib.sha256(json.dumps(body).encode()).hexdigest(),
+            "reason_codes": [],
+        },
+    )
+
+
+def screening_handler(request: httpx.Request) -> httpx.Response:
+    path, params = request.url.path, request.url.params
+    if path == "/v1/eligibility/required-attributes":
+        return httpx.Response(200, json=REQUIRED_ATTRIBUTES)
+    if path.startswith("/v1/reference/pincodes/"):
+        pincode = path.rsplit("/", 1)[1]
+        if pincode not in PINCODES:
+            return problem(404, "NOT_FOUND")
+        district, serviceable = PINCODES[pincode]
+        info = {"pincode": pincode, "district": district, "state": "Maharashtra"}
+        return httpx.Response(200, json={**info, "serviceable": serviceable, "is_dummy": True})
+    if path == "/v1/reference/occupations":
+        q = params.get("q", "").casefold()
+        found = [o for o in OCCUPATIONS if q in f"{o['code']} {o['label']}".casefold()]
+        return httpx.Response(200, json=[{**o, "is_dummy": True} for o in found])
+    if path.startswith("/v1/reference/occupations/"):
+        code = path.rsplit("/", 1)[1]
+        found = [{**o, "is_dummy": True} for o in OCCUPATIONS if o["code"] == code]
+        return httpx.Response(200, json=found[0]) if found else problem(404, "NOT_FOUND")
+    if path == "/v1/eligibility/evaluate":
+        return httpx.Response(200, json=eligibility_json(json.loads(request.content)))
+    if path == "/v1/catalog/products":
+        return httpx.Response(200, json=[product_json(uin) for uin in PRODUCTS])
+    if path.startswith("/v1/catalog/products/"):
+        uin = path.rsplit("/", 1)[1]
+        return (
+            httpx.Response(200, json=product_json(uin))
+            if uin in PRODUCTS
+            else problem(404, "NOT_FOUND")
+        )
+    if path == "/v1/quotes":
+        return quote_json(json.loads(request.content))
+    if path == "/v1/disclosures/DISC-GLOBAL-QUOTE-02":
+        body = "DUMMY: Premium is indicative, final after underwriting."
+        digest = hashlib.sha256(body.encode()).hexdigest()
+        return httpx.Response(
+            200,
+            json={
+                "disclosure_id": "DISC-GLOBAL-QUOTE-02",
+                "language": params.get("language"),
+                "body": body,
+                "body_sha256": digest,
+                "is_dummy": True,
+            },  # fmt: skip
+        )
     raise AssertionError(f"unexpected domain call {request.method}")
 
 

@@ -1,0 +1,34 @@
+id: s1-complex-proposer
+description: >-
+  Cover for a sibling: the rules' conditional questions (relationship, their age, business cover)
+  follow "no" to whose life; a relationship outside self, spouse, child and parent is complex
+  (S1.1, HE_COMPLEX_PROPOSER).
+turns:
+  - action: {type: START}
+    expect: {state: S0, templates: [greeting]}
+  - action: {type: CONSENT_SUBMIT, payload: {purposes: {P1: true, P2: false, P3: false}, age_18_plus: true}}
+    expect: {state: S0, templates: [intent_ask]}
+  - action: {type: INTENT, payload: {intent: new_purchase}}
+    expect: {state: S1, row: S0.4, templates: [RL-S1-AGE]}
+  - text: "34"
+    expect: {templates: [RL-S1-RESIDENCY]}
+  - action: {type: SLOT, payload: {slot: residency, value: resident}}
+    expect: {templates: [RL-S1-PINCODE]}
+  - text: "411001"
+    expect: {templates: [RL-S1-TOBACCO]}
+  - text: "no"
+    expect: {templates: [RL-S1-OCCUPATION]}
+  - text: salaried
+    expect: {templates: [RL-S1-HEALTH]}
+  - text: "no"
+    expect: {templates: [RL-S1-PROPOSER]}
+  - text: "no"
+    expect: {templates: [RL-S1-LA-RELATIONSHIP]}
+  - text: sibling
+    expect: {templates: [RL-S1-LA-AGE], slots: {proposer.relationship: proposed}}
+  - text: "40"
+    expect: {templates: [RL-S1-BUSINESS-COVER]}
+  - text: "no"
+    expect: {templates: [readback], contains: ["cover for someone else, your sibling, aged 40, not business cover"]}
+  - text: "yes"
+    expect: {state: HUMAN_ESCALATION, row: S1.1, reason: HE_COMPLEX_PROPOSER}

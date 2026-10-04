@@ -1,0 +1,27 @@
+id: s1-nri
+description: >-
+  A non-resident Indian, with P2 granted: everything is asked and read back, then the engine's
+  E-05 escalates (S1.1, HE_NRI) and the redacted briefing is handed off.
+turns:
+  - action: {type: START}
+    expect: {state: S0, templates: [greeting]}
+  - action: {type: CONSENT_SUBMIT, payload: {purposes: {P1: true, P2: true, P3: false}, age_18_plus: true}}
+    expect: {state: S0, templates: [intent_ask]}
+  - action: {type: INTENT, payload: {intent: new_purchase}}
+    expect: {state: S1, row: S0.4, templates: [RL-S1-AGE]}
+  - text: "34"
+    expect: {templates: [RL-S1-RESIDENCY]}
+  - action: {type: SLOT, payload: {slot: residency, value: nri}}
+    expect: {templates: [RL-S1-PINCODE], slots: {residency: proposed}}
+  - text: "411001"
+    expect: {templates: [RL-S1-TOBACCO]}
+  - text: "no"
+    expect: {templates: [RL-S1-OCCUPATION]}
+  - text: salaried
+    expect: {templates: [RL-S1-HEALTH], slots: {occupation_code: proposed}}
+  - text: "no"
+    expect: {templates: [RL-S1-PROPOSER]}
+  - text: "yes"
+    expect: {templates: [readback]}
+  - text: "yes"
+    expect: {state: HUMAN_ESCALATION, row: S1.1, reason: HE_NRI, templates: [handoff], handoff: HE_NRI, engine: {service: eligibility, outcome: HUMAN_ESCALATION}}

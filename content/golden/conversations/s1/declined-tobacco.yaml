@@ -1,0 +1,27 @@
+id: s1-declined-tobacco
+description: >-
+  Declining the tobacco question is recorded as declined; the session stays eligible but the
+  engine flags PREMIUM_WITHHELD, so S3 shows no premium.
+turns:
+  - action: {type: START}
+    expect: {state: S0, templates: [greeting]}
+  - action: {type: CONSENT_SUBMIT, payload: {purposes: {P1: true, P2: false, P3: false}, age_18_plus: true}}
+    expect: {state: S0, templates: [intent_ask]}
+  - action: {type: INTENT, payload: {intent: new_purchase}}
+    expect: {state: S1, row: S0.4, templates: [RL-S1-AGE]}
+  - text: "34"
+    expect: {templates: [RL-S1-RESIDENCY]}
+  - action: {type: SLOT, payload: {slot: residency, value: resident}}
+    expect: {templates: [RL-S1-PINCODE]}
+  - text: "411001"
+    expect: {templates: [RL-S1-TOBACCO]}
+  - action: {type: SLOT, payload: {slot: tobacco_12m, value: declined}}
+    expect: {templates: [RL-S1-OCCUPATION], slots: {tobacco_12m: declined}}
+  - text: salaried
+    expect: {templates: [RL-S1-HEALTH]}
+  - text: "no"
+    expect: {templates: [RL-S1-PROPOSER]}
+  - text: "yes"
+    expect: {templates: [readback], contains: ["tobacco: prefer not to say"]}
+  - text: "yes"
+    expect: {state: S2, row: S1.4, engine: {service: eligibility, outcome: ELIGIBLE, flags: [PREMIUM_WITHHELD]}}

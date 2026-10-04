@@ -338,23 +338,26 @@ def _products(sentences: Sequence[_Sentence], ctx: OutputContext) -> Verdict:
             for f in ctx.handles.engine.values()
             for uin in _UIN.findall(f"{json.dumps(f.content)} {f.rule} {f.label}")
         }
-    # Longest first: "… Shield ROP" is not also "… Shield".
-    names = [
-        (uin, _words([name]))
-        for uin, name in sorted(ctx.products.items(), key=lambda kv: len(kv[1]), reverse=True)
-    ]
     problems = []
     for s in sentences:
-        scan, named = s.text, set(_UIN.findall(s.text))
-        for uin, pattern in names:
-            if pattern.search(scan):
-                named.add(uin)
-                scan = pattern.sub(" ", scan)
-        if named - allowed:
+        if products_named(s.text, ctx.products) - allowed:
             problems.append(
                 f"GR-PRODUCT sentence {s.n}: it names a product that is not in ENGINE_RESULT"
             )
     return _verdict("GR-PRODUCT", problems)
+
+
+def products_named(text: str, products: Mapping[str, str]) -> set[str]:
+    """The UINs a text names: UINs as written, and base products by catalog name (UIN -> name),
+    longest name first, so "… Shield ROP" is not also "… Shield". Also Quote-Only's plan detection
+    (Step 19), on the customer's normalised turn."""
+    scan, named = text, set(_UIN.findall(text))
+    for uin, name in sorted(products.items(), key=lambda kv: len(kv[1]), reverse=True):
+        pattern = _words([name])
+        if pattern.search(scan):
+            named.add(uin)
+            scan = pattern.sub(" ", scan)
+    return named
 
 
 def _placeholders(raw: str, numbers: Numbers | None) -> Verdict:

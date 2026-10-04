@@ -297,7 +297,7 @@ class SuitabilityController implements SuitabilityApi {
                                         eligibility.getGender(),
                                         sized.sumAssured(),
                                         sized.termYears(),
-                                        catalog.quoteDefaults(p).ppt(),
+                                        p.getQuoteDefaults().getPpt(),
                                         List.of()))
                                 .stream()))
         .map(RatingEngine.Premium::total)

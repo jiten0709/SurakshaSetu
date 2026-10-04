@@ -41,9 +41,11 @@ from surakshasetu.audit.events import (
     StateTransitionHeader,
     TurnInputHeader,
 )
-from surakshasetu.compose.bundle import PromptBundle, load_pinned
+from surakshasetu.compose.bundle import L1Name, PromptBundle, load_pinned
 from surakshasetu.compose.citations import issue
 from surakshasetu.compose.composer import Rendered
+from surakshasetu.compose.envelope import EnvelopeError, SessionFacts, model_call_event
+from surakshasetu.compose.envelope import build as build_envelope
 from surakshasetu.config import Settings
 from surakshasetu.crypto.jcs import canonical_json
 from surakshasetu.crypto.keys import KeyService
@@ -51,13 +53,21 @@ from surakshasetu.domain.client import DomainClient
 from surakshasetu.fsm.facts import Facts
 from surakshasetu.fsm.states import TERMINAL, FsmState
 from surakshasetu.fsm.transition import Transition, transition
-from surakshasetu.gateway import Gateway, Route
+from surakshasetu.gateway import Gateway, GatewayUnavailable, Route
 from surakshasetu.graph import states
 from surakshasetu.graph.facts import build_facts
 from surakshasetu.graph.gate import RedisGate
-from surakshasetu.graph.handlers import data_erasure, human_escalation, identity, pause, safety
-from surakshasetu.graph.state import Frame, GraphState, SessionState, VersionPins
-from surakshasetu.graph.states import s0
+from surakshasetu.graph.handlers import (
+    append,
+    data_erasure,
+    human_escalation,
+    identity,
+    pause,
+    product_names,
+    safety,
+)
+from surakshasetu.graph.state import Frame, GraphState, SessionState, SlotRow, VersionPins
+from surakshasetu.graph.states import quote_only, s0, s1
 from surakshasetu.rails import redact
 from surakshasetu.rails.output import LexiconPack, OutputContext, Released, release
 from surakshasetu.store import conv as store
@@ -74,18 +84,15 @@ ENTERED = {
     "human_escalation": human_escalation.escalate,
     "pause": pause.pause,
     "s0_enter": s0.enter,  # Step 18: G1 or a resume re-entered S0
+    "s1_enter": s1.enter,  # Step 19: S0.4, QO.3b, G2 (V4) or a resume entered S1
+    "quote_only_enter": quote_only.enter,  # Step 19: S0.3 or S1.3 entered Quote-Only
+}
+ENTER = {
+    FsmState.S0: "s0_enter",
+    FsmState.S1: "s1_enter",
+    FsmState.QUOTE_ONLY: "quote_only_enter",
 }
 LANGUAGE = {"en-IN": "en", "hi-IN": "hi"}
-
-
-@dataclasses.dataclass
-class SlotRow:
-    """A slot row the state node wants written in the commit (Steps 19-20)."""
-
-    slot: str
-    value: Any
-    confidence: float
-    status: Literal["proposed", "confirmed", "corrected", "declined"]
 
 
 @dataclasses.dataclass
@@ -135,6 +142,11 @@ class Turn:
     quick_replies: list[dict[str, Any]] = dataclasses.field(default_factory=list)
     shown: list[str] = dataclasses.field(default_factory=list)
     volunteered: list[str] = dataclasses.field(default_factory=list)
+    # Step 19. A plain question compose may lead with one generated sentence: (L1, the slot
+    # template's reason-line id, the answered slot names). Catalog names (UIN -> name), for
+    # Quote-Only's plan detection and I3's output rail.
+    phrase: tuple[L1Name, str, tuple[str, ...]] | None = None
+    products: dict[str, str] = dataclasses.field(default_factory=dict)
     # decide, compose, validate
     transition: Transition | None = None
     draft: str | None = None
@@ -283,7 +295,9 @@ async def input_node(state: GraphState, runtime: Runtime[Turn]) -> None:
             pins=pins,
             channel=cast(Literal["web", "app"], row.channel),
             key_ref=row.key_ref,
-            pending=PendingSlotSpec(session.pending_slot),
+            pending=PendingSlotSpec(
+                session.pending_slot, known_slots=states.KNOWN_SLOTS.get(session.fsm_state, ())
+            ),
         ),
         settings=turn.settings,
     )
@@ -393,7 +407,7 @@ async def decide(state: GraphState, runtime: Runtime[Turn]) -> Command[str]:
         session.stack = session.stack[:-1]
     session.fsm_state = result.to
     turn.transition = result
-    if result.to is not FsmState.S0:  # S0's consent form and quick replies stay in S0
+    if result.to is not before:  # a state's form and quick replies stay in that state
         turn.form, turn.quick_replies = None, []
     return Command(goto=after_decide(turn, before))
 
@@ -410,8 +424,8 @@ def after_decide(turn: Turn, before: FsmState) -> str:
         return "human_escalation"
     if to is FsmState.PAUSE and before is not FsmState.PAUSE:
         return "pause"
-    if to is FsmState.S0 and before is not FsmState.S0:
-        return "s0_enter"
+    if to in ENTER and to is not before:
+        return ENTER[to]
     return "compose"
 
 
@@ -451,6 +465,60 @@ async def compose(state: GraphState, runtime: Runtime[Turn]) -> None:
         chosen = [("safety", scripts.safety), *chosen]
     turn.draft = None
     turn.render = lambda _narrative: templates(chosen)
+    phrase = turn.phrase
+    if (
+        phrase is not None
+        and session.fsm_state is FsmState.S1
+        and turn.parts
+        and not (turn.identity or turn.safety or turn.degraded)
+    ):
+        turn.products = turn.products or await product_names(turn)
+        turn.draft = await converse(turn, phrase)
+        turn.regenerate = lambda errors: converse(turn, phrase, errors)
+        turn.render = lambda narrative: templates(_lead_with(chosen, narrative))
+
+
+def _lead_with(parts: list[tuple[str, str]], narrative: str | None) -> list[tuple[str, str]]:
+    """The generated sentence just before the question (the last part); none, the template alone."""
+    if narrative is None:
+        return parts
+    return [*parts[:-1], ("generated:narrative", narrative), parts[-1]]
+
+
+async def converse(
+    turn: Turn, phrase: tuple[L1Name, str, tuple[str, ...]], errors: list[str] | None = None
+) -> str | None:
+    """One friendly sentence from gen-converse with the state's L1 and NEXT_SLOT (Step 19): a
+    REDACTED envelope (no number, no identifier), its MODEL_CALL appended. None on any gateway or
+    envelope failure: the question template then goes out alone."""
+    session = _session(turn)
+    l1, next_slot, answered = phrase
+    pipeline = turn.pipeline
+    try:
+        envelope = build_envelope(
+            cast(PromptBundle, turn.bundle),
+            l1=l1,
+            locale=session.locale,
+            user_text=pipeline.redacted if pipeline else "",
+            facts=SessionFacts(language=LANGUAGE[session.locale], answered_slots=list(answered)),
+            next_slot=next_slot,
+            corrections=errors or (),
+        )
+        result = await turn.gateway.call(
+            envelope.route,
+            data_class=envelope.data_class,
+            messages=envelope.messages,
+            session_id=turn.session_id,
+            turn_id=cast(UUID, turn.out_id),
+            fsm_state=session.fsm_state.value,
+            attestation=envelope.attestation,
+        )
+    except (EnvelopeError, GatewayUnavailable) as exc:
+        logger.warning("%s phrasing unavailable: %s; the template alone", l1, exc.reason)
+        return None
+    header, payload = model_call_event(envelope, result)
+    append(turn, EventType.MODEL_CALL, header, payload)
+    return result.content
 
 
 async def _no_regeneration(errors: list[str]) -> str | None:
@@ -472,6 +540,8 @@ async def validate(state: GraphState, runtime: Runtime[Turn]) -> None:
         route=Route.GEN_RECOMMEND if session.fsm_state is FsmState.S3 else Route.GEN_CONVERSE,
         handles=issue([], []),
         customer_text=turn.pipeline.stored_raw if turn.pipeline else "",
+        products=turn.products,
+        customer_uins=frozenset(session.focus_uins),
         approved_text=tuple(turn.shown),
     )
     turn.released = await release(

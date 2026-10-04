@@ -59,7 +59,8 @@ def build_facts(
     action_type: str | None = None,
 ) -> Facts:
     """action_type: a structured action's type. ERASE (and DELETE /v1/sessions/{id}) is a
-    withdrawal that needs no language analysis."""
+    withdrawal that needs no language analysis; HUMAN_REQUEST (an advisor quick reply, Step 19) is
+    an explicit request for a person."""
     intents = set(analysis.intents) if analysis else set()
     record = session.consent
     engine = session.eligibility.engine if session.eligibility else None
@@ -76,7 +77,7 @@ def build_facts(
         consent=consent_status(record),
         intent=next((S0_INTENTS[i] for i in S0_INTENTS if i in intents), None),
         # V2: the 18+ box unticked with P1 granted, or the engine's DATA_ERASURE_EXIT. A stated
-        # minor age joins in Step 19, from the confirmed age slot.
+        # minor age is a turn signal (S0 and S1 set it before anything is persisted).
         minor=(
             record is not None
             and "AGE_NOT_DECLARED" in record.valid_reasons
@@ -115,7 +116,7 @@ def build_facts(
             else None
         ),
         withdraw=Intent.META_WITHDRAW in intents or action_type == "ERASE",
-        human_request=Intent.META_HUMAN in intents,
+        human_request=Intent.META_HUMAN in intents or action_type == "HUMAN_REQUEST",
         frustration=Intent.FRUSTRATION in intents,
         low_confidence_streak=counters.get("low_confidence_streak", 0),
         mandatory_trigger=trigger,

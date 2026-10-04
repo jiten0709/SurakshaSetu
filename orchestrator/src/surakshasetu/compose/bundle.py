@@ -59,6 +59,9 @@ L0_PATH = "l0/constitution.txt"
 TEMPLATE_FILES = ("slots", "scripts", "recommendation")
 CONSENT_LEXICON = "lexicons/consent_affirmation.yaml"  # Step 18
 IDENTITY_LEXICON = "lexicons/identity_question.yaml"
+SCREENING_LEXICON = "lexicons/screening.yaml"  # Step 19
+# Word edges that also hold inside Devanagari (as rails/output.py's lexicon matching).
+_START, _END = r"(?<![\wऀ-ॿ])", r"(?![\wऀ-ॿ])"
 
 
 class BundleError(Exception):
@@ -114,6 +117,7 @@ class Manifest(_Strict):
 class SlotTemplate(_Strict):
     question: str
     reason: str  # the approved one-line reason
+    hint: str | None = None  # Step 19: the format hint after an answer the system could not use
 
 
 class Labels(_Strict):
@@ -135,6 +139,31 @@ class ConsentForm(_Strict):
     submit: str
     retry: str
     languages: dict[Literal["en-IN", "hi-IN"], str]
+
+
+class Screening(_Strict):
+    """State-1 and Quote-Only labels (Step 19): each confirmed value as the read-back states it
+    ("{value}", "{district}", "{label}" fields, or a phrase per closed value), short slot names for
+    the read-back fix, the closed answers offered as quick replies, and the quick-reply labels."""
+
+    facts: dict[str, str | dict[str, str]]
+    names: dict[str, str]
+    choices: dict[str, dict[str, str]]
+    period: dict[PptOption, str]  # the premium's period by PPT
+    range: str  # "from {min} to {max}"
+    confirm: str
+    fix: str
+    retry: str
+    advisor: str
+    keep_going: str
+    opt_in: str
+    satisfied: str
+
+    @model_validator(mode="after")
+    def _every_fact_named(self) -> Self:
+        if unnamed := set(self.facts) - set(self.names):
+            raise ValueError(f"read-back facts without a name: {sorted(unnamed)}")
+        return self
 
 
 class Scripts(_Strict):
@@ -171,6 +200,35 @@ class Scripts(_Strict):
     advisor_contact: dict[Literal["granted", "declined"], str]  # the P2 question's quick replies
     side_query_caveat: dict[str, str]  # fsm state -> caveat
     labels: Labels
+    # State-1 and Quote-Only (Step 19, pb-2026.10.3 on; required, so pb-2026.10.2 no longer loads).
+    readback_fix: str  # a read-back answered "no": which detail to change
+    format_hint: str  # an answer the system could not use, then the slot's hint
+    redirect: str  # off-topic: a one-line redirect to the pending question
+    reask: str  # the engine's RE_ASK: the question asked once more
+    screening_retry: str  # the domain tier is down in S1: retry
+    screening_done: str  # eligible: the bridge to S2
+    express_offer: str  # a price asked for early (TDD §3.6)
+    medical_ack: str  # a serious illness disclosed: no insurability statement
+    underwriting_note: str  # "will I be rejected because of ...?": underwriting decides
+    nondisclosure_note: str  # "don't tell them I smoke"
+    not_eligible: str  # explain, alternatives, helpline; {reason} from not_eligible_reasons
+    not_eligible_reasons: dict[str, str]  # an engine reason code (or "default") -> one line
+    plan_ask: str
+    plan_unknown: str
+    plan_unavailable: str  # 409 PRODUCT_WITHDRAWN: withdrawn, expired or not launched
+    quote_card: str  # the indicative card, filled from the quote adapter's response
+    quote_caveat: str  # the architecture spec's standing Quote-Only caveat
+    quote_next: str
+    quote_withheld: str  # tobacco declined: no premium, no quote call
+    cover_bounds: str  # 422 QUOTE_OUT_OF_BOUNDS on sum_assured_inr
+    term_bounds: str  # ... on term_years
+    age_bounds: str  # ... on age_years: the plan's entry ages
+    rating_unavailable: str  # the rating engine cannot rate the request, or is down
+    hard_block: str  # an application asked for in Quote-Only (C13)
+    quote_summary: str  # Quote-Only exit
+    reengage: str  # with P3 only
+    goodbye: str
+    screening: Screening
 
 
 Attribute = Literal[
@@ -236,6 +294,12 @@ def phrase(text: str) -> str:
     return folded.rstrip(".!?। ").strip()
 
 
+def mentions(phrases: frozenset[str], text: str) -> bool:
+    """True when the text contains one of the (normalised) phrases as whole words."""
+    said = phrase(text)
+    return any(re.search(_START + re.escape(p) + _END, said) for p in phrases)
+
+
 def _phrases(entries: list[str]) -> frozenset[str]:
     # YAML reads a bare yes or no as a boolean: such entries must be quoted.
     if not all(isinstance(e, str) and phrase(e) for e in entries):
@@ -274,6 +338,19 @@ class IdentityLexicon(_Strict):
         return _phrases(entries)
 
 
+class ScreeningLexicon(_Strict):
+    """lexicons/screening.yaml (Step 19): whole-word phrases anywhere in the turn, like identity."""
+
+    health_terms: frozenset[str]
+    concealment: frozenset[str]
+    apply: frozenset[str]
+
+    @field_validator("health_terms", "concealment", "apply", mode="before")
+    @classmethod
+    def _normalised(cls, entries: list[str]) -> frozenset[str]:
+        return _phrases(entries)
+
+
 @dataclass(frozen=True)
 class PromptBundle:
     manifest: Manifest
@@ -283,6 +360,7 @@ class PromptBundle:
     templates: dict[str, Templates]  # locale -> templates
     consent_lexicon: ConsentLexicon
     identity_lexicon: IdentityLexicon
+    screening_lexicon: ScreeningLexicon
 
     @property
     def version(self) -> str:
@@ -311,6 +389,7 @@ def load_bundle(version: str, *, env: str, root: Path = PROMPT_BUNDLES) -> Promp
         *(f"templates/{loc}/{name}.yaml" for loc in LOCALES for name in TEMPLATE_FILES),
         CONSENT_LEXICON,
         IDENTITY_LEXICON,
+        SCREENING_LEXICON,
     }
     if missing := sorted((set(manifest.files) | required) - present):
         raise _refuse(version, "FILE_MISSING", missing[0])
@@ -334,6 +413,9 @@ def load_bundle(version: str, *, env: str, root: Path = PROMPT_BUNDLES) -> Promp
     try:
         consent_lexicon = ConsentLexicon.model_validate(yaml.safe_load(files[CONSENT_LEXICON]))
         identity_lexicon = IdentityLexicon.model_validate(yaml.safe_load(files[IDENTITY_LEXICON]))
+        screening_lexicon = ScreeningLexicon.model_validate(
+            yaml.safe_load(files[SCREENING_LEXICON])
+        )
     except (ValidationError, yaml.YAMLError) as exc:
         raise _refuse(version, "LEXICON_INVALID") from exc
     l0 = files[L0_PATH].decode("utf-8")
@@ -351,6 +433,7 @@ def load_bundle(version: str, *, env: str, root: Path = PROMPT_BUNDLES) -> Promp
         templates=templates,
         consent_lexicon=consent_lexicon,
         identity_lexicon=identity_lexicon,
+        screening_lexicon=screening_lexicon,
     )
     logger.info("prompt bundle %s loaded: %d files", version, len(files))
     return bundle

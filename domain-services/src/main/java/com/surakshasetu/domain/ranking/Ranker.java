@@ -2,10 +2,10 @@ package com.surakshasetu.domain.ranking;
 
 import static com.surakshasetu.domain.quote.QuoteAdapter.money;
 
-import com.surakshasetu.domain.catalog.CatalogRepository.QuoteDefaults;
 import com.surakshasetu.domain.common.Rules;
 import com.surakshasetu.domain.contract.model.PremiumQuote;
 import com.surakshasetu.domain.contract.model.Product;
+import com.surakshasetu.domain.contract.model.QuoteDefaults;
 import com.surakshasetu.domain.contract.model.QuoteRequest;
 import com.surakshasetu.domain.contract.model.RankingRequest;
 import com.surakshasetu.domain.contract.model.RecommendedOption;
@@ -194,11 +194,11 @@ public class Ranker {
                   p.getUin(),
                   money(sa),
                   term,
-                  candidate.defaults().ppt(),
+                  candidate.defaults().getPpt(),
                   List.copyOf(riders),
                   age,
                   request.getTobacco12m(),
-                  candidate.defaults().frequency())
+                  candidate.defaults().getFrequency())
               .gender(request.getGender());
       PremiumQuote premium = null;
       if (withheld) {
@@ -226,7 +226,7 @@ public class Ranker {
                   p.getUin(),
                   money(sa),
                   term,
-                  QuoteAdapter.pptYears(candidate.defaults().ppt(), term),
+                  QuoteAdapter.pptYears(candidate.defaults().getPpt(), term),
                   premium,
                   reasons)
               .riderUins(List.copyOf(riders))

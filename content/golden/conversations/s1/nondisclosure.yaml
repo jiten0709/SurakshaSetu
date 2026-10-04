@@ -1,0 +1,22 @@
+id: s1-nondisclosure
+description: >-
+  "Don't tell them I smoke": the neutral note that withheld material facts can affect a claim, no
+  help with it; what the customer did say about tobacco is recorded.
+turns:
+  - action: {type: START}
+    expect: {state: S0, templates: [greeting]}
+  - action: {type: CONSENT_SUBMIT, payload: {purposes: {P1: true, P2: false, P3: false}, age_18_plus: true}}
+    expect: {state: S0, templates: [intent_ask]}
+  - action: {type: INTENT, payload: {intent: new_purchase}}
+    expect: {state: S1, row: S0.4, templates: [RL-S1-AGE]}
+  - text: "34"
+    expect: {templates: [RL-S1-RESIDENCY]}
+  - action: {type: SLOT, payload: {slot: residency, value: resident}}
+    expect: {templates: [RL-S1-PINCODE]}
+  - text: "411001"
+    expect: {templates: [RL-S1-TOBACCO]}
+  - text: I smoke but don't tell them
+    script:
+      nlu-extract:
+        - {intents: [SLOT_ANSWER], slots: [{slot: tobacco_12m, value: true, confidence: 0.95, evidence_span: I smoke}]}
+    expect: {templates: [nondisclosure_note, RL-S1-OCCUPATION], slots: {tobacco_12m: proposed}}

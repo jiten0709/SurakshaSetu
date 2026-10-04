@@ -1,0 +1,25 @@
+id: s1-age-70
+description: Age 70 is outside the entry band; the engine's E-04 escalates (S1.1, HE_AGE_BAND), and with P1 only the advisor-contact question comes first.
+turns:
+  - action: {type: START}
+    expect: {state: S0, templates: [greeting]}
+  - action: {type: CONSENT_SUBMIT, payload: {purposes: {P1: true, P2: false, P3: false}, age_18_plus: true}}
+    expect: {state: S0, templates: [intent_ask]}
+  - action: {type: INTENT, payload: {intent: new_purchase}}
+    expect: {state: S1, row: S0.4, templates: [RL-S1-AGE]}
+  - text: "70"
+    expect: {templates: [RL-S1-RESIDENCY], slots: {age_years: proposed}}
+  - action: {type: SLOT, payload: {slot: residency, value: resident}}
+    expect: {templates: [RL-S1-PINCODE]}
+  - text: "411001"
+    expect: {templates: [RL-S1-TOBACCO]}
+  - text: "no"
+    expect: {templates: [RL-S1-OCCUPATION]}
+  - text: salaried
+    expect: {templates: [RL-S1-HEALTH], slots: {occupation_code: proposed}}
+  - text: "no"
+    expect: {templates: [RL-S1-PROPOSER]}
+  - text: "yes"
+    expect: {templates: [readback]}
+  - text: "yes"
+    expect: {state: HUMAN_ESCALATION, row: S1.1, reason: HE_AGE_BAND, templates: [advisor_consent_ask]}

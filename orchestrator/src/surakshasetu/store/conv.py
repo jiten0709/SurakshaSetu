@@ -245,6 +245,29 @@ def current_slots(conn: Conn, keys: KeyService, key_ref: str, session_id: UUID) 
     }
 
 
+def latest_slots(
+    conn: Conn, keys: KeyService, key_ref: str, session_id: UUID
+) -> dict[str, tuple[str, Any]]:
+    """slot -> (status, value) of the newest row per slot, whatever its status (Step 19): what S1
+    and Quote-Only have collected so far, confirmed or not."""
+    rows = conn.execute(
+        "SELECT DISTINCT ON (slot) slot, status, value_enc FROM conv.slot_value"
+        " WHERE session_id = %s ORDER BY slot, created_at DESC, slot_value_id DESC",
+        (session_id,),
+    ).fetchall()
+    return {
+        slot: (
+            status,
+            json.loads(
+                envelope.decrypt(
+                    keys.dek(key_ref), bytes(enc), f"conv.slot_value:{session_id}:{slot}"
+                )
+            ),
+        )
+        for slot, status, enc in rows
+    }
+
+
 def insert_recommendation(conn: Conn, *, session_id: UUID, payload: RecommendationPayload) -> UUID:
     rec_id = uuid7()
     conn.execute(

@@ -9,11 +9,10 @@ The S0 greeting shows the same registry body (graph/states/s0.py); both fetch it
 """
 
 import logging
-import re
 from typing import TYPE_CHECKING
 
 from surakshasetu.analysis.pipeline import PipelineResult
-from surakshasetu.compose.bundle import PromptBundle, phrase
+from surakshasetu.compose.bundle import PromptBundle, mentions
 from surakshasetu.domain.client import DomainError
 from surakshasetu.graph.handlers import bundle, scripts, session
 
@@ -23,18 +22,11 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 AI_DISCLOSURE = "DISC-GLOBAL-AI-06"
-# Word edges that also hold inside Devanagari (as rails/output.py's lexicon matching).
-_START, _END = r"(?<![\wऀ-ॿ])", r"(?![\wऀ-ॿ])"
 
 
 def asks(prompts: PromptBundle, pipeline: PipelineResult | None) -> bool:
     """True when the turn contains an identity question as whole words."""
-    if pipeline is None:
-        return False
-    said = phrase(pipeline.stored_raw)
-    return any(
-        re.search(_START + re.escape(p) + _END, said) for p in prompts.identity_lexicon.phrases
-    )
+    return pipeline is not None and mentions(prompts.identity_lexicon.phrases, pipeline.stored_raw)
 
 
 async def disclosure(turn: "Turn") -> str | None:

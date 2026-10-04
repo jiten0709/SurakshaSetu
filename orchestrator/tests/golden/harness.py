@@ -37,7 +37,7 @@ ROUTES = (
 )
 # nlu-extract scripts name only what they need; the rest of TurnAnalysis is filled in.
 ANALYSIS = {"intents": [], "slots": [], "side_query": None, "language": "en"}
-UIN = re.compile(r"\b999[NA]\d{3}V\d{2}\b")
+UIN = re.compile(r"\b999[NA]\d{3}V\d{2}\b", re.IGNORECASE)
 NUMBER = re.compile(r"\d+(?:[.,]\d+)*")
 # Part ids whose text is approved, fixed content rather than model output: bundle templates,
 # disclosure sets, and (Step 18) the registry's single disclosures and the consent notice.
@@ -92,6 +92,16 @@ class ConsentExpect(_Strict):
     language: Literal["en-IN", "hi-IN"] | None = None
 
 
+class EngineExpect(_Strict):
+    """An ENGINE_DECISION in the turn (Step 19): its service, and the result's outcome, flags and
+    reason codes where given (from the decrypted payload)."""
+
+    service: Literal["eligibility", "quote", "suitability", "ranking"]
+    outcome: str | None = None
+    flags: list[str] | None = None
+    reason_codes: list[str] | None = None
+
+
 class Expect(_Strict):
     status: int = 200
     state: FsmState | None = None
@@ -109,6 +119,14 @@ class Expect(_Strict):
     counters: dict[str, int] | None = None  # these conv.session counters after the turn
     slot_rows: int | None = None  # conv.slot_value rows after the turn
     form: bool | None = None  # the message carries the consent form
+    # Step 19
+    engine: EngineExpect | None = None
+    slots: dict[str, Literal["proposed", "confirmed", "corrected", "declined"]] | None = None
+    parts: list[str] | None = None  # every part id, in order (templates, registry, generated)
+    contains: list[str] = []  # each appears in the released text
+    lacks: list[str] = []  # none appears in the released text
+    row: str | None = None  # the turn's STATE_TRANSITION trigger (the fsm row id)
+    reason: str | None = None  # ... and its reason code
 
 
 class Turn(_Strict):
@@ -204,6 +222,9 @@ class Sent:
     replay_of: int | None = None  # the earlier exchange whose key was resent
     counters: dict[str, int] | None = None  # conv.session.counters after it (None once erased)
     slot_rows: int = 0  # conv.slot_value rows after it
+    slots: dict[str, str] = field(
+        default_factory=dict
+    )  # the newest row's status per slot (Step 19)
 
     @property
     def released(self) -> dict[str, Any] | None:
@@ -230,13 +251,14 @@ class Transcript:
     briefings: list[dict[str, Any]] = field(default_factory=list)
     logs: str = ""
     erased: bool | None = None  # after a withdrawal: live rows, checkpoint gone, key handled
-    product_names: list[str] = field(default_factory=list)
+    products: dict[str, str] = field(default_factory=dict)  # base product UIN -> catalog name
     registry: dict[str, str] = field(default_factory=dict)  # uin -> registry set_sha256
     evidence: dict[str, str] = field(default_factory=dict)  # chunk_id -> text
-    # Step 18: the Consent Service's notices (version -> (body, body_sha256)) and the registry's
-    # DISC-GLOBAL-AI-06 bodies (every language) for the parts and forms released.
+    # Step 18: the Consent Service's notices (version -> (body, body_sha256)) for the parts and
+    # forms released, and the registry's single-disclosure bodies (every language) that registry:
+    # parts may carry: DISC-GLOBAL-AI-06 (Step 18) and DISC-GLOBAL-QUOTE-02 (Step 19).
     notices: dict[str, tuple[str, str]] = field(default_factory=dict)
-    ai_disclosures: set[str] = field(default_factory=set)
+    registry_bodies: set[str] = field(default_factory=set)
 
     def turn_events(self, released: dict[str, Any]) -> list[Event]:
         """One committed turn's events: from its TURN_INPUT to the next TURN_INPUT."""
@@ -325,11 +347,21 @@ def check_i2(t: Transcript) -> list[str]:
     return failures
 
 
+def named(text: str, products: dict[str, str]) -> set[str]:
+    """The products a text names, as UINs: written as a UIN, or by catalog name."""
+    folded = text.casefold()
+    return {u.upper() for u in UIN.findall(text)} | {
+        uin for uin, name in products.items() if name.casefold() in folded
+    }
+
+
 def check_i3(t: Transcript) -> list[str]:
-    """No UIN or product name released before S3, unless the customer named it."""
+    """No UIN or product name released before S3, unless the customer named that product. Named
+    either way, by name or by UIN, the product is the customer's (decided 2026-10-04, Step 19): the
+    Quote-Only card shows the plan's name and UIN."""
     failures, seen_s3, said = [], False, ""
     for s in t.sent:
-        said += " " + (s.customer_text or "").casefold()
+        said += " " + (s.customer_text or "")
         released = s.released
         if released is None:
             continue
@@ -337,11 +369,8 @@ def check_i3(t: Transcript) -> list[str]:
             seen_s3 = True
         if seen_s3:
             continue
-        text = released["message"]["text"]
-        named = set(UIN.findall(text)) | {
-            n for n in t.product_names if n.casefold() in text.casefold()
-        }
-        if leaked := sorted(n for n in named if n.casefold() not in said):
+        shown = named(released["message"]["text"], t.products)
+        if leaked := sorted(shown - named(said, t.products)):
             failures.append(f"I3: turn {s.turn} released {leaked} before S3")
     return failures
 
@@ -509,8 +538,9 @@ def check_s0_no_generation(t: Transcript) -> list[str]:
 
 
 def check_consent_prompt(t: Transcript) -> list[str]:
-    """The notice and the AI disclosure are released verbatim, and every consent form names a
-    notice the Consent Service holds, with its hash."""
+    """The notice and the registry's single disclosures (the AI disclosure; Step 19, the indicative
+    quote's) are released verbatim, and every consent form names a notice the Consent Service
+    holds, with its hash."""
     failures = []
     for s in t.sent:
         released = s.released
@@ -520,7 +550,7 @@ def check_consent_prompt(t: Transcript) -> list[str]:
             pid, text = part["id"], part["text"]
             if pid.startswith("notice:") and t.notices.get(pid[7:], ("",))[0] != text:
                 failures.append(f"consent: turn {s.turn} {pid} is not the notice verbatim")
-            if pid.startswith("registry:") and text not in t.ai_disclosures:
+            if pid.startswith("registry:") and text not in t.registry_bodies:
                 failures.append(f"consent: turn {s.turn} {pid} is not the registry's body")
         form = released["message"].get("form")
         if form is not None:

@@ -127,7 +127,7 @@ class Play:
             initial_pins=self.one(
                 "SELECT pins FROM conv.session WHERE session_id = %s", self.session_id
             ),
-            product_names=[p.name for p in products],
+            products={p.uin: p.name for p in products},
         )
 
     async def given(self, subject_ref: UUID) -> bool:
@@ -271,8 +271,15 @@ class Play:
         slot_rows = self.one(
             "SELECT count(*) FROM conv.slot_value WHERE session_id = %s", self.session_id
         )
+        slots = dict(
+            self.db.execute(
+                "SELECT DISTINCT ON (slot) slot, status FROM conv.slot_value WHERE session_id = %s"
+                " ORDER BY slot, created_at DESC, slot_value_id DESC",
+                (self.session_id,),
+            ).fetchall()
+        )
         for sent in t.sent[before:]:
-            sent.counters, sent.slot_rows = counters, slot_rows
+            sent.counters, sent.slot_rows, sent.slots = counters, slot_rows, slots
         self.snapshot(t)
 
     async def kill_switch(self, index: int, turn: Turn) -> None:
@@ -377,8 +384,9 @@ class Play:
         await self.consent_texts(t)
 
     async def consent_texts(self, t: Transcript) -> None:
-        """The Consent Service's notices and the registry's AI disclosures, as the services hold
-        them, for every notice part and form released (harness.check_consent_prompt)."""
+        """The Consent Service's notices and the registry's single disclosures, as the services
+        hold them, for every notice part, registry part and form released
+        (harness.check_consent_prompt)."""
         versions: set[str] = set()
         for s in t.sent:
             if (released := s.released) is not None:
@@ -392,8 +400,9 @@ class Play:
                 continue  # not held: the check reports it
             t.notices[version] = (notice.body, notice.body_sha256)
         for language in ("en-IN", "hi-IN"):
-            found = await self.runtime.domain.get_disclosure("DISC-GLOBAL-AI-06", language)
-            t.ai_disclosures.add(found.body)
+            for disclosure_id in ("DISC-GLOBAL-AI-06", "DISC-GLOBAL-QUOTE-02"):
+                found = await self.runtime.domain.get_disclosure(disclosure_id, language)
+                t.registry_bodies.add(found.body)
 
     def erased(self) -> bool:
         session = self.one(
@@ -491,6 +500,47 @@ class Play:
                     self.fail(s.turn, f"disclosures {uins}, want {expect.disclosures}")
             if expect.erased is not None:
                 self.expect_erased(s.turn, expect.erased)
+            self.expect_step19(s, expect, released, events)
+
+    def expect_step19(
+        self, s: Sent, expect: Any, released: dict[str, Any], events: list[Event]
+    ) -> None:
+        """The engine's decision, the slot rows' statuses, every part id, the released text, and
+        the fsm row that decided the turn."""
+        text = released["message"]["text"]
+        if expect.engine is not None:
+            want = expect.engine
+            decisions = [
+                e.payload or {} for e in events
+                if e.event_type == "ENGINE_DECISION" and e.header.get("service") == want.service
+            ]  # fmt: skip
+            results = [d.get("result", {}) for d in decisions]
+            if not results:
+                self.fail(s.turn, f"no {want.service} ENGINE_DECISION in the turn")
+            for name in ("outcome", "flags", "reason_codes"):
+                value = getattr(want, name)
+                if value is not None and all(r.get(name) != value for r in results):
+                    got = [r.get(name) for r in results]
+                    self.fail(s.turn, f"{want.service} {name} {got}, want {value}")
+        if expect.slots is not None:
+            got = {k: s.slots.get(k) for k in expect.slots}
+            if got != expect.slots:
+                self.fail(s.turn, f"slots {got}, want {expect.slots}")
+        if expect.parts is not None and part_ids(released) != expect.parts:
+            self.fail(s.turn, f"parts {part_ids(released)}, want {expect.parts}")
+        for wanted in expect.contains:
+            if wanted not in text:
+                self.fail(s.turn, f"text lacks {wanted!r}")
+        for unwanted in expect.lacks:
+            if unwanted in text:
+                self.fail(s.turn, f"text has {unwanted!r}")
+        moves = [e.header for e in events if e.event_type == "STATE_TRANSITION"]
+        if expect.row is not None and [m["trigger"] for m in moves] != [expect.row]:
+            self.fail(s.turn, f"rows {[m['trigger'] for m in moves]}, want {expect.row}")
+        if expect.reason is not None and [m.get("reason_code") for m in moves] != [expect.reason]:
+            self.fail(
+                s.turn, f"reasons {[m.get('reason_code') for m in moves]}, want {expect.reason}"
+            )
 
     def expect_consent(self, index: int, expect: Any, events: list[Event]) -> None:
         captured = [e.header for e in events if e.event_type == "CONSENT_CAPTURED"]

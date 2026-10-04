@@ -14,6 +14,7 @@ from surakshasetu.domain.models import (
     PremiumQuote,
     Product,
     ProductDocument,
+    QuoteDefaults,
     RankingResult,
     RecommendedOption,
     Rider,
@@ -30,7 +31,7 @@ DECISION = UUID("0190a0c4-0000-7000-8000-000000000001")
 
 @cache
 def bundle() -> PromptBundle:
-    return load_bundle("pb-2026.10.2", env="test")
+    return load_bundle("pb-2026.10.3", env="test")
 
 
 def quote(
@@ -177,6 +178,13 @@ def product(uin: str) -> Product:
             document(uin, "POLICY_WORDING", "v10"),
             document(uin, "POLICY_WORDING", "v2"),
         ],
+        quote_defaults=QuoteDefaults(
+            sum_assured_inr="5000000" if rop else "10000000",
+            term_years=25 if rop else 30,
+            ppt="regular",
+            frequency="annual",
+            rider_uins=[],
+        ),
     )
 
 

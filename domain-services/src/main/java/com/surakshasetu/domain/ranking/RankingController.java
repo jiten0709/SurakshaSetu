@@ -53,7 +53,7 @@ class RankingController implements RankingApi {
         catalog
             .products(ProductStatus.IN_FORCE, null, true, BusinessDates.on(request.getAsOf()))
             .stream()
-            .map(p -> new Ranker.Candidate(p, catalog.quoteDefaults(p)))
+            .map(p -> new Ranker.Candidate(p, p.getQuoteDefaults()))
             .toList();
     Ranker.Ranked ranked =
         Ranker.rank(

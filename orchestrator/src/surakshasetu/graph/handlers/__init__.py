@@ -56,6 +56,19 @@ def append(turn: "Turn", event_type: EventType, header: Header, payload: dict[st
     )
 
 
+# ponytail: catalog names per process; a product added to the catalog needs a restart to be
+# recognised by name (by UIN it always is). Load per turn if the catalog starts changing live.
+_PRODUCT_NAMES: dict[str, str] = {}
+
+
+async def product_names(turn: "Turn") -> dict[str, str]:
+    """Base product UIN -> catalog name (Step 19): Quote-Only's plan detection, and I3's output
+    rail on generated text. Riders are named by UIN only (rails.output)."""
+    if not _PRODUCT_NAMES:
+        _PRODUCT_NAMES.update({p.uin: p.name for p in await turn.domain.list_products()})
+    return dict(_PRODUCT_NAMES)
+
+
 def granted(purposes: list[Any]) -> list[str]:
     """P1/P2/P3 for the purposes a consent record grants (P1_NEEDS_RECO -> P1)."""
     return sorted(p.purpose_id[:2] for p in purposes if p.granted)

@@ -573,7 +573,8 @@ async def test_an_identity_question_gets_the_templated_re_disclosure_in_any_stat
     later = s0_turn(text="kya aap insaan ho?", record=valid_record())
     later.next = session(fsm_state=FsmState.S1, consent=valid_record())
     await run(later)
-    assert ids(later) == ["template:ai_redisclosure"]  # not the stub's advisor_offer
+    # Step 19: S1's open question follows the re-disclosure (fixed text only, no generation).
+    assert ids(later) == ["template:ai_redisclosure", "template:RL-S1-AGE"]
 
 
 @pytest.mark.asyncio
@@ -584,10 +585,11 @@ async def test_the_re_disclosure_stays_truthful_when_the_registry_is_down() -> N
     await run(t)
 
     assert t.released is not None
-    assert (
-        t.released.text
-        == "I'm SurakshaSetu, an AI assistant from DUMMY Insurer. I'm not a human advisor."
+    assert t.released.text.startswith(
+        "I'm SurakshaSetu, an AI assistant from DUMMY Insurer. I'm not a human advisor.\n\n"
     )
+    # S1's own reads are down too (Step 19): its retry follows the truthful line.
+    assert ids(t) == ["template:ai_redisclosure", "template:screening_retry"]
 
 
 def test_the_identity_lexicon_matches_whole_words_only() -> None:

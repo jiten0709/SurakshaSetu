@@ -552,32 +552,12 @@ class QuoteAlternative(BaseModel):
     change: Literal["LOWER_COVER", "FEWER_RIDERS", "OTHER_PPT"]
 
 
-class Product(BaseModel):
-    uin: Uin
-    name: str
-    category: ProductType
-    status: ProductStatus
-    entry_age_min: int
-    entry_age_max: int
-    maturity_age_max: int
-    sa_min_inr: Money
-    sa_max_inr: Money | None
-    term_years_min: Annotated[int, Field(description="Lower bound of catalog.product.term_years.")]
-    term_years_max: Annotated[int, Field(description="Upper bound of catalog.product.term_years.")]
-    ppt_options: list[PptOption]
-    benefit_payment_options: Annotated[
-        list[str],
-        Field(
-            description="How the benefit is paid, e.g. lumpsum or monthly_income (catalog.product.payout_options, renamed so the contract carries no payout field)."
-        ),
-    ]
+class QuoteDefaults(BaseModel):
+    sum_assured_inr: Money
+    term_years: Annotated[int, Field(ge=1)]
+    ppt: PptOption
+    frequency: Frequency
     rider_uins: list[Uin]
-    effective_from: date
-    effective_to: date | None
-    launch_enabled: bool
-    is_dummy: bool
-    riders: list[Rider]
-    documents: list[ProductDocument]
 
 
 class RecommendedOption(BaseModel):
@@ -610,3 +590,32 @@ class RankingResult(BaseModel):
     ]
     inputs_sha256: Sha256Hex
     reason_codes: list[str]
+
+
+class Product(BaseModel):
+    uin: Uin
+    name: str
+    category: ProductType
+    status: ProductStatus
+    entry_age_min: int
+    entry_age_max: int
+    maturity_age_max: int
+    sa_min_inr: Money
+    sa_max_inr: Money | None
+    term_years_min: Annotated[int, Field(description="Lower bound of catalog.product.term_years.")]
+    term_years_max: Annotated[int, Field(description="Upper bound of catalog.product.term_years.")]
+    ppt_options: list[PptOption]
+    benefit_payment_options: Annotated[
+        list[str],
+        Field(
+            description="How the benefit is paid, e.g. lumpsum or monthly_income (catalog.product.payout_options, renamed so the contract carries no payout field)."
+        ),
+    ]
+    rider_uins: list[Uin]
+    effective_from: date
+    effective_to: date | None
+    launch_enabled: bool
+    is_dummy: bool
+    riders: list[Rider]
+    documents: list[ProductDocument]
+    quote_defaults: QuoteDefaults

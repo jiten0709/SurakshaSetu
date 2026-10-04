@@ -114,7 +114,7 @@ async def test_every_verdict_is_one_guard_verdict_event(monkeypatch: pytest.Monk
     for event in recorder.events:
         assert event["event_type"] is EventType.GUARD_VERDICT
         assert event["session_id"] == ctx().session_id and event["key_ref"] == "key-ref"
-        assert event["pins"] == {"prompt_bundle": "pb-2026.10.2"}
+        assert event["pins"] == {"prompt_bundle": "pb-2026.10.3"}
         header = event["header"]
         assert header.pack_version == ("2026.09.1" if header.rail == "lexicon" else None)
     assert released.verdicts["grounding:GR-NLI"] == "pass"

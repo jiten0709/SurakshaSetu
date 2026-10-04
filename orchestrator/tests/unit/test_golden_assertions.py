@@ -23,7 +23,7 @@ from harness import (  # noqa: E402
     sha256_text,
 )
 
-PINS = {"prompt_bundle": "pb-2026.10.2", "rules": "2026.09.1"}
+PINS = {"prompt_bundle": "pb-2026.10.3", "rules": "2026.09.1"}
 
 
 def body(text: str = "Hi", state: str = "S0", turn_id: str = "t1", **message: Any) -> bytes:
@@ -82,14 +82,14 @@ def transcript(*turns: dict[str, Any], **update: Any) -> Transcript:
     raw = body()
     t = Transcript(
         conversation=conversation,
-        active_bundle="pb-2026.10.2",
+        active_bundle="pb-2026.10.3",
         consent_valid_from_start=False,
         initial_pins=PINS,
         sent=[Sent(0, 200, raw, customer_text="hello")],
         events=events(raw),
         chain_ok=True,
         chain_checked=3,
-        product_names=["Suraksha Term Shield"],
+        products={"999N001V02": "Suraksha Term Shield"},
     )
     for name, value in update.items():
         setattr(t, name, value)
@@ -137,6 +137,20 @@ def test_i3_no_product_before_s3_unless_the_customer_named_it(leak: str) -> None
         f.startswith("I3")
         for f in check(transcript(sent=[Sent(0, 200, s3, customer_text="hi")], events=events(s3)))
     )
+
+
+def test_i3_a_product_the_customer_named_may_be_shown_by_its_name_or_uin() -> None:
+    """Step 19 (decided 2026-10-04): the Quote-Only card shows the named plan's name and UIN."""
+    card = body("Indicative premium for Suraksha Term Shield (UIN 999N001V02)")
+    for said in ("price the suraksha term shield", "quote 999n001v02"):
+        t = transcript(sent=[Sent(0, 200, card, customer_text=said)], events=events(card))
+        assert not any(f.startswith("I3") for f in check(t)), said
+    other = body("Indicative premium for Suraksha Term Shield (UIN 999N001V02), or 999N002V01")
+    t = transcript(
+        sent=[Sent(0, 200, other, customer_text="price the Suraksha Term Shield")],
+        events=events(other),
+    )
+    assert any("999N002V01" in f for f in check(t))  # another product still leaks
 
 
 def test_i4_s3_disclosure_hashes_are_the_registrys() -> None:
@@ -240,7 +254,7 @@ def test_the_consent_prompt_is_released_verbatim_with_a_form_for_a_held_notice()
     ]
 
     def released(**update: Any) -> list[str]:
-        held = {"notices": {"n1": ("Notice body", "ab" * 32)}, "ai_disclosures": {"AI body"}}
+        held = {"notices": {"n1": ("Notice body", "ab" * 32)}, "registry_bodies": {"AI body"}}
         raw = body(parts=parts, form=form)
         t = transcript(sent=[Sent(0, 200, raw)], events=events(raw), **(held | update))
         return [f for f in check(t) if f.startswith("consent:")]
@@ -249,7 +263,12 @@ def test_the_consent_prompt_is_released_verbatim_with_a_form_for_a_held_notice()
     assert released(notices={"n1": ("Another body", "ab" * 32)})  # the notice part
     assert released(notices={"n1": ("Notice body", "cd" * 32)})  # the form's hash
     assert released(notices={})  # a notice the service does not hold
-    assert released(ai_disclosures={"Another"})  # the registry part
+    assert released(registry_bodies={"Another"})  # the registry part
+
+    # Step 19: the indicative quote's DISC-GLOBAL-QUOTE-02 is a registry part too.
+    parts.append({"id": "registry:DISC-GLOBAL-QUOTE-02", "text": "Quote body"})
+    assert released(registry_bodies={"AI body", "Quote body"}) == []
+    assert released()  # a body the registry does not hold
 
 
 def test_i8_every_delivery_is_a_committed_release() -> None:
@@ -346,6 +365,30 @@ def test_the_s0_suite_covers_the_step_18_paths() -> None:
     )  # fmt: skip
     for c in suite:  # S0 starts clean: consent comes only through S0's own turns
         assert c.given.consent is None or c.given.state is not None, c.id
+
+
+def test_the_s1_and_quote_only_suites_cover_the_step_19_paths() -> None:
+    every = load_conversations()
+    s1 = [c for c in every if c.id.startswith("s1-")]
+    quote_only = [c for c in every if c.id.startswith("qo-")]
+    assert len(s1) >= 14 and len(quote_only) >= 8
+    reasons = {t.expect.reason for c in s1 for t in c.turns}
+    assert {
+        "ELIGIBLE",
+        "HE_NRI",
+        "HE_AGE_BAND",
+        "HE_COMPLEX_PROPOSER",
+        "HE_RE_ASK_LIMIT",
+        "NOT_ELIGIBLE",
+        "EXPRESS_PATH",
+        "CORRECTION_ELIGIBILITY",
+    } <= reasons
+    assert any(
+        t.expect.erased == "destroyed" and t.expect.slot_rows == 0 for c in s1 for t in c.turns
+    )
+    assert {"QO.1", "QO.2", "QO.3", "QO.3b"} <= {t.expect.row for c in quote_only for t in c.turns}
+    for c in s1 + quote_only:  # reached through real S0 turns, never seeded
+        assert c.given.consent is None and c.given.state is None, c.id
 
 
 @pytest.mark.parametrize(

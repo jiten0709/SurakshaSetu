@@ -1,0 +1,15 @@
+id: qo-no-plan-named
+description: >-
+  I3: without a plan named, the assistant asks for one and never proposes a name, however the
+  customer asks.
+turns:
+  - action: {type: START}
+    expect: {state: S0, templates: [greeting]}
+  - action: {type: CONSENT_SUBMIT, payload: {purposes: {P1: true, P2: false, P3: false}, age_18_plus: true}}
+    expect: {state: S0, templates: [intent_ask]}
+  - action: {type: INTENT, payload: {intent: specific_plan}}
+    expect: {state: QUOTE_ONLY, row: S0.3, templates: [plan_ask], lacks: [Suraksha, "999N"]}
+  - text: just give me the cheapest price
+    expect: {state: QUOTE_ONLY, templates: [plan_ask], lacks: [Suraksha, "999N"], slot_rows: 0}
+  - text: "34"
+    expect: {state: QUOTE_ONLY, templates: [plan_ask], lacks: [Suraksha, "999N"]}

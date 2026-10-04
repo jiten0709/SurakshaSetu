@@ -164,6 +164,12 @@ def test_slot_history_is_append_only_and_the_newest_confirmed_row_is_current(
         "age": 36,
         "goals": ["income_protection"],
     }
+    # Step 19: the newest row per slot, whatever its status.
+    assert store.latest_slots(db, keys, key_ref, session_id) == {
+        "age": ("confirmed", 36),
+        "annual_income_inr": ("declined", None),
+        "goals": ("confirmed", ["income_protection"]),
+    }
     rows = db.execute(
         "SELECT count(*), count(evidence) FROM conv.slot_value WHERE session_id = %s",
         (session_id,),

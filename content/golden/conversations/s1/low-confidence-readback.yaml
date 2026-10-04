@@ -1,0 +1,23 @@
+id: s1-low-confidence-readback
+description: >-
+  A value nlu-extract gives at 0.7 is proposed and read back at once; "yes" confirms it and the
+  next question follows. A value below 0.6 is dropped and the format hint is given.
+turns:
+  - action: {type: START}
+    expect: {state: S0, templates: [greeting]}
+  - action: {type: CONSENT_SUBMIT, payload: {purposes: {P1: true, P2: false, P3: false}, age_18_plus: true}}
+    expect: {state: S0, templates: [intent_ask]}
+  - action: {type: INTENT, payload: {intent: new_purchase}}
+    expect: {state: S1, row: S0.4, templates: [RL-S1-AGE]}
+  - text: maybe thirty or so
+    script:
+      nlu-extract:
+        - {intents: [SLOT_ANSWER], slots: [{slot: age_years, value: 30, confidence: 0.4, evidence_span: thirty}]}
+    expect: {templates: [format_hint, RL-S1-AGE], slot_rows: 0, counters: {low_confidence_streak: 1}}
+  - text: I'm 34 I think
+    script:
+      nlu-extract:
+        - {intents: [SLOT_ANSWER], slots: [{slot: age_years, value: 34, confidence: 0.7, evidence_span: "34"}]}
+    expect: {templates: [readback], contains: ["To confirm: 34. Correct?"], slots: {age_years: proposed}, counters: {low_confidence_streak: 0}}
+  - text: "yes"
+    expect: {templates: [RL-S1-RESIDENCY]}

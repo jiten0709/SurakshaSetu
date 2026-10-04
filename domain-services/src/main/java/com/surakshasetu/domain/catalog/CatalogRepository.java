@@ -6,11 +6,13 @@ import com.surakshasetu.domain.contract.model.Product;
 import com.surakshasetu.domain.contract.model.ProductDocument;
 import com.surakshasetu.domain.contract.model.ProductStatus;
 import com.surakshasetu.domain.contract.model.ProductType;
+import com.surakshasetu.domain.contract.model.QuoteDefaults;
 import com.surakshasetu.domain.contract.model.Rider;
 import java.math.BigDecimal;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HexFormat;
 import java.util.List;
@@ -33,15 +35,12 @@ public class CatalogRepository {
       SELECT uin, name, category, status, entry_age_min, entry_age_max, maturity_age_max,
         sa_min_inr, sa_max_inr, lower(term_years) AS term_min, upper(term_years) - 1 AS term_max,
         ppt_options, payout_options, rider_uins, effective_from, effective_to, launch_enabled,
-        is_dummy
+        is_dummy, quote_defaults::text AS quote_defaults
       FROM catalog.product
       WHERE effective_from <= :on AND (effective_to IS NULL OR :on < effective_to)
       """;
 
   private static final JsonMapper JSON = JsonMapper.builder().build();
-
-  /** The quote engine's default premium-paying term and frequency for a product. */
-  public record QuoteDefaults(PptOption ppt, Frequency frequency) {}
 
   private final JdbcClient jdbc;
 
@@ -76,28 +75,6 @@ public class CatalogRepository {
         .param("uin", uin)
         .query(this::product)
         .optional();
-  }
-
-  /**
-   * The product's quote_defaults. Without one, its first PPT option, paid annually (single for a
-   * single premium).
-   */
-  public QuoteDefaults quoteDefaults(Product product) {
-    JsonNode defaults =
-        JSON.readTree(
-            jdbc.sql("SELECT quote_defaults::text FROM catalog.product WHERE uin = ?")
-                .param(product.getUin())
-                .query(String.class)
-                .single());
-    PptOption ppt =
-        defaults.hasNonNull("ppt")
-            ? PptOption.fromValue(defaults.get("ppt").asString())
-            : product.getPptOptions().getFirst();
-    Frequency frequency =
-        defaults.hasNonNull("frequency")
-            ? Frequency.fromValue(defaults.get("frequency").asString())
-            : ppt == PptOption.SINGLE ? Frequency.SINGLE : Frequency.ANNUAL;
-    return new QuoteDefaults(ppt, frequency);
   }
 
   public boolean exists(String uin) {
@@ -137,7 +114,37 @@ public class CatalogRepository {
         rs.getBoolean("launch_enabled"),
         rs.getBoolean("is_dummy"),
         riders(uin),
-        documents(uin));
+        documents(uin),
+        defaults(rs));
+  }
+
+  /**
+   * catalog.product.quote_defaults (Step 19). A member the row leaves out falls back to the minimum
+   * cover, the minimum term, no riders, and the first PPT option paid annually (single for a single
+   * premium); every seeded product sets all five.
+   */
+  private static QuoteDefaults defaults(ResultSet rs) throws SQLException {
+    JsonNode d = JSON.readTree(rs.getString("quote_defaults"));
+    PptOption ppt =
+        d.hasNonNull("ppt")
+            ? PptOption.fromValue(d.get("ppt").asString())
+            : PptOption.fromValue(strings(rs, "ppt_options").getFirst());
+    Frequency frequency =
+        d.hasNonNull("frequency")
+            ? Frequency.fromValue(d.get("frequency").asString())
+            : ppt == PptOption.SINGLE ? Frequency.SINGLE : Frequency.ANNUAL;
+    List<String> riders = new ArrayList<>();
+    if (d.hasNonNull("rider_uins")) {
+      d.get("rider_uins").forEach(r -> riders.add(r.asString()));
+    }
+    return new QuoteDefaults(
+        d.hasNonNull("sum_assured_inr")
+            ? d.get("sum_assured_inr").asString()
+            : money(rs.getBigDecimal("sa_min_inr")),
+        d.hasNonNull("term_years") ? d.get("term_years").asInt() : rs.getInt("term_min"),
+        ppt,
+        frequency,
+        riders);
   }
 
   // ponytail: two queries per product (riders, documents); fine for a catalog of a few products,

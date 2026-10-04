@@ -34,7 +34,7 @@ def test_born_in_two_digit_year_with_one_plausible_century() -> None:
     result = parse_age("born in '91", current_year=CURRENT_YEAR)
     assert result is not None
     assert result.value == CURRENT_YEAR - 1991
-    assert result.needs_confirmation is False
+    assert result.needs_confirmation is True  # Step 19: a birth year gives the age +/- one year
 
 
 def test_born_in_two_digit_year_with_two_plausible_centuries_needs_confirmation() -> None:
@@ -49,7 +49,7 @@ def test_born_in_four_digit_year() -> None:
     result = parse_age("born in 1991", current_year=CURRENT_YEAR)
     assert result is not None
     assert result.value == CURRENT_YEAR - 1991
-    assert result.needs_confirmation is False
+    assert result.needs_confirmation is True
 
 
 def test_devanagari_age_digits_are_read() -> None:

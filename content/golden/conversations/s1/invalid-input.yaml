@@ -1,0 +1,23 @@
+id: s1-invalid-input
+description: >-
+  An answer the system cannot use gets the question's format hint; at the third the advisor is
+  offered (TDD §3.9), and the advisor quick reply escalates (CC2; P2 is asked first).
+turns:
+  - action: {type: START}
+    expect: {state: S0, templates: [greeting]}
+  - action: {type: CONSENT_SUBMIT, payload: {purposes: {P1: true, P2: false, P3: false}, age_18_plus: true}}
+    expect: {state: S0, templates: [intent_ask]}
+  - action: {type: INTENT, payload: {intent: new_purchase}}
+    expect: {state: S1, row: S0.4, templates: [RL-S1-AGE]}
+  - text: "34"
+    expect: {templates: [RL-S1-RESIDENCY]}
+  - action: {type: SLOT, payload: {slot: residency, value: resident}}
+    expect: {templates: [RL-S1-PINCODE]}
+  - text: somewhere near the station
+    expect: {templates: [format_hint, RL-S1-PINCODE], counters: {invalid_input: 1}}
+  - text: the one by the market
+    expect: {templates: [format_hint, RL-S1-PINCODE], counters: {invalid_input: 2}}
+  - text: I don't know it
+    expect: {templates: [advisor_offer], counters: {invalid_input: 0}}
+  - action: {type: HUMAN_REQUEST}
+    expect: {state: HUMAN_ESCALATION, row: CC2, reason: HE_REQUEST, templates: [advisor_consent_ask]}

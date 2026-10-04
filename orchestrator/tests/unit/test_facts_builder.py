@@ -19,7 +19,7 @@ ID = UUID("0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b")
 
 def session(**update: Any) -> SessionState:
     pins = VersionPins(
-        prompt_bundle="pb-2026.10.2",
+        prompt_bundle="pb-2026.10.3",
         rules="2026.09.1",
         corpus={},
         consent_notice="2026.09.1-en",
@@ -99,6 +99,13 @@ def test_no_analysis_means_nothing_happened() -> None:
     facts = build_facts(session(), None, None, SETTINGS)
     assert not (facts.withdraw or facts.faq or facts.objection or facts.minor)
     assert facts.intent is None and facts.mandatory_trigger is None
+    assert not facts.human_request
+
+
+def test_the_advisor_quick_reply_is_a_human_request() -> None:
+    """Step 19: the HUMAN_REQUEST action (an advisor offer's quick reply) needs no analysis."""
+    assert build_facts(session(), None, None, SETTINGS, action_type="HUMAN_REQUEST").human_request
+    assert not build_facts(session(), None, None, SETTINGS, action_type="RETRY").human_request
 
 
 @pytest.mark.parametrize(
