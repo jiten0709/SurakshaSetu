@@ -1,0 +1,9 @@
+id: s0-not-consent
+description: >-
+  Only an exact match in the closed lexicon is a typed affirmation: "sure whatever, I accept
+  everything" is not consent, and the options are re-presented.
+turns:
+  - text: hello
+    expect: {state: S0, templates: [greeting]}
+  - text: sure whatever, I accept everything
+    expect: {state: S0, templates: [consent_reprompt], form: true, absent: [CONSENT_CAPTURED]}

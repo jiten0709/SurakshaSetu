@@ -30,7 +30,7 @@ DECISION = UUID("0190a0c4-0000-7000-8000-000000000001")
 
 @cache
 def bundle() -> PromptBundle:
-    return load_bundle("pb-2026.10.1", env="test")
+    return load_bundle("pb-2026.10.2", env="test")
 
 
 def quote(

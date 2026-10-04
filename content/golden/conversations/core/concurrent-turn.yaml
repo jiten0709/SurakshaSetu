@@ -4,4 +4,4 @@ turns:
   - text: hello
     concurrent: true
   - text: hello again
-    expect: {state: S0, templates: [advisor_offer]}
+    expect: {state: S0, templates: [consent_reprompt]}

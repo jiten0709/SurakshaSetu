@@ -5,4 +5,4 @@ description: >-
 given: {consent: {purposes: [P1], captured_days_ago: 31}, state: PAUSE, paused_from: S2}
 turns:
   - text: hi, I'm back
-    expect: {state: S0, templates: [advisor_offer]}
+    expect: {state: S0, templates: [consent_renew]}

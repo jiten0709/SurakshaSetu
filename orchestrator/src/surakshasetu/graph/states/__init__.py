@@ -1,6 +1,7 @@
-"""Per-state graph nodes. Every state is a stub until Steps 18-21 replace its entry (S0: Step 18;
-S1 and QUOTE_ONLY: Step 19; S2: Step 20; S3: Step 21). Of the support states, HUMAN_ESCALATION and
-PAUSE run their Step 17 handlers (the P2 answer, and resume); the closed ones stay stubs.
+"""Per-state graph nodes. S0 is State-0 (Step 18); the others are stubs until Steps 19-21 replace
+their entries (S1 and QUOTE_ONLY: Step 19; S2: Step 20; S3: Step 21). Of the support states,
+HUMAN_ESCALATION and PAUSE run their Step 17 handlers (the P2 answer, and resume); the closed ones
+stay stubs.
 
 A state node works on the turn's scratch (runtime.context: graph.nodes.Turn) and never chooses the
 next state: decide calls fsm.transition() after it. `guarded` is the dependency-down plumbing of

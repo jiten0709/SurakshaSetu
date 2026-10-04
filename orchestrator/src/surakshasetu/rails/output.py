@@ -217,6 +217,9 @@ class OutputContext:
     products: Mapping[str, str] = field(default_factory=dict)  # base product UIN -> catalog name
     customer_uins: frozenset[str] = frozenset()  # products the customer named (I3)
     own_pii: frozenset[str] = frozenset()  # this session's own values, which a release may show
+    # Approved text shown verbatim outside a disclosure set (Step 18): the consent notice and the
+    # registry's AI disclosure. Contact details in them (a grievance officer's email) are not leaks.
+    approved_text: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -592,10 +595,10 @@ def leaks(text: str, ctx: OutputContext, sets: Mapping[str, DisclosureSet]) -> V
     own_ids = {str(ctx.session_id), str(ctx.subject_ref)}
     if any(u.lower() not in own_ids for u in _UUID.findall(text)):
         kinds.append("foreign_id")
+    bodies = [item.body for shown in sets.values() for item in shown.items]
     approved = {
         body[start:end]
-        for shown in sets.values()
-        for body in (item.body for item in shown.items)
+        for body in (*bodies, *ctx.approved_text)
         for _, start, end in redact.entities(body)
     }
     kinds += [

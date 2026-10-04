@@ -7,6 +7,7 @@ the subject's DEK. tests/unit/test_header_models.py fails the build on a field n
 personal. Later steps may add fields: verification rehashes the stored header, not the model.
 """
 
+from datetime import datetime
 from enum import StrEnum
 from typing import Annotated, Literal
 from uuid import UUID
@@ -42,8 +43,12 @@ class ConsentCapturedHeader(Header):
     consent_id: UUID
     notice_version: str
     notice_sha256: Sha256Hex
-    purposes: list[Literal["P1", "P2", "P3"]]
+    purposes: list[Literal["P1", "P2", "P3"]]  # the purposes granted
     method: Literal["structured_action", "parsed_affirmation"]
+    # Step 18: the notice's language, the 18+ declaration and the Consent Service's capture time.
+    language: str
+    adult_declared: bool
+    captured_at: datetime
 
 
 class ConsentWithdrawnHeader(Header):

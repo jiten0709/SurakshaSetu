@@ -1,0 +1,10 @@
+id: s0-identity-pre-consent
+description: >-
+  "Am I talking to a person?" before consent gets the templated AI re-disclosure with the
+  registry's body (I6), and the consent prompt stays open.
+turns:
+  - text: hello
+    expect: {state: S0, templates: [greeting]}
+  - text: "Before I agree to anything: am I talking to a real person?"
+    identity: true
+    expect: {state: S0, templates: [ai_redisclosure], form: true, absent: [CONSENT_CAPTURED]}

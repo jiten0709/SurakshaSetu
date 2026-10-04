@@ -1,0 +1,16 @@
+id: s0-volunteered-age
+description: >-
+  An age volunteered before consent is never slot-filled or stored (I1): no slot rows before or
+  after consent, and S1 starts with nothing filled.
+turns:
+  - text: hello
+    expect: {state: S0, templates: [greeting]}
+  - text: I'm 34 years old and I want term cover
+    script:
+      nlu-extract:
+        - {intents: [NEW_PURCHASE], slots: [{slot: age_years, value: 34, confidence: 0.95, evidence_span: 34 years old}]}
+    expect: {state: S0, templates: [consent_reprompt], slot_rows: 0}
+  - action: {type: CONSENT_SUBMIT, payload: {purposes: {P1: true, P2: false, P3: false}, age_18_plus: true}}
+    expect: {state: S0, templates: [intent_ask], slot_rows: 0}
+  - action: {type: INTENT, payload: {intent: new_purchase}}
+    expect: {state: S1, slot_rows: 0}

@@ -1,0 +1,14 @@
+id: s0-resume-notice-bump
+description: >-
+  A newer notice takes effect while the session is paused: on resume the refreshed record is
+  NOTICE_SUPERSEDED, so G1 re-enters S0 with the new notice; consent on it re-pins the session's
+  notice (I7's exception) and the customer carries on.
+given: {consent: {purposes: [P1]}, state: PAUSE, paused_from: S1}
+turns:
+  - text: hi, I'm back
+    notice_bump: true
+    expect: {state: S0, templates: [consent_renew], form: true}
+  - action: {type: CONSENT_SUBMIT, payload: {purposes: {P1: true, P2: false, P3: false}, age_18_plus: true}}
+    expect: {state: S0, templates: [intent_ask], consent: {method: structured_action, purposes: [P1]}}
+  - action: {type: INTENT, payload: {intent: new_purchase}}
+    expect: {state: S1}

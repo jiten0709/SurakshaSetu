@@ -6,6 +6,6 @@ given: {pins: {prompt_bundle: pb-2026.09.1}}
 turns:
   - kill_switch: {kind: prompt_bundle, target: pb-2026.09.1, reason_code: BUNDLE_RETIRED}
     text: hello
-    expect: {state: S0, templates: [advisor_offer]}
+    expect: {state: S0, templates: [greeting]}
   - text: hello again
-    expect: {state: S0, templates: [advisor_offer]}
+    expect: {state: S0, templates: [consent_reprompt]}

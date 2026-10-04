@@ -1,0 +1,14 @@
+id: s0-notice-mismatch
+description: >-
+  A CONSENT_SUBMIT naming a notice hash that is not the one in force: the Consent Service refuses
+  it (422 NOTICE_MISMATCH), nothing is recorded, and the current notice is rendered again.
+turns:
+  - action: {type: START}
+    expect: {state: S0, templates: [greeting]}
+  - action:
+      type: CONSENT_SUBMIT
+      payload:
+        purposes: {P1: true, P2: false, P3: false}
+        age_18_plus: true
+        notice_sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+    expect: {state: S0, templates: [notice_updated], form: true, absent: [CONSENT_CAPTURED]}

@@ -2,6 +2,7 @@
 httpx.MockTransport (no network), an in-memory stand-in for the Redis gate, the dev pins, and (db
 tests only) a real Runtime over the test database."""
 
+import hashlib
 import json
 import os
 from collections.abc import AsyncIterator, Callable
@@ -36,7 +37,7 @@ def settings(**update: Any) -> Settings:
 
 def pins() -> VersionPins:
     return VersionPins(
-        prompt_bundle="pb-2026.10.1",
+        prompt_bundle="pb-2026.10.2",
         rules="2026.09.1",
         corpus={},
         consent_notice=NOTICE,
@@ -47,8 +48,8 @@ def pins() -> VersionPins:
 
 
 class Models:
-    """guard-input, nlu-extract and verify-claims. `intents`/`side_query` shape the analysis;
-    `safety`/`injection` the guard's verdict; `down` names routes that fail."""
+    """guard-input, nlu-extract and verify-claims. `intents`/`side_query`/`slots` shape the
+    analysis; `safety`/`injection` the guard's verdict; `down` names routes that fail."""
 
     def __init__(
         self,
@@ -58,8 +59,9 @@ class Models:
         safety: str = "safe",
         injection: float = 0.01,
         down: tuple[str, ...] = (),
+        slots: tuple[dict[str, Any], ...] = (),
     ) -> None:
-        self.intents, self.side_query = intents, side_query
+        self.intents, self.side_query, self.slots = intents, side_query, slots
         self.safety, self.injection, self.down = safety, injection, down
         self.routes: list[str] = []
 
@@ -73,7 +75,7 @@ class Models:
         elif route == "nlu-extract":
             answer = {
                 "intents": list(self.intents),
-                "slots": [],
+                "slots": list(self.slots),
                 "side_query": self.side_query,
                 "language": "en",
             }
@@ -102,21 +104,38 @@ VERSIONS = {
 }
 
 
+def notice_json(language: str = "en-IN") -> dict[str, Any]:
+    body = f"DUMMY notice ({language})"
+    return {
+        "notice_version": NOTICE if language == "en-IN" else NOTICE.replace("-en", "-hi"),
+        "language": language,
+        "body": body,
+        "body_sha256": hashlib.sha256(body.encode()).hexdigest(),
+        "is_dummy": True,
+    }
+
+
+def ai_disclosure_json(language: str = "en-IN") -> dict[str, Any]:
+    body = f"DUMMY: AI assistant identity and human alternative ({language})."
+    return {
+        "disclosure_id": "DISC-GLOBAL-AI-06",
+        "language": language,
+        "body": body,
+        "body_sha256": hashlib.sha256(body.encode()).hexdigest(),
+        "is_dummy": True,
+    }
+
+
 def domain_handler(request: httpx.Request) -> httpx.Response:
-    """The two reference reads a session needs at creation."""
+    """The reference reads: the two a session needs at creation, and the S0 prompt's notice and AI
+    disclosure (Step 18)."""
+    language = request.url.params.get("language", "en-IN")
     if request.url.path == "/v1/meta/versions":
         return httpx.Response(200, json=VERSIONS)
     if request.url.path == "/v1/consent/notices/current":
-        return httpx.Response(
-            200,
-            json={
-                "notice_version": NOTICE,
-                "language": "en-IN",
-                "body": "DUMMY notice",
-                "body_sha256": "ab" * 32,
-                "is_dummy": True,
-            },
-        )
+        return httpx.Response(200, json=notice_json(language))
+    if request.url.path == "/v1/disclosures/DISC-GLOBAL-AI-06":
+        return httpx.Response(200, json=ai_disclosure_json(language))
     raise AssertionError(f"unexpected domain call {request.method}")
 
 

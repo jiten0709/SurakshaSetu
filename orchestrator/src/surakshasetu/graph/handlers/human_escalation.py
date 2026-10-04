@@ -2,8 +2,10 @@
 
 Entering HUMAN_ESCALATION (`escalate`, after decide), nothing reaches an advisor without the
 customer's P2 consent (advisor contact):
-- no valid P1 (S0, or consent lapsed): contact options only, and no data is shared;
-- P1 but no P2: ask for P2 first; nothing is shared yet;
+- no valid P1 (S0, or consent lapsed), or any escalation from S0 (TDD §3.9's S0 column; an
+  existing policy is servicing, not a sales hand-off; Step 18): contact options only, and no data
+  is shared;
+- P1 but no P2: ask for P2 first, with yes/no quick replies; nothing is shared yet;
 - P2 granted: hand off. The redacted advisor briefing goes into a conv.handoff row (queued) and a
   HANDOFF event. The briefing holds the profile slots, state history, reason, recommendation and
   acknowledgments, so the advisor never re-asks.
@@ -25,7 +27,7 @@ from surakshasetu.audit.events import ConsentCapturedHeader, EventType, HandoffH
 from surakshasetu.domain.models import ConsentRecord, PurposeGrant
 from surakshasetu.fsm.states import FsmState
 from surakshasetu.fsm.transition import Transition
-from surakshasetu.graph.handlers import append, granted, scripts, session
+from surakshasetu.graph.handlers import append, granted, quick_reply, scripts, session
 from surakshasetu.graph.state import GraphState
 from surakshasetu.rails import redact
 from surakshasetu.store import conv as store
@@ -73,11 +75,15 @@ async def escalate(state: GraphState, *, runtime: Runtime[Any]) -> None:
     reason = cast(Transition, turn.transition).reason_code
     consent = session(turn).consent
     texts = scripts(turn)
-    if consent is None or not consent.valid_p1:
+    if turn.from_state is FsmState.S0 or consent is None or not consent.valid_p1:
         turn.parts = [("contact_options", texts.contact_options)]
         logger.info("escalation %s: contact options, no data shared", reason)
     elif not p2_granted(consent):
         turn.parts = [("advisor_consent_ask", texts.advisor_consent_ask)]
+        turn.quick_replies = [
+            quick_reply(texts.advisor_contact["granted"], ADVISOR_CONTACT, {"granted": True}),
+            quick_reply(texts.advisor_contact["declined"], ADVISOR_CONTACT, {"granted": False}),
+        ]
         logger.info("escalation %s: advisor contact (P2) asked first", reason)
     else:
         hand_off(turn, reason)
@@ -109,6 +115,9 @@ async def node(state: GraphState, *, runtime: Runtime[Any]) -> None:
                 notice_sha256=record.notice_sha256,
                 purposes=cast(Any, granted(record.purposes)),
                 method="structured_action",
+                language=record.notice_language,
+                adult_declared=record.age_18_plus_declared,
+                captured_at=record.captured_at,
             ),
             {"purpose": "P2_ADVISOR_CONTACT", "granted": True},
         )

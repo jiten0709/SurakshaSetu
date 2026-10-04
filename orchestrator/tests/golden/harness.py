@@ -39,8 +39,9 @@ ROUTES = (
 ANALYSIS = {"intents": [], "slots": [], "side_query": None, "language": "en"}
 UIN = re.compile(r"\b999[NA]\d{3}V\d{2}\b")
 NUMBER = re.compile(r"\d+(?:[.,]\d+)*")
-# Part ids whose text is approved, fixed content rather than model output.
-FIXED_PARTS = ("template:", "disclosures:")
+# Part ids whose text is approved, fixed content rather than model output: bundle templates,
+# disclosure sets, and (Step 18) the registry's single disclosures and the consent notice.
+FIXED_PARTS = ("template:", "disclosures:", "registry:", "notice:")
 
 
 class _Strict(BaseModel):
@@ -48,8 +49,8 @@ class _Strict(BaseModel):
 
 
 class GivenConsent(_Strict):
-    """A consent record captured through the real Consent Service before the first turn: as Step 18
-    will leave a session, until conversations go through S0 themselves."""
+    """A consent record captured through the real Consent Service before the first turn, as S0
+    leaves a session. Since Step 18 a conversation can reach it through S0's own turns instead."""
 
     purposes: list[Literal["P1", "P2", "P3"]] = ["P1"]
     adult: bool = True
@@ -83,6 +84,14 @@ class Action(_Strict):
     payload: dict[str, Any] = {}
 
 
+class ConsentExpect(_Strict):
+    """The turn's CONSENT_CAPTURED header (Step 18)."""
+
+    method: Literal["structured_action", "parsed_affirmation"] | None = None
+    purposes: list[Literal["P1", "P2", "P3"]] | None = None
+    language: Literal["en-IN", "hi-IN"] | None = None
+
+
 class Expect(_Strict):
     status: int = 200
     state: FsmState | None = None
@@ -94,6 +103,12 @@ class Expect(_Strict):
     abstained: bool | None = None
     disclosures: list[str] | None = None  # UINs with a disclosure set in the message
     hydrated: bool = False  # this turn rebuilt the session from conv (the checkpoint lagged)
+    # Step 18
+    consent: ConsentExpect | None = None  # a CONSENT_CAPTURED in this turn, with these fields
+    absent: list[EventType] = []  # none of these events in this turn
+    counters: dict[str, int] | None = None  # these conv.session counters after the turn
+    slot_rows: int | None = None  # conv.slot_value rows after the turn
+    form: bool | None = None  # the message carries the consent form
 
 
 class Turn(_Strict):
@@ -105,6 +120,9 @@ class Turn(_Strict):
     checkpoint_lost: bool = False  # the process dies after the commit, before the checkpoint
     identity: bool = False  # an "am I talking to a person?" question (I6)
     kill_switch: KillSwitch | None = None  # set by ops before this turn is sent
+    # A newer consent notice for the session's language takes effect before this turn (Step 18);
+    # the harness removes it afterwards.
+    notice_bump: bool = False
     script: dict[str, list[str | dict[str, Any]]] = {}  # route -> stub replies for this turn
     expect: Expect = Expect()
 
@@ -172,6 +190,7 @@ class Event:
     header: dict[str, Any]
     pins: dict[str, Any]
     payload: dict[str, Any] | None = None
+    fsm_state: str = ""
 
 
 @dataclass
@@ -183,6 +202,8 @@ class Sent:
     body: bytes
     customer_text: str | None = None
     replay_of: int | None = None  # the earlier exchange whose key was resent
+    counters: dict[str, int] | None = None  # conv.session.counters after it (None once erased)
+    slot_rows: int = 0  # conv.slot_value rows after it
 
     @property
     def released(self) -> dict[str, Any] | None:
@@ -212,6 +233,10 @@ class Transcript:
     product_names: list[str] = field(default_factory=list)
     registry: dict[str, str] = field(default_factory=dict)  # uin -> registry set_sha256
     evidence: dict[str, str] = field(default_factory=dict)  # chunk_id -> text
+    # Step 18: the Consent Service's notices (version -> (body, body_sha256)) and the registry's
+    # DISC-GLOBAL-AI-06 bodies (every language) for the parts and forms released.
+    notices: dict[str, tuple[str, str]] = field(default_factory=dict)
+    ai_disclosures: set[str] = field(default_factory=set)
 
     def turn_events(self, released: dict[str, Any]) -> list[Event]:
         """One committed turn's events: from its TURN_INPUT to the next TURN_INPUT."""
@@ -258,6 +283,8 @@ def check(t: Transcript) -> list[str]:
         *check_i8(t),
         *check_pii(t),
         *check_numbers(t),
+        *check_s0_no_generation(t),
+        *check_consent_prompt(t),
     ]
 
 
@@ -368,27 +395,38 @@ def check_i5(t: Transcript) -> list[str]:
 
 
 def check_i6(t: Transcript) -> list[str]:
-    """A question about talking to a person gets the AI re-disclosure template, nothing else."""
+    """A question about talking to a person is answered first by the AI re-disclosure template,
+    after the crisis script when that leads, and with fixed text only: nothing generated."""
     failures = []
     for s in t.sent:
         released = s.released
         if released is None or not t.conversation.turns[s.turn].identity:
             continue
         ids = [i for i in part_ids(released) if i != "template:safety"]
-        if ids != ["template:ai_redisclosure"]:
+        if ids[:1] != ["template:ai_redisclosure"] or not all(
+            i.startswith(FIXED_PARTS) for i in ids
+        ):
             failures.append(f"I6: turn {s.turn} answered an identity question with {ids}")
     return failures
 
 
 def check_i7(t: Transcript) -> list[str]:
-    """Pins never change, except a prompt bundle re-pinned to the active one by its kill switch."""
+    """Pins never change, except a prompt bundle re-pinned to the active one by its kill switch,
+    and (decided 2026-10-04) the consent notice re-pinned by a CONSENT_CAPTURED naming the new one,
+    the event where it changes."""
     failures, before = [], t.initial_pins
     for e in t.events:
         if e.pins == before:
             continue
         changed = {k for k in before.keys() | e.pins.keys() if before.get(k) != e.pins.get(k)}
         old, new = before.get("prompt_bundle"), e.pins.get("prompt_bundle")
-        if changed != {"prompt_bundle"} or old not in t.switched_bundles or new != t.active_bundle:
+        repinned = old in t.switched_bundles and new == t.active_bundle
+        reconsented = e.event_type == "CONSENT_CAPTURED" and e.header.get(
+            "notice_version"
+        ) == e.pins.get("consent_notice")
+        allowed = {"prompt_bundle"} if repinned else set()
+        allowed |= {"consent_notice"} if reconsented else set()
+        if not changed <= allowed:
             failures.append(f"I7: pins {sorted(changed)} changed at seq {e.seq}")
         before = e.pins
     return failures
@@ -456,4 +494,37 @@ def check_numbers(t: Transcript) -> list[str]:
                 continue
             if stray := sorted(set(NUMBER.findall(part["text"])) - allowed):
                 failures.append(f"numbers: turn {s.turn} part {part['id']} released {stray}")
+    return failures
+
+
+def check_s0_no_generation(t: Transcript) -> list[str]:
+    """S0 generates no text (TDD §3.5): no generation route is called while the session is in S0."""
+    return [
+        f"S0: MODEL_CALL to {e.header.get('route')} at seq {e.seq}"
+        for e in t.events
+        if e.event_type == "MODEL_CALL"
+        and e.fsm_state == "S0"
+        and str(e.header.get("route", "")).startswith("gen-")
+    ]
+
+
+def check_consent_prompt(t: Transcript) -> list[str]:
+    """The notice and the AI disclosure are released verbatim, and every consent form names a
+    notice the Consent Service holds, with its hash."""
+    failures = []
+    for s in t.sent:
+        released = s.released
+        if released is None:
+            continue
+        for part in released["message"]["parts"]:
+            pid, text = part["id"], part["text"]
+            if pid.startswith("notice:") and t.notices.get(pid[7:], ("",))[0] != text:
+                failures.append(f"consent: turn {s.turn} {pid} is not the notice verbatim")
+            if pid.startswith("registry:") and text not in t.ai_disclosures:
+                failures.append(f"consent: turn {s.turn} {pid} is not the registry's body")
+        form = released["message"].get("form")
+        if form is not None:
+            held = t.notices.get(form["notice_version"])
+            if held is None or held[1] != form["notice_sha256"]:
+                failures.append(f"consent: turn {s.turn} form names a notice not held")
     return failures

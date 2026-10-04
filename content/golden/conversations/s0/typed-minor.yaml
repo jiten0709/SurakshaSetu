@@ -1,0 +1,11 @@
+id: s0-typed-minor
+description: >-
+  An affirmation, then "no" to the typed 18+ question: under 18 (V2), Data Erasure, nothing
+  recorded, and the key destroyed.
+turns:
+  - text: hello
+    expect: {state: S0, templates: [greeting]}
+  - text: I agree
+    expect: {state: S0, templates: [age_confirm_ask]}
+  - text: "no"
+    expect: {state: DATA_ERASURE, templates: [minor_exit], absent: [CONSENT_CAPTURED], erased: destroyed}

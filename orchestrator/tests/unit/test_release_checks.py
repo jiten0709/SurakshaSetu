@@ -164,6 +164,15 @@ def test_approved_registry_text_is_not_a_leak() -> None:
     assert leaks("Grievances: grievance@insurer.example.", ctx(), {TERM: shown}).action == "pass"
 
 
+def test_the_notice_and_ai_disclosure_shown_verbatim_are_not_leaks() -> None:
+    """Step 18: S0 shows the consent notice and DISC-GLOBAL-AI-06 outside any disclosure set."""
+    notice = "Our data protection officer: dpo@insurer.example, 9876543210."
+    shown = ctx(approved_text=(notice,))
+
+    assert leaks(notice, shown, {}).action == "pass"
+    assert leaks(notice, ctx(), {}).action == "block"  # the same text, not shown as approved
+
+
 # --- DUMMY --------------------------------------------------------------------------------------
 
 

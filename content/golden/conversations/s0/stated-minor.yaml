@@ -1,0 +1,12 @@
+id: s0-stated-minor
+description: >-
+  A stated age under 18 before consent is an under-18 signal (V2): Data Erasure and the polite
+  exit, nothing stored, and the key destroyed.
+turns:
+  - text: hello
+    expect: {state: S0, templates: [greeting]}
+  - text: I'm 16 years old, can I get a policy?
+    script:
+      nlu-extract:
+        - {intents: [NEW_PURCHASE], slots: [{slot: age_years, value: 16, confidence: 0.9, evidence_span: 16 years old}]}
+    expect: {state: DATA_ERASURE, templates: [minor_exit], erased: destroyed}

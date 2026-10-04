@@ -1,6 +1,6 @@
 """The golden harness's own checks, offline: every conversation file validates, and each global
-assertion catches a planted violation. Several can't be tripped by a Step 17 conversation (I2,
-I4, I6, numbers), and this file is what proves they aren't vacuous."""
+assertion catches a planted violation. Several can't be tripped by a conversation yet (I2, I4,
+numbers, S0 generation), and this file is what proves they aren't vacuous."""
 
 import copy
 import json
@@ -23,7 +23,7 @@ from harness import (  # noqa: E402
     sha256_text,
 )
 
-PINS = {"prompt_bundle": "pb-2026.10.1", "rules": "2026.09.1"}
+PINS = {"prompt_bundle": "pb-2026.10.2", "rules": "2026.09.1"}
 
 
 def body(text: str = "Hi", state: str = "S0", turn_id: str = "t1", **message: Any) -> bytes:
@@ -82,7 +82,7 @@ def transcript(*turns: dict[str, Any], **update: Any) -> Transcript:
     raw = body()
     t = Transcript(
         conversation=conversation,
-        active_bundle="pb-2026.10.1",
+        active_bundle="pb-2026.10.2",
         consent_valid_from_start=False,
         initial_pins=PINS,
         sent=[Sent(0, 200, raw, customer_text="hello")],
@@ -178,15 +178,23 @@ def test_i5_a_withdrawal_is_audited_erased_and_reported_truthfully() -> None:
     assert any("without a request" in f for f in check(unasked))
 
 
-def test_i6_an_identity_question_gets_the_re_disclosure_only() -> None:
+def identity_reply(*parts: str) -> list[str]:
     t = transcript({"text": "are you a human?", "identity": True})
-    assert any(f.startswith("I6") for f in check(t))
-    raw = body(parts=[{"id": "template:ai_redisclosure", "text": "Hi"}])
+    raw = body(parts=[{"id": i, "text": "Hi"} for i in parts])
     t.sent, t.events = [Sent(0, 200, raw)], events(raw)
-    assert not any(f.startswith("I6") for f in check(t))
+    return [f for f in check(t) if f.startswith("I6")]
 
 
-def test_i7_pins_change_only_by_a_bundle_kill_switch() -> None:
+def test_i6_an_identity_question_gets_the_re_disclosure_first_and_fixed_text_only() -> None:
+    assert any(f.startswith("I6") for f in check(transcript({"text": "x", "identity": True})))
+    assert identity_reply("template:ai_redisclosure") == []
+    assert identity_reply("template:safety", "template:ai_redisclosure") == []
+    assert identity_reply("template:ai_redisclosure", "template:greeting", "notice:v1") == []
+    assert identity_reply("template:greeting", "template:ai_redisclosure")  # not first
+    assert identity_reply("template:ai_redisclosure", "narrative")  # generated text alongside
+
+
+def test_i7_pins_change_only_by_a_bundle_kill_switch_or_a_re_consent() -> None:
     raw = body()
     moved = transcript(events=events(raw, pins=PINS | {"rules": "2026.10.1"}))
     assert any(f.startswith("I7: pins ['rules']") for f in check(moved))
@@ -194,6 +202,54 @@ def test_i7_pins_change_only_by_a_bundle_kill_switch() -> None:
     assert any(f.startswith("I7") for f in check(repinned))  # no kill switch recorded
     repinned.switched_bundles = {"pb-2026.09.1"}
     assert check(repinned) == []
+
+    old, new = PINS | {"consent_notice": "n-en"}, PINS | {"consent_notice": "n-hi"}
+    captured = Event(3, "CONSENT_CAPTURED", {"notice_version": "n-hi"}, new)
+
+    def notice_moved(at: Event) -> list[str]:
+        t = transcript(initial_pins=old, events=events(raw, pins=old)[:2])
+        t.events += [at, *events(raw, pins=new, first_seq=4)[1:]]
+        return [f for f in check(t) if f.startswith("I7")]
+
+    assert notice_moved(captured) == []  # moved by the capture that names it (D1)
+    other = Event(3, "CONSENT_CAPTURED", {"notice_version": "n-xx"}, new)
+    assert notice_moved(other)  # a capture naming another notice
+    assert notice_moved(Event(3, "GUARD_VERDICT", {}, new))  # moved without a capture
+
+
+def test_s0_calls_no_generation_route() -> None:
+    def generated(state: str) -> list[str]:
+        t = transcript()
+        t.events.insert(2, Event(9, "MODEL_CALL", {"route": "gen-converse"}, PINS, None, state))
+        t.chain_checked = len(t.events)
+        return [f for f in check(t) if f.startswith("S0:")]
+
+    assert generated("S0") and generated("S1") == []
+    t = transcript()
+    t.events.insert(2, Event(9, "MODEL_CALL", {"route": "nlu-extract"}, PINS, None, "S0"))
+    t.chain_checked = len(t.events)
+    assert check(t) == []  # turn analysis is not generation
+
+
+def test_the_consent_prompt_is_released_verbatim_with_a_form_for_a_held_notice() -> None:
+    form = {"notice_version": "n1", "notice_sha256": "ab" * 32}
+    parts = [
+        {"id": "template:greeting", "text": "Hi"},
+        {"id": "registry:DISC-GLOBAL-AI-06", "text": "AI body"},
+        {"id": "notice:n1", "text": "Notice body"},
+    ]
+
+    def released(**update: Any) -> list[str]:
+        held = {"notices": {"n1": ("Notice body", "ab" * 32)}, "ai_disclosures": {"AI body"}}
+        raw = body(parts=parts, form=form)
+        t = transcript(sent=[Sent(0, 200, raw)], events=events(raw), **(held | update))
+        return [f for f in check(t) if f.startswith("consent:")]
+
+    assert released() == []
+    assert released(notices={"n1": ("Another body", "ab" * 32)})  # the notice part
+    assert released(notices={"n1": ("Notice body", "cd" * 32)})  # the form's hash
+    assert released(notices={})  # a notice the service does not hold
+    assert released(ai_disclosures={"Another"})  # the registry part
 
 
 def test_i8_every_delivery_is_a_committed_release() -> None:
@@ -272,6 +328,24 @@ def test_every_conversation_file_validates_and_core_covers_the_step_17_paths() -
              for f in ("retry", "concurrent", "checkpoint_lost") if getattr(t, f)}  # fmt: skip
     assert flags == {"retry", "concurrent", "checkpoint_lost"}
     assert any(t.kill_switch for c in conversations.values() for t in c.turns)
+
+
+def test_the_s0_suite_covers_the_step_18_paths() -> None:
+    suite = [c for c in load_conversations() if c.id.startswith("s0-")]
+    turns = [t for c in suite for t in c.turns]
+
+    assert len(suite) >= 14
+    methods = {t.expect.consent.method for t in turns if t.expect.consent} - {None}
+    assert methods == {"structured_action", "parsed_affirmation"}
+    assert any(t.identity for t in turns) and any(t.notice_bump for t in turns)
+    assert any(t.expect.erased == "destroyed" for t in turns)  # under 18
+    states = {t.expect.state.value for t in turns if t.expect.state}
+    assert {"S0", "S1", "QUOTE_ONLY", "EXIT", "HUMAN_ESCALATION", "DATA_ERASURE"} <= states
+    assert any(c.locale == "en-IN" and any(
+        t.action and t.action.type == "NOTICE_LANGUAGE" for t in c.turns) for c in suite
+    )  # fmt: skip
+    for c in suite:  # S0 starts clean: consent comes only through S0's own turns
+        assert c.given.consent is None or c.given.state is not None, c.id
 
 
 @pytest.mark.parametrize(

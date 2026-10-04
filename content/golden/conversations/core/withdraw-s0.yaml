@@ -4,7 +4,7 @@ description: >-
   rows go anyway (I5), and the session stops answering.
 turns:
   - text: hello
-    expect: {state: S0, templates: [advisor_offer], events: [TURN_INPUT, STATE_TRANSITION, RESPONSE_RELEASED]}
+    expect: {state: S0, templates: [greeting], events: [TURN_INPUT, STATE_TRANSITION, RESPONSE_RELEASED]}
   - text: Please stop and delete everything about me. My PAN is ABCDE1234F.
     script: {nlu-extract: [{intents: [META_WITHDRAW]}]}
     expect: {state: DATA_ERASURE, templates: [erasure_done], events: [ERASURE_REQUEST], erased: scheduled}

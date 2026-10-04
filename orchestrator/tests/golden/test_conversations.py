@@ -12,12 +12,15 @@ Needs `make up`, `make gateway-up` and `make seed-catalog`; `make eval` passes t
 """
 
 import asyncio
+import hashlib
 import json
 import os
-from datetime import timedelta
+import unicodedata
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 import httpx
 import psycopg
@@ -42,6 +45,7 @@ from surakshasetu.api.app import create_app
 from surakshasetu.audit.chain import AuditEvent, decrypt_payload
 from surakshasetu.config import Settings
 from surakshasetu.crypto.keys import KeyDestroyed
+from surakshasetu.domain.client import DomainError
 from surakshasetu.domain.models import ConsentRecordCreate, PurposeGrant
 from surakshasetu.graph.nodes import build_graph
 from surakshasetu.graph.runtime import Runtime
@@ -54,6 +58,7 @@ SYSTEM = UUID(int=0)
 PURPOSES = {"P1": "P1_NEEDS_RECO", "P2": "P2_ADVISOR_CONTACT", "P3": "P3_MARKETING"}
 CONV_TABLES = ("recommendation", "handoff", "slot_value", "turn", "session")
 CHECKPOINT_TABLES = ("checkpoint_writes", "checkpoint_blobs", "checkpoints")
+IST = ZoneInfo("Asia/Kolkata")
 
 
 def admin_dsn() -> str:
@@ -92,6 +97,8 @@ class Play:
         self.switches: list[str] = []
         self.system_seq: int | None = None
         self.last: tuple[int, Turn, UUID] | None = None  # the previous request, for a retry
+        self.form: dict[str, Any] | None = None  # the last consent form released (Step 18)
+        self.bumped: list[str] = []  # notice versions this conversation added
 
     def fail(self, turn: int, message: str) -> None:
         self.failures.append(f"{self.conversation.id} turn {turn}: {message}")
@@ -185,17 +192,41 @@ class Play:
         if turn.delete:
             response = await self.api.delete(url, headers=self.headers(key))
         else:
-            body = (
-                {"text": turn.text}
-                if turn.text is not None
-                else {"action": turn.action.model_dump()}
-            )  # type: ignore[union-attr]
+            body = {"text": turn.text} if turn.text is not None else {"action": self.action(turn)}
             response = await self.api.post(f"{url}/turns", json=body, headers=self.headers(key))
-        return Sent(index, response.status_code, response.content, customer_text=turn.text)
+        sent = Sent(index, response.status_code, response.content, customer_text=turn.text)
+        if (released := sent.released) is not None and released["message"].get("form"):
+            self.form = released["message"]["form"]
+        return sent
+
+    def action(self, turn: Turn) -> dict[str, Any]:
+        """The turn's action. A CONSENT_SUBMIT names the notice of the last form released, as a
+        client would, unless the conversation gives one (a mismatch case)."""
+        action = turn.action.model_dump()  # type: ignore[union-attr]
+        if action["type"] == "CONSENT_SUBMIT" and self.form is not None:
+            shown = {k: self.form[k] for k in ("notice_version", "notice_sha256")}
+            action["payload"] = shown | action["payload"]
+        return action
+
+    def bump_notice(self) -> None:
+        """A newer notice for the conversation's language, in force from today (IST): the
+        session's consent becomes NOTICE_SUPERSEDED. Removed by close()."""
+        version = f"golden-{uuid7().hex[-8:]}-{self.conversation.locale[:2]}"
+        body = f"DUMMY: golden notice {version}, superseding the seed notice."
+        digest = hashlib.sha256(unicodedata.normalize("NFC", body).encode()).digest()
+        self.db.execute(
+            "INSERT INTO consent.notice_version (notice_version, language, body, body_sha256,"
+            " approved_by, effective_from, is_dummy) VALUES (%s, %s, %s, %s, %s, %s, true)",
+            (version, self.conversation.locale, body, digest, "GOLDEN", datetime.now(IST).date()),
+        )
+        self.bumped.append(version)
 
     async def play(self, index: int, turn: Turn, t: Transcript) -> None:
         if turn.kill_switch is not None:
             await self.kill_switch(index, turn)
+        if turn.notice_bump:
+            self.bump_notice()
+        before = len(t.sent)
         for route in ROUTES:
             if replies := turn.replies(route):
                 scripted = await self.stubs.post(
@@ -203,7 +234,7 @@ class Play:
                     json={"session_id": str(self.session_id), "route": route, "responses": replies},
                 )
                 scripted.raise_for_status()
-        logged = len(self.read_logs())
+        logged = self.log_sizes()
         graph = self.runtime.graph
         if turn.checkpoint_lost:
             self.runtime.graph = build_graph(NoCheckpoint(graph.checkpointer.conn))  # type: ignore[union-attr]
@@ -232,8 +263,16 @@ class Play:
                 self.last = (len(t.sent) - 1, turn, key)
         finally:
             self.runtime.graph = graph
-        if turn.expect.hydrated and "checkpoint lags conv" not in self.read_logs()[logged:]:
+        if turn.expect.hydrated and "checkpoint lags conv" not in self.logs_since(logged):
             self.fail(index, "expected the session to be hydrated from conv")
+        counters = self.one(
+            "SELECT counters FROM conv.session WHERE session_id = %s", self.session_id
+        )
+        slot_rows = self.one(
+            "SELECT count(*) FROM conv.slot_value WHERE session_id = %s", self.session_id
+        )
+        for sent in t.sent[before:]:
+            sent.counters, sent.slot_rows = counters, slot_rows
         self.snapshot(t)
 
     async def kill_switch(self, index: int, turn: Turn) -> None:
@@ -272,6 +311,14 @@ class Play:
     def read_logs(self) -> str:
         return "".join(p.read_text() for p in sorted(self.log_dir.glob("*.log")))
 
+    def log_sizes(self) -> dict[Path, int]:
+        return {p: len(p.read_text()) for p in self.log_dir.glob("*.log")}
+
+    def logs_since(self, sizes: dict[Path, int]) -> str:
+        """What each subsystem file gained since `sizes`. Offsets are per file: a line lands in
+        its package's file, and the files are not appended in name order."""
+        return "".join(p.read_text()[sizes.get(p, 0) :] for p in sorted(self.log_dir.glob("*.log")))
+
     # --- evidence ----------------------------------------------------------------------------
     async def collect(self, t: Transcript) -> None:
         with self.db.cursor() as cur:
@@ -287,7 +334,11 @@ class Play:
                 payload = decrypt_payload(self.runtime.keys, event)
             except KeyDestroyed:
                 payload = None
-            t.events.append(Event(event.seq, event.event_type, event.header, event.pins, payload))
+            t.events.append(
+                Event(
+                    event.seq, event.event_type, event.header, event.pins, payload, event.fsm_state
+                )
+            )
         t.switched_bundles = {
             r[0]
             for r in self.db.execute(
@@ -323,6 +374,26 @@ class Play:
                     )
                     t.registry[d["uin"]] = registered.set_sha256
         t.evidence = await self.evidence(t)
+        await self.consent_texts(t)
+
+    async def consent_texts(self, t: Transcript) -> None:
+        """The Consent Service's notices and the registry's AI disclosures, as the services hold
+        them, for every notice part and form released (harness.check_consent_prompt)."""
+        versions: set[str] = set()
+        for s in t.sent:
+            if (released := s.released) is not None:
+                versions |= {i[7:] for i in part_ids(released) if i.startswith("notice:")}
+                if form := released["message"].get("form"):
+                    versions.add(form["notice_version"])
+        for version in sorted(versions):
+            try:
+                notice = await self.runtime.domain.get_consent_notice(version)
+            except DomainError:
+                continue  # not held: the check reports it
+            t.notices[version] = (notice.body, notice.body_sha256)
+        for language in ("en-IN", "hi-IN"):
+            found = await self.runtime.domain.get_disclosure("DISC-GLOBAL-AI-06", language)
+            t.ai_disclosures.add(found.body)
 
     def erased(self) -> bool:
         session = self.one(
@@ -383,11 +454,26 @@ class Play:
             types = {e.event_type for e in events}
             if expect.state is not None and released["state"] != expect.state.value:
                 self.fail(s.turn, f"state {released['state']}, want {expect.state.value}")
-            ids = [i.removeprefix("template:") for i in part_ids(released)]
+            ids = [
+                i.removeprefix("template:") for i in part_ids(released) if i.startswith("template:")
+            ]
             if expect.templates is not None and ids != expect.templates:
                 self.fail(s.turn, f"templates {ids}, want {expect.templates}")
             if missing := sorted({e.value for e in expect.events} - types):
                 self.fail(s.turn, f"audit events missing: {missing}")
+            if present := sorted({e.value for e in expect.absent} & types):
+                self.fail(s.turn, f"audit events present: {present}")
+            if expect.consent is not None:
+                self.expect_consent(s.turn, expect.consent, events)
+            if expect.counters is not None:
+                counters = {k: (s.counters or {}).get(k, 0) for k in expect.counters}
+                if counters != expect.counters:
+                    self.fail(s.turn, f"counters {counters}, want {expect.counters}")
+            if expect.slot_rows is not None and s.slot_rows != expect.slot_rows:
+                self.fail(s.turn, f"slot rows {s.slot_rows}, want {expect.slot_rows}")
+            form = released["message"].get("form") is not None
+            if expect.form is not None and form != expect.form:
+                self.fail(s.turn, f"consent form present: {form}, want {expect.form}")
             if expect.handoff is not None:
                 reasons = [e.header["reason_code"] for e in events if e.event_type == "HANDOFF"]
                 if reasons != [expect.handoff]:
@@ -405,6 +491,17 @@ class Play:
                     self.fail(s.turn, f"disclosures {uins}, want {expect.disclosures}")
             if expect.erased is not None:
                 self.expect_erased(s.turn, expect.erased)
+
+    def expect_consent(self, index: int, expect: Any, events: list[Event]) -> None:
+        captured = [e.header for e in events if e.event_type == "CONSENT_CAPTURED"]
+        if not captured:
+            self.fail(index, "no CONSENT_CAPTURED in the turn")
+            return
+        header = captured[-1]
+        for field in ("method", "purposes", "language"):
+            want = getattr(expect, field)
+            if want is not None and header.get(field) != want:
+                self.fail(index, f"CONSENT_CAPTURED {field} {header.get(field)}, want {want}")
 
     def expect_erased(self, index: int, fate: str) -> None:
         if not self.erased():
@@ -444,6 +541,11 @@ class Play:
                 )
                 db.execute("DELETE FROM consent.record WHERE consent_id = ANY(%s)", (consents,))
                 db.execute("DELETE FROM keyvault.subject_key WHERE key_ref = %s", (self.key_ref,))
+            if self.bumped:  # after the records that name them
+                self.db.execute(
+                    "DELETE FROM consent.notice_version WHERE notice_version = ANY(%s)",
+                    (self.bumped,),
+                )
             if self.switches:
                 self.db.execute("DELETE FROM conv.kill_switch WHERE id = ANY(%s)", (self.switches,))
                 self.db.execute(

@@ -1,0 +1,9 @@
+id: s0-under-18-box
+description: >-
+  P1 ticked with the 18+ box unticked declares under 18 (V2): Data Erasure and the polite exit,
+  no consent recorded, and the subject key destroyed at once.
+turns:
+  - action: {type: START}
+    expect: {state: S0, templates: [greeting], form: true}
+  - action: {type: CONSENT_SUBMIT, payload: {purposes: {P1: true, P2: false, P3: false}, age_18_plus: false}}
+    expect: {state: DATA_ERASURE, templates: [minor_exit], events: [ERASURE_REQUEST], absent: [CONSENT_CAPTURED], erased: destroyed}

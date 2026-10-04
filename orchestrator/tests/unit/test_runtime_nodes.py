@@ -11,7 +11,7 @@ from uuid import UUID, uuid5
 
 import pytest
 from langgraph.constants import END
-from runtime_support import FakeGate, Models, gateway, pins, settings
+from runtime_support import FakeGate, Models, domain, gateway, pins, settings
 
 from surakshasetu.analysis.models import Intent, TurnAnalysis
 from surakshasetu.analysis.pipeline import PipelineResult
@@ -31,7 +31,7 @@ from surakshasetu.store.conv import SessionRow
 SID = UUID("0199a1b2-0000-7000-8000-00000000c0de")
 SUBJECT = UUID("0199a1b2-0000-7000-8000-00000000beef")
 KEY = UUID("0199a1b2-0000-7000-8000-0000000000aa")
-BUNDLE = load_bundle("pb-2026.10.1", env="dev")
+BUNDLE = load_bundle("pb-2026.10.2", env="dev")
 SCRIPTS = BUNDLE.templates["en-IN"].scripts
 NOW = datetime.now(UTC)
 SENTINEL = "my PAN is ABCDE1234F and I live at 42 Sentinel Lane"
@@ -100,7 +100,7 @@ def turn(models: Models | None = None, *, text: str | None = "hello", **config: 
         conn=FakeConn(),  # type: ignore[arg-type]
         keys=None,  # type: ignore[arg-type]
         gateway=gateway(models or Models(), cfg),
-        domain=None,  # type: ignore[arg-type]
+        domain=domain(),
         gate=FakeGate(),  # type: ignore[arg-type]
         pack=load_pack(cfg.output_lexicon),
         session_id=SID,
@@ -186,7 +186,15 @@ async def test_a_template_turn_is_audited_from_input_to_validation(
     transition = recorder.events[5]["header"]
     assert (transition.from_state, transition.to_state) == ("S0", "S0")
     assert transition.trigger == "S0.STAY"
-    assert t.released is not None and t.released.text == SCRIPTS.advisor_offer
+    # S0's first turn is the greeting (Step 18): the template, the registry's AI disclosure and the
+    # notice, verbatim, with the consent form.
+    assert t.released is not None and t.released.rendered is not None
+    assert [i for i, _ in t.released.rendered.parts] == [
+        "template:greeting",
+        "registry:DISC-GLOBAL-AI-06",
+        "notice:2026.09.1-en",
+    ]
+    assert t.form is not None and t.form["notice_version"] == "2026.09.1-en"
     assert t.next is not None and t.next.counters == {"low_confidence_streak": 0}
     statuses = [d["status"] for e, d in t.gate.published if e == "turn.status"]  # type: ignore[attr-defined]
     assert statuses == ["analysing", "composing", "validating"]
@@ -236,6 +244,7 @@ async def test_a_safety_signal_answers_with_the_crisis_template_and_escalates(
 async def test_an_overlong_turn_is_asked_to_shorten(monkeypatch: pytest.MonkeyPatch) -> None:
     Recorder(monkeypatch)
     t = turn(text="word " * 600)
+    t.next = session(last_prompt_id="s0.consent")  # the greeting was shown
 
     await run(t)
 
@@ -383,7 +392,7 @@ async def test_load_hydrates_from_conv_only_when_the_checkpoint_lags(
 async def test_a_kill_switch_on_the_active_bundle_refuses_the_turn(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    loading(monkeypatch, switches={("prompt_bundle", "pb-2026.10.1")})
+    loading(monkeypatch, switches={("prompt_bundle", "pb-2026.10.2")})
 
     with pytest.raises(BundleError) as excinfo:
         await nodes.load(GraphState(), rt(turn()))
@@ -432,8 +441,7 @@ async def test_commit_writes_the_turn_pair_and_the_release_then_commits(
     released = recorder.events[-1]
     assert released["event_type"] is EventType.RESPONSE_RELEASED
     assert (
-        released["header"].rendered_sha256
-        == hashlib.sha256(SCRIPTS.advisor_offer.encode()).hexdigest()
+        released["header"].rendered_sha256 == hashlib.sha256(t.released.text.encode()).hexdigest()  # type: ignore[union-attr]
     )
     assert released["payload"] == {"response": t.response}
     assert t.conn.commits == 1  # type: ignore[attr-defined]
@@ -477,7 +485,8 @@ async def test_release_stores_the_hint_and_publishes_after_the_commit(
     await nodes.release_node(GraphState(), rt(t))
 
     gate = t.gate
-    assert gate.idem[KEY] == hashlib.sha256(SCRIPTS.advisor_offer.encode()).hexdigest()  # type: ignore[attr-defined]
+    released = t.released.text  # type: ignore[union-attr]
+    assert gate.idem[KEY] == hashlib.sha256(released.encode()).hexdigest()  # type: ignore[attr-defined]
     assert gate.published[-1] == ("turn.released", t.response)  # type: ignore[attr-defined]
 
     gate.down = True  # type: ignore[attr-defined]

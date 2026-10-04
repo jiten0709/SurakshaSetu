@@ -7,4 +7,4 @@ turns:
   - text: second message
     checkpoint_lost: true
   - text: third message
-    expect: {state: S0, templates: [advisor_offer], hydrated: true}
+    expect: {state: S0, templates: [greeting], hydrated: true}

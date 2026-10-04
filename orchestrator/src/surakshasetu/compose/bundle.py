@@ -14,6 +14,7 @@ fails its hashes without a kill switch is refused, never silently swapped.
 import hashlib
 import logging
 import re
+import unicodedata
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -35,6 +36,7 @@ from surakshasetu.audit.events import ConfigReleaseHeader, EventType, Sha256Hex
 from surakshasetu.crypto.jcs import sha256_hex
 from surakshasetu.crypto.keys import SYSTEM_KEY_REF, KeyService
 from surakshasetu.domain.models import Goal, PptOption, ProductType
+from surakshasetu.fsm.facts import S0Intent
 from surakshasetu.gateway import Route
 from surakshasetu.kb.chunker import count_tokens
 
@@ -55,11 +57,14 @@ L1_ROUTES: dict[L1Name, Route] = {
 LOCALES = ("en-IN", "hi-IN")
 L0_PATH = "l0/constitution.txt"
 TEMPLATE_FILES = ("slots", "scripts", "recommendation")
+CONSENT_LEXICON = "lexicons/consent_affirmation.yaml"  # Step 18
+IDENTITY_LEXICON = "lexicons/identity_question.yaml"
 
 
 class BundleError(Exception):
     """The bundle cannot be used. reason: NOT_FOUND, MANIFEST_INVALID, VERSION_MISMATCH,
-    FILE_MISSING, FILE_UNLISTED, HASH_MISMATCH, TEMPLATES_INVALID, OVER_BUDGET, DUMMY_REFUSED,
+    FILE_MISSING, FILE_UNLISTED, HASH_MISMATCH, TEMPLATES_INVALID, LEXICON_INVALID, OVER_BUDGET,
+    DUMMY_REFUSED,
     KILL_SWITCHED (the kill-switched bundle is also the active one) or RELEASED_WITH_OTHER_HASH."""
 
     def __init__(self, reason: str) -> None:
@@ -121,6 +126,17 @@ class Labels(_Strict):
     or_more: str
 
 
+class ConsentForm(_Strict):
+    """The consent form's labels (TDD §3.5): one checkbox per purpose, the 18+ box, the language
+    switch. The notice itself comes from the Consent Service, never from the bundle."""
+
+    purposes: dict[Literal["P1", "P2", "P3"], str]
+    adult: str
+    submit: str
+    retry: str
+    languages: dict[Literal["en-IN", "hi-IN"], str]
+
+
 class Scripts(_Strict):
     readback: str
     money_readback: str
@@ -141,6 +157,18 @@ class Scripts(_Strict):
     contact_options: str  # no consent, P2 declined, or a closed advisor queue
     advisor_consent_ask: str  # P2, asked before any data reaches an advisor
     paused: str
+    # State-0 (Step 18, pb-2026.10.2 on; required, so pb-2026.10.1 no longer loads either).
+    greeting: str  # TDD §3.5; the registry's AI disclosure and the notice body follow it
+    consent_reprompt: str
+    consent_renew: str  # re-entry to S0: the notice changed or the consent lapsed
+    consent_retry: str  # the Consent Service or the registry is down: never proceed
+    notice_updated: str  # the submitted notice is not the one in force
+    age_confirm_ask: str  # the typed path's separate 18+ question
+    consent_declined: str  # P1 refused: helpline and branch locator, collect nothing
+    intent_ask: str
+    consent_form: ConsentForm
+    intents: dict[S0Intent, str]  # quick-reply labels
+    advisor_contact: dict[Literal["granted", "declined"], str]  # the P2 question's quick replies
     side_query_caveat: dict[str, str]  # fsm state -> caveat
     labels: Labels
 
@@ -201,6 +229,51 @@ class Templates(_Strict):
     recommendation: Recommendation
 
 
+def phrase(text: str) -> str:
+    """How lexicon entries and the text matched against them are compared: NFKC, case-folded,
+    spaces collapsed, and final . ! ? । dropped."""
+    folded = " ".join(unicodedata.normalize("NFKC", text).casefold().split())
+    return folded.rstrip(".!?। ").strip()
+
+
+def _phrases(entries: list[str]) -> frozenset[str]:
+    # YAML reads a bare yes or no as a boolean: such entries must be quoted.
+    if not all(isinstance(e, str) and phrase(e) for e in entries):
+        raise ValueError("lexicon entries must be non-empty strings")
+    return frozenset(phrase(e) for e in entries)
+
+
+class ConsentLexicon(_Strict):
+    """lexicons/consent_affirmation.yaml: whole-message matches only (TDD §3.5's strict parser)."""
+
+    affirm: frozenset[str]
+    decline: frozenset[str]
+    adult: frozenset[str]
+    minor: frozenset[str]
+
+    @field_validator("affirm", "decline", "adult", "minor", mode="before")
+    @classmethod
+    def _normalised(cls, entries: list[str]) -> frozenset[str]:
+        return _phrases(entries)
+
+    @model_validator(mode="after")
+    def _unambiguous(self) -> Self:
+        if self.affirm & self.decline or self.adult & self.minor:
+            raise ValueError("an entry is both a yes and a no")
+        return self
+
+
+class IdentityLexicon(_Strict):
+    """lexicons/identity_question.yaml: phrases matched as whole words anywhere in the turn (I6)."""
+
+    phrases: frozenset[str]
+
+    @field_validator("phrases", mode="before")
+    @classmethod
+    def _normalised(cls, entries: list[str]) -> frozenset[str]:
+        return _phrases(entries)
+
+
 @dataclass(frozen=True)
 class PromptBundle:
     manifest: Manifest
@@ -208,6 +281,8 @@ class PromptBundle:
     l0: str
     l1: dict[L1Name, str]
     templates: dict[str, Templates]  # locale -> templates
+    consent_lexicon: ConsentLexicon
+    identity_lexicon: IdentityLexicon
 
     @property
     def version(self) -> str:
@@ -234,6 +309,8 @@ def load_bundle(version: str, *, env: str, root: Path = PROMPT_BUNDLES) -> Promp
         L0_PATH,
         *(f"l1/{name}.txt" for name in L1_ROUTES),
         *(f"templates/{loc}/{name}.yaml" for loc in LOCALES for name in TEMPLATE_FILES),
+        CONSENT_LEXICON,
+        IDENTITY_LEXICON,
     }
     if missing := sorted((set(manifest.files) | required) - present):
         raise _refuse(version, "FILE_MISSING", missing[0])
@@ -254,6 +331,11 @@ def load_bundle(version: str, *, env: str, root: Path = PROMPT_BUNDLES) -> Promp
         }
     except (ValidationError, yaml.YAMLError) as exc:
         raise _refuse(version, "TEMPLATES_INVALID") from exc
+    try:
+        consent_lexicon = ConsentLexicon.model_validate(yaml.safe_load(files[CONSENT_LEXICON]))
+        identity_lexicon = IdentityLexicon.model_validate(yaml.safe_load(files[IDENTITY_LEXICON]))
+    except (ValidationError, yaml.YAMLError) as exc:
+        raise _refuse(version, "LEXICON_INVALID") from exc
     l0 = files[L0_PATH].decode("utf-8")
     l1: dict[L1Name, str] = {name: files[f"l1/{name}.txt"].decode("utf-8") for name in L1_ROUTES}
     budgets = manifest.budgets
@@ -267,6 +349,8 @@ def load_bundle(version: str, *, env: str, root: Path = PROMPT_BUNDLES) -> Promp
         l0=l0,
         l1=l1,
         templates=templates,
+        consent_lexicon=consent_lexicon,
+        identity_lexicon=identity_lexicon,
     )
     logger.info("prompt bundle %s loaded: %d files", version, len(files))
     return bundle

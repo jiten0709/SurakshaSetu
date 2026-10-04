@@ -10,7 +10,7 @@ from typing import Any
 from uuid import UUID
 
 import pytest
-from runtime_support import Models
+from runtime_support import Models, ai_disclosure_json, notice_json
 from test_runtime_nodes import (
     SCRIPTS,
     Recorder,
@@ -25,7 +25,13 @@ from surakshasetu.audit import chain as audit_chain
 from surakshasetu.audit.chain import AuditEvent
 from surakshasetu.audit.events import EventType
 from surakshasetu.domain.client import DomainError
-from surakshasetu.domain.models import ConsentRecord, PurposeGrant, RecommendedOption
+from surakshasetu.domain.models import (
+    ConsentNotice,
+    ConsentRecord,
+    Disclosure,
+    PurposeGrant,
+    RecommendedOption,
+)
 from surakshasetu.fsm import rows
 from surakshasetu.fsm.facts import MandatoryTrigger
 from surakshasetu.fsm.states import FsmState
@@ -93,9 +99,20 @@ class FakeDomain:
         self._call("getProduct")
         return self.products.get(uin, SimpleNamespace(status="in_force", effective_to=None))
 
+    async def get_current_consent_notice(self, language: str) -> ConsentNotice:
+        self._call("getCurrentConsentNotice")
+        return ConsentNotice.model_validate(notice_json(language))
+
+    async def get_disclosure(
+        self, disclosure_id: str, language: str, as_of: Any = None
+    ) -> Disclosure:
+        self._call("getDisclosure")
+        return Disclosure.model_validate(ai_disclosure_json(language))
+
 
 def with_consent(t: Turn, record: ConsentRecord | None, state: FsmState = FsmState.S1) -> Turn:
     t.next = session(consent=record, fsm_state=state)
+    t.from_state = state  # as load sets it
     return t
 
 
@@ -337,6 +354,10 @@ async def test_p2_is_asked_before_any_data_is_shared(
 
     assert t.released is not None and t.released.text == SCRIPTS.advisor_consent_ask
     assert handoffs == [] and events(recorder, EventType.HANDOFF) == []
+    assert [q["action"] for q in t.quick_replies] == [
+        {"type": "ADVISOR_CONTACT", "payload": {"granted": True}},
+        {"type": "ADVISOR_CONTACT", "payload": {"granted": False}},
+    ]
 
 
 @pytest.mark.asyncio
@@ -405,6 +426,8 @@ async def test_the_p2_answer_records_the_grant_then_hands_off_once(
     assert t.domain.calls == ["changeConsentPurpose"]  # type: ignore[attr-defined]
     captured = events(recorder, EventType.CONSENT_CAPTURED)[0]["header"]
     assert captured.purposes == ["P1", "P2"] and captured.method == "structured_action"
+    assert captured.language == "en-IN" and captured.adult_declared is True
+    assert captured.captured_at is not None
     assert handoffs[0]["reason_code"] == "HE_FRUSTRATION"
     assert t.released is not None and t.released.text == SCRIPTS.handoff
 

@@ -23,7 +23,7 @@ from surakshasetu.config import Settings
 from surakshasetu.rails.normalise import normalise
 from surakshasetu.rails.output import load_pack
 
-VERSION = "pb-2026.10.1"
+VERSION = "pb-2026.10.2"
 DMN = PROMPT_BUNDLES.parents[1] / "domain-services" / "src" / "main" / "resources" / "dmn"
 
 # TDD §3.4's L0, copied here byte for byte: tests never read docs/.
@@ -133,7 +133,7 @@ def test_the_directory_must_hold_the_manifests_version(copy: Path) -> None:
     assert refused(copy, "pb-2026.09.9") == "VERSION_MISMATCH"
 
 
-@pytest.mark.parametrize("version", ["pb-2099.01.1", "../pb-2026.10.1", "2026.09.1"])
+@pytest.mark.parametrize("version", ["pb-2099.01.1", "../pb-2026.10.2", "2026.09.1"])
 def test_an_unknown_or_malformed_version_is_not_found(version: str) -> None:
     assert refused(PROMPT_BUNDLES, version) == "NOT_FOUND"
 
@@ -181,14 +181,16 @@ def test_a_kill_switch_re_pins_to_the_active_bundle_and_nothing_else_does(copy: 
         load_pinned(VERSION, active=VERSION, kill_switched=False, env="dev", root=copy)
 
 
-def test_the_retired_bundle_no_longer_loads_and_a_kill_switch_moves_its_sessions_on() -> None:
-    """pb-2026.09.1 lacks the Step 17 handler scripts (decided 2026-10-03). It stays in Git,
-    released and immutable, but the only way off it is I7's exception: a kill switch re-pins its
-    sessions."""
-    retired = "pb-2026.09.1"
-    with pytest.raises(BundleError, match="TEMPLATES_INVALID"):
+@pytest.mark.parametrize("retired", ["pb-2026.09.1", "pb-2026.10.1"])
+def test_a_retired_bundle_no_longer_loads_and_a_kill_switch_moves_its_sessions_on(
+    retired: str,
+) -> None:
+    """Neither has Step 18's required lexicon files (pb-2026.09.1 also lacks the Step 17 handler
+    scripts). Both stay in Git, released and immutable, but the only way off them is I7's
+    exception: a kill switch re-pins their sessions."""
+    with pytest.raises(BundleError, match="FILE_MISSING"):
         load_bundle(retired, env="dev")
-    with pytest.raises(BundleError, match="TEMPLATES_INVALID"):
+    with pytest.raises(BundleError, match="FILE_MISSING"):
         load_pinned(retired, active=VERSION, kill_switched=False, env="dev")
     assert load_pinned(retired, active=VERSION, kill_switched=True, env="dev").version == VERSION
 

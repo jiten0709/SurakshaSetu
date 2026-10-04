@@ -1,0 +1,7 @@
+id: s0-typed-decline
+description: A typed refusal from the closed list while the consent prompt is open exits (row S0.2).
+turns:
+  - text: hello
+    expect: {state: S0, templates: [greeting]}
+  - text: "No."
+    expect: {state: EXIT, templates: [consent_declined], absent: [CONSENT_CAPTURED], slot_rows: 0}

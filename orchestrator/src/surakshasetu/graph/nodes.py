@@ -48,14 +48,16 @@ from surakshasetu.config import Settings
 from surakshasetu.crypto.jcs import canonical_json
 from surakshasetu.crypto.keys import KeyService
 from surakshasetu.domain.client import DomainClient
+from surakshasetu.fsm.facts import Facts
 from surakshasetu.fsm.states import TERMINAL, FsmState
 from surakshasetu.fsm.transition import Transition, transition
 from surakshasetu.gateway import Gateway, Route
 from surakshasetu.graph import states
 from surakshasetu.graph.facts import build_facts
 from surakshasetu.graph.gate import RedisGate
-from surakshasetu.graph.handlers import data_erasure, human_escalation, pause, safety
+from surakshasetu.graph.handlers import data_erasure, human_escalation, identity, pause, safety
 from surakshasetu.graph.state import Frame, GraphState, SessionState, VersionPins
+from surakshasetu.graph.states import s0
 from surakshasetu.rails import redact
 from surakshasetu.rails.output import LexiconPack, OutputContext, Released, release
 from surakshasetu.store import conv as store
@@ -71,6 +73,7 @@ ENTERED = {
     "data_erasure": data_erasure.node,
     "human_escalation": human_escalation.escalate,
     "pause": pause.pause,
+    "s0_enter": s0.enter,  # Step 18: G1 or a resume re-entered S0
 }
 LANGUAGE = {"en-IN": "en", "hi-IN": "hi"}
 
@@ -121,6 +124,17 @@ class Turn:
     # handlers: the template parts to send (id, text), and an erasure to run after the commit
     parts: list[tuple[str, str]] = dataclasses.field(default_factory=list)
     erasure: data_erasure.Reason | None = None
+    # Step 18. Facts fields a state node sets from what it verified (a structured action, a closed
+    # lexicon match); decide validates them into Facts. An identity question (I6). The consent form
+    # and quick replies sent with the message. Approved text shown verbatim (the notice and the AI
+    # disclosure), which RC-LEAK accepts. Slot names volunteered in S0: memory only, never stored.
+    signals: dict[str, Any] = dataclasses.field(default_factory=dict)
+    identity: bool = False
+    ai_disclosure: str | None = None
+    form: dict[str, Any] | None = None
+    quick_replies: list[dict[str, Any]] = dataclasses.field(default_factory=list)
+    shown: list[str] = dataclasses.field(default_factory=list)
+    volunteered: list[str] = dataclasses.field(default_factory=list)
     # decide, compose, validate
     transition: Transition | None = None
     draft: str | None = None
@@ -313,6 +327,7 @@ async def route(state: GraphState, runtime: Runtime[Turn]) -> Command[str]:
     if turn.pipeline is not None and turn.pipeline.analysis is not None:
         turn.slots_pending = list(turn.pipeline.analysis.slots)
     turn.safety = safety.signal(turn.pipeline)
+    turn.identity = identity.asks(cast(PromptBundle, turn.bundle), turn.pipeline)
     goto, frame = turn_router(
         session, turn.pipeline, turn.settings.side_query_max_stack, turn.action
     )
@@ -343,6 +358,8 @@ async def decide(state: GraphState, runtime: Runtime[Turn]) -> Command[str]:
         turn.settings,
         action_type=(turn.action or {}).get("type"),
     )
+    if turn.signals:  # validated: a wrong name or value fails the turn, never passes silently
+        facts = Facts.model_validate(facts.model_dump() | turn.signals)
     before = session.fsm_state
     result = transition(facts, before, turn.settings)
     logger.info(
@@ -376,6 +393,8 @@ async def decide(state: GraphState, runtime: Runtime[Turn]) -> Command[str]:
         session.stack = session.stack[:-1]
     session.fsm_state = result.to
     turn.transition = result
+    if result.to is not FsmState.S0:  # S0's consent form and quick replies stay in S0
+        turn.form, turn.quick_replies = None, []
     return Command(goto=after_decide(turn, before))
 
 
@@ -391,22 +410,26 @@ def after_decide(turn: Turn, before: FsmState) -> str:
         return "human_escalation"
     if to is FsmState.PAUSE and before is not FsmState.PAUSE:
         return "pause"
+    if to is FsmState.S0 and before is not FsmState.S0:
+        return "s0_enter"
     return "compose"
 
 
 # --- compose and validate -------------------------------------------------------------------------
 def templates(parts: list[tuple[str, str]]) -> Rendered:
-    """Template parts as one message: the texts joined by a blank line, hashed as released (I8)."""
+    """Template parts as one message: the texts joined by a blank line, hashed as released (I8).
+    A bare id is a bundle template (template:<id>); a namespaced one (registry:<id>,
+    notice:<version>) is approved text from its own store, released verbatim."""
     text = "\n\n".join(t for _, t in parts)
-    return Rendered(
-        text, text_sha256(text), [(f"template:{i}", t) for i, t in parts], {}, [], {}, {}
-    )
+    named = [(i if ":" in i else f"template:{i}", t) for i, t in parts]
+    return Rendered(text, text_sha256(text), named, {}, [], {}, {})
 
 
 async def compose(state: GraphState, runtime: Runtime[Turn]) -> None:
     """Template-only until the state steps add cited generation (they set draft, regenerate and
-    render, and append MODEL_CALL). A handler's parts come first; a safety signal puts the crisis
-    script before whatever else the turn says."""
+    render, and append MODEL_CALL). A handler's parts come first. An identity question puts the
+    AI re-disclosure (I6), and a safety signal the crisis script, before whatever else the turn
+    says."""
     turn = _turn(runtime)
     session = _session(turn)
     await _status(turn, "composing")
@@ -418,10 +441,12 @@ async def compose(state: GraphState, runtime: Runtime[Turn]) -> None:
         chosen = [("ask_to_shorten", scripts.ask_to_shorten)]
     elif turn.degraded:
         chosen = [("release_blocked", scripts.release_blocked)]
-    elif turn.routed == "safety":
+    elif turn.routed == "safety" or turn.identity:
         chosen = []
     else:
         chosen = [("advisor_offer", scripts.advisor_offer)]
+    if turn.identity:
+        chosen = [await identity.part(turn), *chosen]
     if turn.safety:
         chosen = [("safety", scripts.safety), *chosen]
     turn.draft = None
@@ -447,6 +472,7 @@ async def validate(state: GraphState, runtime: Runtime[Turn]) -> None:
         route=Route.GEN_RECOMMEND if session.fsm_state is FsmState.S3 else Route.GEN_CONVERSE,
         handles=issue([], []),
         customer_text=turn.pipeline.stored_raw if turn.pipeline else "",
+        approved_text=tuple(turn.shown),
     )
     turn.released = await release(
         turn.conn,
@@ -495,7 +521,10 @@ def response_body(turn: Turn) -> dict[str, Any]:
             if rendered
             else [],
             "cta": None,
-            "quick_replies": [],
+            # Step 18: the consent form while S0's consent prompt is open, and the quick replies.
+            # Not with a blocked release: the reply then is the release-blocked template alone.
+            "form": turn.form if rendered else None,
+            "quick_replies": turn.quick_replies if rendered else [],
         },
         "documents": [
             {"uin": uin, "documents": docs} for uin, docs in rendered.documents_shown.items()

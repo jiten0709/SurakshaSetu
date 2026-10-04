@@ -1,0 +1,101 @@
+# Fixed conversational text, rendered from templates and never generated (TDD §3.4). `{name}` fields
+# are filled by the system from slots and engine values. The hand-off and crisis scripts are legally
+# significant and not yet supplied: they stay DUMMY placeholders until compliance approves them.
+
+readback: "To confirm: {facts}. Correct?"
+money_readback: "Just to check: {amount} a year. Is that right?"
+needs_summary: |-
+  Here is what you told me, and the assumptions used:
+  Goals: {goals}
+  Annual income: {income}
+  Dependants: {dependants}
+  Loans: {liabilities}
+  Existing cover counted: {existing_cover}
+  Assumptions: cover to age {cover_to_age}, {dependency_years} years of dependency, income growth of {growth} a year and a discount rate of {discount} a year.
+  Is this correct?
+clarify: "Sorry, I didn't quite follow. {question}"
+ask_to_shorten: "That message is too long for me to read in one go. Could you shorten it and send it again?"
+abstain: "I can't confirm that from the documents I have. A licensed advisor can help with this question."
+advisor_offer: "Would you like a licensed advisor to contact you?"
+release_blocked: "Sorry, I can't show this answer right now."
+handoff: "DUMMY: Approved hand-off script pending. A licensed advisor will continue this conversation."
+safety: "DUMMY: Approved crisis script and helpline numbers pending. If you are in danger, please contact local emergency services now."
+# I6: the body is the registry's DISC-GLOBAL-AI-06, verbatim; the first line is the TDD §3.5 greeting.
+ai_redisclosure: |-
+  I'm SurakshaSetu, an AI assistant from {insurer}. I'm not a human advisor.
+  {disclosure}
+# Step 17: the cross-cutting handlers. The erasure, contact and advisor-consent texts are legally
+# significant: DUMMY until compliance approves them.
+erasure_done: "DUMMY: Approved erasure confirmation pending. We have stopped processing your information and deleted this conversation and your answers. Any consent you gave is withdrawn. We keep an encrypted audit record of this conversation and your consent history, because the law requires it; they become unreadable when the retention period ends."
+erasure_pending: "DUMMY: Approved erasure confirmation pending. We have stopped processing your information and deleted this conversation and your answers. Recording the withdrawal of your consent has not completed yet; we will retry and record it. We keep an encrypted audit record of this conversation, because the law requires it; it becomes unreadable when the retention period ends."
+minor_exit: "DUMMY: Approved polite-exit script pending. Sorry, this service is only for people aged 18 or over. We have deleted the information you shared, and we keep nothing that can be read."
+contact_options: "DUMMY: Approved contact options pending. You can reach a licensed advisor through our helpline or at any branch."
+advisor_consent_ask: "DUMMY: Approved advisor-contact consent text pending. May a licensed advisor contact you? If you agree, we will share your answers so far with the advisor, so you won't have to repeat them."
+paused: "I've saved your progress. You can come back to this conversation any time before it expires."
+# Step 18: State-0 (TDD §3.5). The greeting is the TDD wording. The AI disclosure (the registry's
+# DISC-GLOBAL-AI-06) and the consent notice (the Consent Service's body) follow it verbatim; neither
+# lives in the bundle. Consent texts the TDD does not give are DUMMY until compliance approves them.
+greeting: |-
+  Namaste, I'm SurakshaSetu, an AI assistant from {insurer}. I'm not a human advisor.
+  I can help you work out how much life cover you may need and explain our plans.
+  Final terms are decided during application and underwriting. This chat is recorded.
+consent_reprompt: "Please choose your options below to continue."
+consent_renew: "DUMMY: Approved re-consent text pending. Our privacy notice has changed, or your earlier consent has expired. Please review the notice and choose your options again."
+consent_retry: "Sorry, I can't record your choices right now. Please try again in a moment."
+notice_updated: "DUMMY: Approved text pending. The privacy notice has been updated. Please review it and choose your options again."
+age_confirm_ask: "DUMMY: Approved age-confirmation text pending. Before I continue, please confirm that you are 18 or older. Type yes or no."
+consent_declined: "DUMMY: Approved helpline and branch-locator text pending. No problem: I won't collect any information. You can reach us through our helpline or at any branch."
+intent_ask: "Are you looking to explore new life insurance plans, or do you have questions about an existing policy?"
+# Labels for the consent form and the quick replies. The purpose lines are TDD §3.5's.
+consent_form:
+  purposes:
+    P1: "Use my answers, including basic health and lifestyle details, to assess my needs and suggest plans"
+    P2: "Let a licensed advisor contact me"
+    P3: "Send me product updates"
+  adult: "I confirm I am 18 or older"
+  submit: "Continue"
+  retry: "Try again"
+  languages:
+    en-IN: "Read in English"
+    hi-IN: "Read in हिंदी"
+intents:
+  new_purchase: "Buy new cover"
+  specific_plan: "Price a plan"
+  general_faq: "General question"
+  existing_policy: "Existing policy"
+advisor_contact:
+  granted: "Yes, please"
+  declined: "No, thanks"
+side_query_caveat:
+  S0: "At this stage I can only answer questions about privacy and how your information is used."
+  S1: "This is general information, not a decision about your eligibility."
+  S2: "This is general information; any recommendation will be based on your own answers."
+  S3: "This is general information; the policy wording decides."
+  QUOTE_ONLY: "This is general information; the quote is indicative."
+labels:
+  goals:
+    income_protection: "Protect your family's income"
+    loan_cover: "Repay loans"
+    child_education: "Fund a child's education"
+    retirement: "Retirement"
+    savings: "Savings"
+  ppt:
+    regular: "Regular pay"
+    limited_10: "Limited pay (10 years)"
+    single: "Single premium"
+  benefit_payment:
+    lumpsum: "Lump sum"
+    monthly_income: "Monthly income"
+    lumpsum_plus_income: "Lump sum plus income"
+  product_types:
+    TERM: "Term"
+    TERM_ROP: "Term with return of premium"
+    NON_PAR_SAVINGS: "Non-participating savings"
+    PAR: "Participating"
+    ULIP: "Unit-linked"
+  documents:
+    CIS: "Customer information sheet"
+    BI: "Benefit illustration"
+    POLICY_WORDING: "Policy wording"
+  none: "None"
+  or_more: "{amount} or more"

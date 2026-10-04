@@ -1,0 +1,11 @@
+id: s0-existing-policy
+description: >-
+  An existing policy from S0 (row S0.1) escalates with contact options only: no hand-off and no
+  data shared, even with P2 granted (TDD §3.9's S0 column).
+turns:
+  - action: {type: START}
+    expect: {state: S0, templates: [greeting]}
+  - action: {type: CONSENT_SUBMIT, payload: {purposes: {P1: true, P2: true, P3: false}, age_18_plus: true}}
+    expect: {state: S0, templates: [intent_ask], consent: {purposes: [P1, P2]}}
+  - action: {type: INTENT, payload: {intent: existing_policy}}
+    expect: {state: HUMAN_ESCALATION, templates: [contact_options], absent: [HANDOFF]}

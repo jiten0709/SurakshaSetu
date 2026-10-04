@@ -1,0 +1,11 @@
+id: s0-typed-haan
+description: >-
+  The typed path: "haan" while the consent prompt is open asks the separate 18+ question, and a
+  typed confirmation records P1 only, as parsed_affirmation.
+turns:
+  - text: hello
+    expect: {state: S0, templates: [greeting], form: true}
+  - text: haan
+    expect: {state: S0, templates: [age_confirm_ask], absent: [CONSENT_CAPTURED]}
+  - text: haan
+    expect: {state: S0, templates: [intent_ask], consent: {method: parsed_affirmation, purposes: [P1]}}

@@ -1,5 +1,5 @@
 """The cross-cutting handlers (TDD §3.9, Step 17): data erasure, human escalation, pause and resume,
-and safety.
+and safety; and the AI re-disclosure for an identity question (I6, Step 18).
 
 They are reached two ways only. The turn router sends a withdrawal or a safety signal to a
 pass-through node that skips the state node. Or decide enters DATA_ERASURE, HUMAN_ESCALATION or
@@ -27,8 +27,17 @@ def session(turn: "Turn") -> SessionState:
     return turn.next
 
 
+def bundle(turn: "Turn") -> PromptBundle:
+    return cast(PromptBundle, turn.bundle)
+
+
 def scripts(turn: "Turn") -> Scripts:
-    return cast(PromptBundle, turn.bundle).templates[session(turn).locale].scripts
+    return bundle(turn).templates[session(turn).locale].scripts
+
+
+def quick_reply(label: str, action: str, payload: dict[str, Any]) -> dict[str, Any]:
+    """One quick reply (Step 18): the label shown, and the structured action it sends."""
+    return {"label": label, "action": {"type": action, "payload": payload}}
 
 
 def append(turn: "Turn", event_type: EventType, header: Header, payload: dict[str, Any]) -> None:
