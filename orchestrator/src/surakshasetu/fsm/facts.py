@@ -115,6 +115,8 @@ class Facts(_Frozen):
     low_confidence_streak: int = Field(default=0, ge=0)  # consecutive turns below the floor
     mandatory_trigger: MandatoryTrigger | None = None
     inactivity_timeout: bool = False  # a timer event, not a customer turn
+    # A domain dependency down mid-state (TDD §3.9 "Dependency down"; S2 sets it, Step 20): pause.
+    dependency_down: bool = False
     faq: bool = False  # FAQ intent at confidence >= 0.7
     objection: bool = False
 

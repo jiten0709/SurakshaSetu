@@ -1,0 +1,14 @@
+id: s2-period-question
+description: >-
+  "80k" with no period: S2 asks a month or a year and assumes neither (no slot row); "a month"
+  is annualised and read back as ₹9,60,000 a year.
+prelude: to-s2
+turns:
+  - action: {type: SLOT, payload: {slot: goals, value: income_protection}}
+    expect: {templates: [RL-S2-INCOME]}
+  - text: 80k
+    expect: {templates: [period_ask], contains: ["Is ₹80,000 a month or a year?"], slot_rows: 15}
+  - action: {type: PERIOD, payload: {period: month}}
+    expect: {templates: [readback], contains: ["Just to check: ₹9,60,000 a year. Is that right?"], slots: {annual_income_inr: proposed}}
+  - text: "yes"
+    expect: {state: S2, templates: [RL-S2-INCOME-TYPE]}

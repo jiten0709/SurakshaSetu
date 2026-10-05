@@ -73,9 +73,11 @@ def terminal_states_stay(state: FsmState, t: Transition) -> None:
 
 
 def pre_consent_inactivity_never_pauses(f: Facts, state: FsmState, t: Transition) -> None:
-    # V3. Staying in PAUSE is not entering it, so PAUSE itself is left out.
+    # V3. Staying in PAUSE is not entering it, so PAUSE itself is left out. A dependency down
+    # (Step 20) pauses only after consent too.
     pre_consent = f.consent in ("none", "refused")
-    if state not in TERMINAL | {S.PAUSE} and pre_consent and f.inactivity_timeout:
+    paused_by = f.inactivity_timeout or f.dependency_down
+    if state not in TERMINAL | {S.PAUSE} and pre_consent and paused_by:
         assert t.to is not S.PAUSE
 
 

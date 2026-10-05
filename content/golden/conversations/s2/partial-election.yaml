@@ -1,0 +1,39 @@
+id: s2-partial-election
+description: >-
+  Dependants, existing cover, employer cover, assets and budget declined: sufficiency 0.65, below
+  the minimum. The limitation is stated and continuing needs an explicit structured election,
+  recorded as SUFFICIENCY_ELECTION; S2.2 then moves to S3, and the bridge says the options rest on
+  a partial profile.
+prelude: to-s2
+turns:
+  - action: {type: SLOT, payload: {slot: goals, value: income_protection}}
+    expect: {templates: [RL-S2-INCOME]}
+  - text: 24 lakh
+    expect: {templates: [readback]}
+  - text: "yes"
+    expect: {templates: [RL-S2-INCOME-TYPE]}
+  - action: {type: SLOT, payload: {slot: income_type, value: salaried}}
+    expect: {templates: [RL-S2-DEPENDANTS]}
+  - text: I'd rather not say
+    expect: {templates: [RL-S2-LIABILITIES], slots: {dependants: declined}}
+  - text: home loan of 35 lakh, 18 years left
+    expect: {templates: [readback]}
+  - text: "yes"
+    expect: {templates: [RL-S2-EXISTING-COVER]}
+  - text: prefer not to say
+    expect: {templates: [RL-S2-EMPLOYER-COVER], slots: {existing_cover_inr: declined}}
+  - text: prefer not to say
+    expect: {templates: [RL-S2-EXISTING-PREMIUM]}
+  - text: none
+    expect: {templates: [RL-S2-ASSETS]}
+  - action: {type: SLOT, payload: {slot: earmarked_assets_inr, value: declined}}
+    expect: {templates: [RL-S2-BUDGET]}
+  - action: {type: SLOT, payload: {slot: premium_budget_inr_pa, value: declined}}
+    expect:
+      templates: [needs_summary, summary_question]
+      engine: {service: suitability, outcome: FIT, result: {profile_sufficiency: 0.65}}
+      contains: ["Dependants: not shared"]
+  - text: "yes"
+    expect: {state: S2, row: S2.STAY, templates: [partial_offer], absent: [SUFFICIENCY_ELECTION]}
+  - action: {type: ELECT, payload: {elected: true}}
+    expect: {state: S3, row: S2.2, reason: SUITABLE, templates: [needs_done, partial_profile], events: [SUFFICIENCY_ELECTION]}

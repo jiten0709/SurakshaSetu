@@ -7,6 +7,8 @@ pauses and loops back, then forward progress; a row whose condition implies anot
 
 The cross-cutting table is TDD §3.9's five rows plus:
 - CC1b, an under-18 signal -> DATA_ERASURE from every active state (V2; decided 2026-10-02);
+- CC3 also pauses when a domain dependency is down (TDD §3.9 "Dependency down": S2 pauses, saves
+  and resumes later; decided 2026-10-04, Step 20). As for inactivity, only after consent (V3);
 - the guards G1-G4 (decided 2026-10-02). They sit before CC4 and CC5 because a FAQ or objection
   STAY would otherwise keep a session in place with lapsed consent (I1) or a stale suitability
   record (I2), and would lose a one-turn correction (V4).
@@ -70,6 +72,10 @@ def _escalation_reason(f: Facts) -> str:
     return "HE_FRUSTRATION" if f.frustration else "HE_LOW_CONFIDENCE"
 
 
+def _pause_reason(f: Facts) -> str:
+    return "INACTIVITY" if f.inactivity_timeout else "DEPENDENCY_DOWN"
+
+
 def _eligibility_reason(f: Facts) -> str:
     reason = f.eligibility.escalation_reason if f.eligibility is not None else None
     return reason or "HE_ELIGIBILITY"
@@ -130,9 +136,10 @@ CROSS_CUTTING: tuple[Row, ...] = (
             or f.low_confidence_streak >= t.low_confidence_streak_limit
         ),
         "mandatory trigger, explicit request, frustration or low confidence", _escalation_reason),
-    Row("CC3", ENGAGED, 4, S.PAUSE, lambda f, t: f.inactivity_timeout and f.consent_given_ever,
-        "inactivity timeout after consent (V3)", "INACTIVITY",
-        fallback="Re-engagement within the granted purposes only"),
+    Row("CC3", ENGAGED, 4, S.PAUSE,
+        lambda f, t: f.consent_given_ever and (f.inactivity_timeout or f.dependency_down),
+        "inactivity timeout or a dependency down, after consent (V3)", _pause_reason,
+        fallback="Re-engagement within the granted purposes only; resume re-runs the state"),
     Row("G1", frozenset({S.S1, S.QUOTE_ONLY, S.S2, S.S3}), 5, S.S0, lambda f, t: not f.valid_p1,
         "consent lapsed or notice superseded (I1)", "CONSENT_LAPSED",
         fallback="Re-enter S0 (TDD §3.5)"),

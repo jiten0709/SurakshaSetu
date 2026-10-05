@@ -1,0 +1,32 @@
+id: s2-homemaker
+description: >-
+  No personal income and a homemaker: the non-earning basis is explained in plain words; the rules
+  have no non-earning cover basis yet (D6), so the engine escalates HE_OUT_OF_SCOPE once the
+  summary is confirmed.
+prelude: to-s2
+turns:
+  - action: {type: SLOT, payload: {slot: goals, value: income_protection}}
+    expect: {templates: [RL-S2-INCOME]}
+  - text: no income
+    expect: {templates: [non_earning_basis, RL-S2-INCOME-TYPE], slots: {annual_income_inr: proposed}}
+  - action: {type: SLOT, payload: {slot: income_type, value: homemaker}}
+    expect: {templates: [non_earning_basis, RL-S2-DEPENDANTS]}
+  - text: my son is 4
+    expect: {templates: [RL-S2-LIABILITIES]}
+  - text: no loans
+    expect: {templates: [RL-S2-EXISTING-COVER]}
+  - text: none
+    expect: {templates: [RL-S2-EMPLOYER-COVER]}
+  - text: "no"
+    expect: {templates: [RL-S2-EXISTING-PREMIUM]}
+  - text: none
+    expect: {templates: [RL-S2-ASSETS]}
+  - action: {type: SLOT, payload: {slot: earmarked_assets_inr, value: declined}}
+    expect: {templates: [RL-S2-BUDGET]}
+  - action: {type: SLOT, payload: {slot: premium_budget_inr_pa, value: declined}}
+    expect:
+      templates: [needs_summary, summary_question]
+      engine: {service: suitability, outcome: ESCALATE, result: {escalation_reason: HE_OUT_OF_SCOPE, vulnerability_flags: [VULN_NO_PERSONAL_INCOME]}}
+      contains: ["Income type: Homemaker"]
+  - text: "yes"
+    expect: {state: HUMAN_ESCALATION, row: S2.1b, reason: HE_OUT_OF_SCOPE, templates: [advisor_consent_ask]}

@@ -259,7 +259,7 @@ async def test_an_opt_in_goes_to_s2_when_eligible_and_to_s1_otherwise(
     t = qo_turn(action={"type": "OPT_IN", "payload": {}}, eligibility=eligible())
     await run(t)
     assert transition(t) == ("QO.3", FsmState.S2)
-    assert ids(t) == ["template:screening_done"]
+    assert ids(t) == ["template:screening_done", "template:RL-S2-GOALS"]  # Step 20: S2 asks
 
     known(stored)  # age and tobacco from Quote-Only carry over to S1
     s0_entry = qo_turn("yes", focus=(TERM,), prompt=quote_only.QUOTED)

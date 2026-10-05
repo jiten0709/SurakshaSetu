@@ -10,7 +10,7 @@ from typing import Any
 from uuid import UUID
 
 import pytest
-from runtime_support import Models, ai_disclosure_json, notice_json
+from runtime_support import REQUIRED_SLOTS, Models, ai_disclosure_json, notice_json
 from test_runtime_nodes import (
     SCRIPTS,
     Recorder,
@@ -31,6 +31,7 @@ from surakshasetu.domain.models import (
     Disclosure,
     PurposeGrant,
     RecommendedOption,
+    RequiredSlot,
 )
 from surakshasetu.fsm import rows
 from surakshasetu.fsm.facts import MandatoryTrigger
@@ -95,6 +96,13 @@ class FakeDomain:
         self._call("getConsentRecord")
         return self.record or consent()
 
+    async def get_required_slots(self, rules: str) -> list[RequiredSlot]:
+        self._call("getRequiredSlots")
+        return [RequiredSlot.model_validate(r) for r in REQUIRED_SLOTS]
+
+    async def list_products(self, *args: Any, **kwargs: Any) -> list[Any]:
+        return []  # I3's catalog names, for S2's generated sentence (not a recorded call)
+
     async def get_product(self, uin: str, as_of: Any = None) -> Any:
         self._call("getProduct")
         return self.products.get(uin, SimpleNamespace(status="in_force", effective_to=None))
@@ -146,7 +154,8 @@ def test_after_decide_runs_the_handler_of_the_state_entered() -> None:
     assert case(FsmState.S1, FsmState.DATA_ERASURE) == "data_erasure"
     assert case(FsmState.S1, FsmState.HUMAN_ESCALATION) == "human_escalation"
     assert case(FsmState.S3, FsmState.PAUSE) == "pause"
-    assert case(FsmState.S1, FsmState.S2) == "compose"
+    assert case(FsmState.S2, FsmState.S3) == "compose"
+    assert case(FsmState.S1, FsmState.S2) == "s2_enter"  # Step 20: S2's first question
     # Staying in a handler's state runs that state's node instead, never the entry again.
     assert case(FsmState.HUMAN_ESCALATION, FsmState.HUMAN_ESCALATION) == "compose"
     assert case(FsmState.PAUSE, FsmState.PAUSE) == "compose"
@@ -483,7 +492,8 @@ async def test_resume_with_valid_consent_returns_to_the_paused_state(
 
     await run(t)
 
-    assert t.domain.calls == ["getConsentRecord"]  # type: ignore[attr-defined]
+    # Step 20: entering S2 again asks its open question (the rules' slots are read).
+    assert t.domain.calls == ["getConsentRecord", "getRequiredSlots"]  # type: ignore[attr-defined]
     assert t.transition is not None and t.transition.row_id == "PAUSE.R"
     assert t.next is not None and t.next.fsm_state is FsmState.S2
 

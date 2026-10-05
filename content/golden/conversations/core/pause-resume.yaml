@@ -3,4 +3,4 @@ description: A customer turn in PAUSE revalidates consent with the Consent Servi
 given: {consent: {purposes: [P1]}, state: PAUSE, paused_from: S2}
 turns:
   - text: I'm back, let's continue
-    expect: {state: S2, templates: [advisor_offer]}
+    expect: {state: S2, templates: [RL-S2-GOALS]}

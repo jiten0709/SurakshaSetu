@@ -1,0 +1,42 @@
+id: s2-election-declined
+description: >-
+  Below the sufficiency minimum the customer chooses to answer more: the election is recorded as
+  declined, the declined question is asked again, and the new answer gives a new summary, a new
+  decision and enough sufficiency for S3.
+prelude: to-s2
+turns:
+  - action: {type: SLOT, payload: {slot: goals, value: income_protection}}
+    expect: {templates: [RL-S2-INCOME]}
+  - text: 24 lakh
+    expect: {templates: [readback]}
+  - text: "yes"
+    expect: {templates: [RL-S2-INCOME-TYPE]}
+  - action: {type: SLOT, payload: {slot: income_type, value: salaried}}
+    expect: {templates: [RL-S2-DEPENDANTS]}
+  - text: I'd rather not say
+    expect: {templates: [RL-S2-LIABILITIES]}
+  - text: home loan of 35 lakh, 18 years left
+    expect: {templates: [readback]}
+  - text: "yes"
+    expect: {templates: [RL-S2-EXISTING-COVER]}
+  - text: prefer not to say
+    expect: {templates: [RL-S2-EMPLOYER-COVER]}
+  - text: prefer not to say
+    expect: {templates: [RL-S2-EXISTING-PREMIUM]}
+  - text: none
+    expect: {templates: [RL-S2-ASSETS]}
+  - action: {type: SLOT, payload: {slot: earmarked_assets_inr, value: declined}}
+    expect: {templates: [RL-S2-BUDGET]}
+  - action: {type: SLOT, payload: {slot: premium_budget_inr_pa, value: declined}}
+    expect: {templates: [needs_summary, summary_question], engine: {service: suitability, result: {profile_sufficiency: 0.65}}}
+  - text: "yes"
+    expect: {templates: [partial_offer]}
+  - text: "no"
+    expect: {state: S2, row: S2.STAY, templates: [RL-S2-DEPENDANTS], events: [SUFFICIENCY_ELECTION]}
+  - text: my wife is 32 and my son is 4
+    expect:
+      templates: [needs_summary, summary_question]
+      slots: {dependants: corrected}
+      engine: {service: suitability, outcome: FIT, result: {profile_sufficiency: 0.85}}
+  - text: "yes"
+    expect: {state: S3, row: S2.2, templates: [needs_done]}

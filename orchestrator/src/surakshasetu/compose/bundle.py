@@ -35,7 +35,7 @@ from surakshasetu.audit.chain import SYSTEM_SESSION, Conn
 from surakshasetu.audit.events import ConfigReleaseHeader, EventType, Sha256Hex
 from surakshasetu.crypto.jcs import sha256_hex
 from surakshasetu.crypto.keys import SYSTEM_KEY_REF, KeyService
-from surakshasetu.domain.models import Goal, PptOption, ProductType
+from surakshasetu.domain.models import Goal, IncomeType, PptOption, ProductType
 from surakshasetu.fsm.facts import S0Intent
 from surakshasetu.gateway import Route
 from surakshasetu.kb.chunker import count_tokens
@@ -60,6 +60,7 @@ TEMPLATE_FILES = ("slots", "scripts", "recommendation")
 CONSENT_LEXICON = "lexicons/consent_affirmation.yaml"  # Step 18
 IDENTITY_LEXICON = "lexicons/identity_question.yaml"
 SCREENING_LEXICON = "lexicons/screening.yaml"  # Step 19
+NEEDS_LEXICON = "lexicons/needs.yaml"  # Step 20
 # Word edges that also hold inside Devanagari (as rails/output.py's lexicon matching).
 _START, _END = r"(?<![\wऀ-ॿ])", r"(?![\wऀ-ॿ])"
 
@@ -166,6 +167,42 @@ class Screening(_Strict):
         return self
 
 
+class NeedsLabels(_Strict):
+    """State-2 labels (Step 20): how each needs answer reads in the summary ("{value}" lines; money
+    from the slots, existing cover counted from the engine), a declined answer, the defaults the
+    short path assumes, short slot names for the summary fix, the closed answers offered as quick
+    replies, and the quick-reply labels."""
+
+    facts: dict[str, str]  # slot (or existing_cover_counted) -> "Annual income: {value}"
+    declined: dict[str, str]  # slot (or "default") -> how a declined answer reads
+    assumed: dict[str, str]  # slot -> how its short-path default reads
+    names: dict[str, str]
+    income_types: dict[IncomeType, str]
+    relations: dict[Literal["spouse", "child", "parent", "other"], str]
+    loan_kinds: dict[Literal["home", "vehicle", "education", "personal", "business", "other"], str]
+    dependant: str  # "{relation} ({age})"
+    loan: str  # "{kind}, {outstanding} outstanding, {years} years left"
+    a_year: str  # "{amount} a year"
+    none: str
+    period: dict[Literal["month", "year"], str]  # the period question's quick replies
+    no_one: str
+    no_loans: str
+    skip: str
+    elect: str
+    answer_more: str
+    see_options: str
+    short_yes: str
+    short_no: str
+
+    @model_validator(mode="after")
+    def _every_fact_named(self) -> Self:
+        if unnamed := set(self.facts) - set(self.names) - {"existing_cover_counted"}:
+            raise ValueError(f"needs facts without a name: {sorted(unnamed)}")
+        if "default" not in self.declined:
+            raise ValueError("needs.declined needs a default")
+        return self
+
+
 class Scripts(_Strict):
     readback: str
     money_readback: str
@@ -229,6 +266,26 @@ class Scripts(_Strict):
     reengage: str  # with P3 only
     goodbye: str
     screening: Screening
+    # State-2 (Step 20, pb-2026.10.4 on; required, so pb-2026.10.3 no longer loads). needs_summary
+    # (above) is filled from the slots and the engine's assumptions; never paraphrased.
+    amount_readback: str  # a lump sum read back (cover, assets, a loan); money_readback is a year's
+    period_ask: str  # "80k" with no period: a month or a year? Never assumed
+    summary_assumed: str  # the short path's defaults, on the summary
+    summary_implausible: str  # the engine's IMPLAUSIBLE_INPUT: check the figures (soft validation)
+    summary_question: str  # the summary's confirmation question, after the lines above
+    partial_offer: str  # sufficiency below the minimum: the limitation, and the election
+    amber_confirm: str  # amber affordability: explicit confirmation before S3
+    no_gap: str  # N <= 0: existing cover appears sufficient; no product (Exit Advisory)
+    needs_done: str  # the bridge to S3
+    dependency_down: str  # the Suitability Service is down: before `paused`
+    needs_retry: str  # ... down while entering S2: retry
+    non_earning_basis: str  # homemaker, student, retired or no income: the basis in plain words
+    distress_ack: str  # job loss, bereavement, debt: slow down, pause or an advisor
+    guarantee_note: str  # "guaranteed high returns": no promise
+    competitor_note: str  # another insurer's plan: own products only
+    rephrase: str  # comprehension difficulty: the question again, more simply
+    short_path_offer: str  # "just tell me the best plan": three questions
+    needs: NeedsLabels
 
 
 Attribute = Literal[
@@ -351,6 +408,23 @@ class ScreeningLexicon(_Strict):
         return _phrases(entries)
 
 
+class NeedsLexicon(_Strict):
+    """lexicons/needs.yaml (Step 20): whole-word phrases anywhere in the turn, like screening."""
+
+    short_path: frozenset[str]
+    distress: frozenset[str]
+    comprehension: frozenset[str]
+    guarantee: frozenset[str]
+    competitor: frozenset[str]
+
+    @field_validator(
+        "short_path", "distress", "comprehension", "guarantee", "competitor", mode="before"
+    )
+    @classmethod
+    def _normalised(cls, entries: list[str]) -> frozenset[str]:
+        return _phrases(entries)
+
+
 @dataclass(frozen=True)
 class PromptBundle:
     manifest: Manifest
@@ -361,6 +435,7 @@ class PromptBundle:
     consent_lexicon: ConsentLexicon
     identity_lexicon: IdentityLexicon
     screening_lexicon: ScreeningLexicon
+    needs_lexicon: NeedsLexicon
 
     @property
     def version(self) -> str:
@@ -390,6 +465,7 @@ def load_bundle(version: str, *, env: str, root: Path = PROMPT_BUNDLES) -> Promp
         CONSENT_LEXICON,
         IDENTITY_LEXICON,
         SCREENING_LEXICON,
+        NEEDS_LEXICON,
     }
     if missing := sorted((set(manifest.files) | required) - present):
         raise _refuse(version, "FILE_MISSING", missing[0])
@@ -416,6 +492,7 @@ def load_bundle(version: str, *, env: str, root: Path = PROMPT_BUNDLES) -> Promp
         screening_lexicon = ScreeningLexicon.model_validate(
             yaml.safe_load(files[SCREENING_LEXICON])
         )
+        needs_lexicon = NeedsLexicon.model_validate(yaml.safe_load(files[NEEDS_LEXICON]))
     except (ValidationError, yaml.YAMLError) as exc:
         raise _refuse(version, "LEXICON_INVALID") from exc
     l0 = files[L0_PATH].decode("utf-8")
@@ -434,6 +511,7 @@ def load_bundle(version: str, *, env: str, root: Path = PROMPT_BUNDLES) -> Promp
         consent_lexicon=consent_lexicon,
         identity_lexicon=identity_lexicon,
         screening_lexicon=screening_lexicon,
+        needs_lexicon=needs_lexicon,
     )
     logger.info("prompt bundle %s loaded: %d files", version, len(files))
     return bundle

@@ -32,6 +32,6 @@ turns:
       state: S2
       row: S1.4
       reason: ELIGIBLE
-      templates: [screening_done]
+      templates: [screening_done, RL-S2-GOALS]
       engine: {service: eligibility, outcome: ELIGIBLE, flags: []}
       slots: {age_years: confirmed, residency: confirmed, pincode: confirmed, tobacco_12m: confirmed, occupation_code: confirmed, health_flags: confirmed, proposer.is_life_assured: confirmed}

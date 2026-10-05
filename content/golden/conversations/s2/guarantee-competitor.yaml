@@ -1,0 +1,13 @@
+id: s2-guarantee-competitor
+description: >-
+  "Guaranteed high returns" gets no promise (guarantees are explained only from policy wording in
+  S3), and another insurer's plan is not compared (own products only); each time the open question
+  stands, and an answer then moves on.
+prelude: to-s2
+turns:
+  - text: I want guaranteed high returns
+    expect: {state: S2, row: S2.STAY, templates: [guarantee_note, RL-S2-GOALS], lacks: ["guaranteed return"]}
+  - text: is the LIC plan better?
+    expect: {state: S2, templates: [competitor_note, RL-S2-GOALS], contains: ["DUMMY Insurer"]}
+  - text: savings
+    expect: {templates: [RL-S2-INCOME], slots: {goals: proposed}}

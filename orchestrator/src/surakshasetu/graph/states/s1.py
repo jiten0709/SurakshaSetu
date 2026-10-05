@@ -29,8 +29,11 @@ request offers the Quote-Only express path; an answer the system cannot use gets
 hint, and the advisor offer after SS_INVALID_INPUT_LIMIT tries; off-topic gets a one-line redirect;
 the domain tier down gets a retry.
 
-`Screen` is shared with Quote-Only (graph/states/quote_only.py), and `correction` is the V4 hook the
-S2 and S3 nodes call: a changed eligibility fact writes a corrected row and re-runs S1's rows (G2).
+`Screen` is shared with Quote-Only (graph/states/quote_only.py) and, through its hooks
+(`understand`, `kinds`, `aliases`, `invalidate`, `names`), with S2's needs discovery
+(graph/states/s2.py, Step 20). `correction` is the V4 hook the S2 and S3 nodes call: a changed
+eligibility fact writes a corrected row and re-runs S1's rows (G2). `recompute` re-runs the engine
+on the confirmed slots when a later state needs its result after hydration.
 """
 
 import dataclasses
@@ -53,7 +56,7 @@ from surakshasetu.analysis.normalisers import (
     parse_yes_no,
 )
 from surakshasetu.audit.events import EngineDecisionHeader, EventType
-from surakshasetu.compose.bundle import SlotTemplate, mentions, phrase
+from surakshasetu.compose.bundle import L1Name, SlotTemplate, mentions, phrase
 from surakshasetu.domain.client import DomainError
 from surakshasetu.domain.models import (
     EligibilityRequest,
@@ -130,6 +133,9 @@ ALIASES = {
 _YEARS = re.compile(r"\b(\d{1,2})\s*(?:years?|yrs?|saal|साल)?\b", re.I)
 _DIGITS = re.compile(r"\s*(\d{5,10})\s*")
 QUESTIONS = frozenset({Intent.SIDE_QUERY, Intent.GENERAL_FAQ})
+# The states whose plain questions lead with one generated sentence, and their L1 (Quote-Only's are
+# never phrased).
+PHRASED: dict[str, L1Name] = {"s1": "S1", "s2": "S2"}
 
 
 @dataclasses.dataclass(frozen=True)
@@ -254,7 +260,7 @@ class Screen:
 
     turn: Any
     session: SessionState
-    prefix: Literal["s1", "qo"]  # prompt ids: <prefix>.ask:<slot>, .confirm:<slot>, .readback, ...
+    prefix: Literal["s1", "qo", "s2"]  # prompt ids: <prefix>.ask:<slot>, .confirm:<slot>, ...
     attrs: list[RequiredAttribute]
     known: dict[str, tuple[str, Any]]
     extra: tuple[str, ...] = ()  # slots a customer may state beyond the rules' (Quote-Only)
@@ -287,6 +293,28 @@ class Screen:
             known[slot_row.slot] = (slot_row.status, slot_row.value)
         return cls(turn, current, prefix, attrs, known, extra)
 
+    # --- hooks S2's needs discovery overrides (Step 20) -----------------------------------------
+    @property
+    def kinds(self) -> dict[str, Any]:
+        return KINDS
+
+    @property
+    def aliases(self) -> dict[str, str]:
+        return ALIASES
+
+    @property
+    def names(self) -> dict[str, str]:
+        return scripts(self.turn).screening.names
+
+    async def understand(
+        self, slot: str, raw: Any, evidence: str
+    ) -> Answer | list[Occupation] | None:
+        return await understand(self.turn, slot, raw, evidence)
+
+    def invalidate(self, slot: str, status: str) -> None:
+        if status != "confirmed" and slot in ELIGIBILITY:
+            self.session.eligibility = None  # the engine's result no longer matches (V4)
+
     # --- what is known ----------------------------------------------------------------------------
     @property
     def asked(self) -> list[RequiredAttribute]:
@@ -310,8 +338,7 @@ class Screen:
     def write(self, slot: str, value: Any, status: str, confidence: float) -> None:
         self.turn.slot_rows.append(SlotRow(slot, value, confidence, cast(Any, status)))
         self.known[slot] = (status, value)
-        if status != "confirmed" and slot in ELIGIBILITY:
-            self.session.eligibility = None  # the engine's result no longer matches (V4)
+        self.invalidate(slot, status)
 
     # --- taking answers ---------------------------------------------------------------------------
     async def take(self, slot: str, raw: Any, evidence: str, confidence: float) -> bool:
@@ -323,7 +350,7 @@ class Screen:
             return False  # only what the rules ask: gender is never inferred
         if confidence < settings.confidence_readback_floor:
             return False
-        answer = await understand(self.turn, slot, raw, evidence)
+        answer = await self.understand(slot, raw, evidence)
         if isinstance(answer, list):
             self.options = (slot, answer)
             return False
@@ -349,8 +376,8 @@ class Screen:
     async def candidates(self) -> None:
         """This turn's nlu-extract candidates, each with its evidence span."""
         for candidate in self.turn.slots_pending:
-            slot = ALIASES.get(candidate.slot, candidate.slot)
-            if slot in KINDS:
+            slot = self.aliases.get(candidate.slot, candidate.slot)
+            if slot in self.kinds:
                 self.offered.add(slot)
                 await self.take(
                     slot, candidate.value, candidate.evidence_span, candidate.confidence
@@ -377,9 +404,10 @@ class Screen:
         return prompt.split(":", 1)[1] if prompt.startswith(f"{self.prefix}.ask:") else None
 
     async def slot_action(self, payload: dict[str, Any]) -> None:
-        """A SLOT quick reply: only for the open question, and only with a value it offered."""
+        """A SLOT quick reply: only for the open question, and only with a value it offered (S2's
+        goals may come as a ranked list)."""
         slot, value = payload.get("slot"), payload.get("value")
-        if slot is None or slot != self.pending() or not isinstance(value, str | int | bool):
+        if slot is None or slot != self.pending() or not isinstance(value, str | int | bool | list):
             logger.warning("a SLOT action for another question: ignored")
             return
         await self.take(slot, value, str(value), 1.0)
@@ -558,8 +586,8 @@ class Screen:
         self.session.last_prompt_id = f"{self.prefix}.ask:{attr.attribute}"
         part = (attr.reason_line_id, f"{slot.question} {slot.reason}")
         self.reply([part], self.choices(attr.attribute) if quick is None else quick)
-        if self.prefix == "s1" and not self.lead:  # a plain question: one friendly sentence first
-            self.turn.phrase = ("S1", attr.reason_line_id, tuple(sorted(self.known)))
+        if (l1 := PHRASED.get(self.prefix)) and not self.lead:  # a plain question: one sentence
+            self.turn.phrase = (l1, attr.reason_line_id, tuple(sorted(self.known)))
 
     def choices(self, slot: str) -> list[dict[str, Any]]:
         labels = scripts(self.turn).screening.choices
@@ -597,7 +625,7 @@ class Screen:
     def fix(self) -> None:
         """The read-back was wrong: which detail?"""
         texts = scripts(self.turn)
-        names = texts.screening.names
+        names = self.names
         self.session.pending_slot = None
         self.session.last_prompt_id = f"{self.prefix}.fix"
         self.reply(
@@ -704,38 +732,7 @@ async def _decide(screen: Screen) -> None:
 
 async def _evaluate(screen: Screen) -> None:
     turn, current = screen.turn, screen.session
-    values = {a.attribute: screen.known[a.attribute][1] for a in screen.asked}
-    request = EligibilityRequest(
-        pins=Pins(rules=current.pins.rules),
-        age_years=values["age_years"],
-        gender=values.get("gender"),
-        residency=values["residency"],
-        pincode=values["pincode"],
-        tobacco_12m=values.get("tobacco_12m"),
-        occupation_code=values.get("occupation_code"),
-        health_flags=values.get("health_flags") or {},
-        proposer=Proposer(
-            is_life_assured=values["proposer.is_life_assured"],
-            relationship=values.get("proposer.relationship"),
-            la_age=values.get("proposer.la_age"),
-            business_cover=values.get("proposer.business_cover"),
-        ),
-    )
-    result = await turn.domain.evaluate_eligibility(request)
-    append(
-        turn,
-        EventType.ENGINE_DECISION,
-        EngineDecisionHeader(
-            service="eligibility",
-            decision_id=str(result.decision_id),
-            rules_version=result.rules_version,
-            params_version=result.params_version,
-            inputs_sha256=result.inputs_sha256,
-            reason_codes=result.reason_codes,
-        ),
-        {"request": request.model_dump(mode="json"), "result": result.model_dump(mode="json")},
-    )
-    current.eligibility = _payload(request, result)
+    result = await _record(turn, _request(screen))
     turn.signals["eligibility"] = {
         "outcome": result.outcome,
         "escalation_reason": result.escalation_reason,
@@ -743,7 +740,6 @@ async def _evaluate(screen: Screen) -> None:
     }
     if current.counters.get("express_path"):
         turn.signals["express_path"] = True
-    logger.info("eligibility %s: %s, flags %s", result.decision_id, result.outcome, result.flags)
     texts = scripts(turn)
     if result.outcome == "RE_ASK":
         if current.counters.get("occupation_reask", 0) >= 1:
@@ -760,6 +756,61 @@ async def _evaluate(screen: Screen) -> None:
     elif result.outcome == "ELIGIBLE":
         turn.parts = [("screening_done", texts.screening_done)]
         turn.quick_replies = []
+
+
+def _request(screen: Screen) -> EligibilityRequest:
+    values = {a.attribute: screen.known[a.attribute][1] for a in screen.asked}
+    return EligibilityRequest(
+        pins=Pins(rules=screen.session.pins.rules),
+        age_years=values["age_years"],
+        gender=values.get("gender"),
+        residency=values["residency"],
+        pincode=values["pincode"],
+        tobacco_12m=values.get("tobacco_12m"),
+        occupation_code=values.get("occupation_code"),
+        health_flags=values.get("health_flags") or {},
+        proposer=Proposer(
+            is_life_assured=values["proposer.is_life_assured"],
+            relationship=values.get("proposer.relationship"),
+            la_age=values.get("proposer.la_age"),
+            business_cover=values.get("proposer.business_cover"),
+        ),
+    )
+
+
+async def _record(turn: Any, request: EligibilityRequest) -> EligibilityResult:
+    """The engine's decision on the confirmed values: ENGINE_DECISION, and the session's payload."""
+    current = session(turn)
+    result: EligibilityResult = await turn.domain.evaluate_eligibility(request)
+    append(
+        turn,
+        EventType.ENGINE_DECISION,
+        EngineDecisionHeader(
+            service="eligibility",
+            decision_id=str(result.decision_id),
+            rules_version=result.rules_version,
+            params_version=result.params_version,
+            inputs_sha256=result.inputs_sha256,
+            reason_codes=result.reason_codes,
+        ),
+        {"request": request.model_dump(mode="json"), "result": result.model_dump(mode="json")},
+    )
+    current.eligibility = _payload(request, result)
+    logger.info("eligibility %s: %s, flags %s", result.decision_id, result.outcome, result.flags)
+    return result
+
+
+async def recompute(turn: Any) -> bool:
+    """The engine's result for the confirmed eligibility slots, when a later state needs it and the
+    session lost it (hydration drops engine results, Step 16). True when they are still ELIGIBLE;
+    otherwise the caller signals a correction so S1's rows decide again (G2)."""
+    current = session(turn)
+    screen = await Screen.load(turn, current, "s1")
+    if not screen.confirmed():
+        return False
+    result = await _record(turn, _request(screen))
+    logger.info("eligibility recomputed in %s: %s", current.fsm_state, result.outcome)
+    return result.outcome == "ELIGIBLE"
 
 
 def _payload(request: EligibilityRequest, result: EligibilityResult) -> EligibilityPayload | None:

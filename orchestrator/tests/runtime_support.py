@@ -18,6 +18,7 @@ from psycopg_pool import AsyncConnectionPool, ConnectionPool
 from redis.exceptions import ConnectionError as RedisConnectionError
 
 from surakshasetu.config import Settings
+from surakshasetu.crypto.jcs import canonical_json
 from surakshasetu.crypto.keys import KeyService
 from surakshasetu.domain.client import DomainClient
 from surakshasetu.gateway import Gateway
@@ -37,7 +38,7 @@ def settings(**update: Any) -> Settings:
 
 def pins() -> VersionPins:
     return VersionPins(
-        prompt_bundle="pb-2026.10.3",
+        prompt_bundle="pb-2026.10.4",
         rules="2026.09.1",
         corpus={},
         consent_notice=NOTICE,
@@ -297,8 +298,71 @@ def quote_json(body: dict[str, Any]) -> httpx.Response:
     )
 
 
+# --- Step 20: a stand-in for the Suitability Service behind S2 ------------------------------------
+# The DMN's RequiredSlots rows in order, with their sufficiency weights, and an imitation of the
+# evaluation: the contract's inputs hash (JCS over the needs as sent, minus slots_sha256), presence
+# for sufficiency (a null or empty goals is unanswered), and FIT unless a test says otherwise. The
+# real engine runs in the golden suites.
+REQUIRED_SLOTS = [
+    {"slot": slot, "weight": weight, "reason_line_id": reason}
+    for slot, weight, reason in (
+        ("goals", 0.15, "RL-S2-GOALS"),
+        ("annual_income_inr", 0.25, "RL-S2-INCOME"),
+        ("income_type", 0.05, "RL-S2-INCOME-TYPE"),
+        ("dependants", 0.20, "RL-S2-DEPENDANTS"),
+        ("liabilities", 0.15, "RL-S2-LIABILITIES"),
+        ("existing_cover_inr", 0.05, "RL-S2-EXISTING-COVER"),
+        ("employer_cover_inr", 0.05, "RL-S2-EMPLOYER-COVER"),
+        ("existing_annual_premium_inr", 0.05, "RL-S2-EXISTING-PREMIUM"),
+        ("earmarked_assets_inr", 0.025, "RL-S2-ASSETS"),
+        ("premium_budget_inr_pa", 0.025, "RL-S2-BUDGET"),
+    )
+]
+ASSUMPTIONS = {
+    "cover_to_age": 60,
+    "dependency_years": 26,
+    "discount_rate": "0.07",
+    "income_growth": "0.05",
+    "consumption_share": "0.30",
+    "final_expenses_inr": "200000",
+    "existing_cover_counted_inr": "750000",
+}
+
+
+def suitability_json(body: dict[str, Any], **result: Any) -> dict[str, Any]:
+    needs = {k: v for k, v in body["needs"].items() if k != "slots_sha256"}
+    weights = {r["slot"]: r["weight"] for r in REQUIRED_SLOTS}
+    answered = [s for s in weights if needs.get(s) is not None and needs.get(s) != [] or (
+        s == "dependants" and needs.get(s) == [])]  # fmt: skip
+    income = needs.get("annual_income_inr")
+    return {
+        "decision_id": "0199a1b2-0000-7000-8000-00000000500a",
+        "outcome": "FIT",
+        "profile_sufficiency": round(sum(weights[s] for s in answered), 3),
+        "affordability_premium_estimate_inr": "60000",
+        "fit_types": ["TERM", "TERM_ROP"],
+        "excluded": {},
+        "need_inr": "37147714.43",
+        "recommended_cover_inr": "37500000",
+        "uw_cap_inr": None if income is None else "60000000",
+        "term_years": 26,
+        "affordability": "unknown" if income in (None, "0") else "green",
+        "vulnerability_flags": [],
+        "assumptions": ASSUMPTIONS,
+        "rule_ids": ["FIT-01"],
+        "reason_codes": [],
+        "params_version": "actuarial-dummy-2026.09.1",
+        "rules_version": "2026.09.1",
+        "inputs_sha256": hashlib.sha256(canonical_json(needs)).hexdigest(),
+    } | result
+
+
 def screening_handler(request: httpx.Request) -> httpx.Response:
     path, params = request.url.path, request.url.params
+    if path == "/v1/suitability/required-slots":
+        return httpx.Response(200, json=REQUIRED_SLOTS)
+    if path == "/v1/suitability/evaluate":
+        return httpx.Response(200, json=suitability_json(json.loads(request.content)))
     if path == "/v1/eligibility/required-attributes":
         return httpx.Response(200, json=REQUIRED_ATTRIBUTES)
     if path.startswith("/v1/reference/pincodes/"):

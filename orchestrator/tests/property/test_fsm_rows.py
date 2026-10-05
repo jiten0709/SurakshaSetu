@@ -168,6 +168,23 @@ def test_a_customer_turn_resumes_into_the_paused_from_state(
     assert (t.to, t.row_id) == (to, row_id)
 
 
+@pytest.mark.parametrize(
+    ("f", "state", "to", "reason"),
+    [
+        (consented(inactivity_timeout=True), S.S2, S.PAUSE, "INACTIVITY"),
+        (consented(dependency_down=True), S.S2, S.PAUSE, "DEPENDENCY_DOWN"),
+        (in_s3(dependency_down=True), S.S3, S.PAUSE, "DEPENDENCY_DOWN"),
+        (Facts(dependency_down=True), S.S0, S.S0, "STAY"),  # V3: never before consent
+    ],
+)
+def test_a_dependency_down_pauses_after_consent_like_inactivity(
+    f: Facts, state: FsmState, to: FsmState, reason: str
+) -> None:
+    """TDD §3.9 "Dependency down": S2 pauses, saves and resumes later (Step 20, CC3)."""
+    t = transition(f, state, TH)
+    assert (t.to, t.reason_code) == (to, reason)
+
+
 def test_a_resume_reports_resumed() -> None:
     t = transition(consented(paused_from=S.S1), S.PAUSE, TH)
     assert (t.reason_code, t.subgraph) == ("RESUMED", None)

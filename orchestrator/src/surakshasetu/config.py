@@ -112,7 +112,7 @@ class Settings(BaseSettings):
     # session TTL (TDD §4.4, D7 open); the single-writer lock and idempotency TTLs (TDD §7.2); turn
     # rate limits per subject as {window seconds: max turns}; the side-query stack depth (TDD §2.6);
     # injection hits before HE_INJECTION (TDD §3.9); the app_rw pool size per process.
-    prompt_bundle: str = Field(default="pb-2026.10.3", pattern=r"^pb-\d{4}\.\d{2}\.\d+$")
+    prompt_bundle: str = Field(default="pb-2026.10.4", pattern=r"^pb-\d{4}\.\d{2}\.\d+$")
     session_ttl_days: int = Field(default=30, ge=1)
     session_lock_ttl_s: int = Field(default=30, ge=1)
     idempotency_ttl_s: int = Field(default=86_400, ge=1)

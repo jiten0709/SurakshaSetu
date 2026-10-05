@@ -1,0 +1,34 @@
+id: s2-red-affordability
+description: >-
+  Existing premiums of a quarter of income: red affordability is a mandatory escalation (V5), so
+  the confirmed record takes S2.1b to Human Escalation, where P2 is asked first (P1 only).
+prelude: to-s2
+turns:
+  - action: {type: SLOT, payload: {slot: goals, value: income_protection}}
+    expect: {templates: [RL-S2-INCOME]}
+  - text: 10 lakh
+    expect: {templates: [readback]}
+  - text: "yes"
+    expect: {templates: [RL-S2-INCOME-TYPE]}
+  - action: {type: SLOT, payload: {slot: income_type, value: salaried}}
+    expect: {templates: [RL-S2-DEPENDANTS]}
+  - text: my wife is 32 and my son is 4
+    expect: {templates: [RL-S2-LIABILITIES]}
+  - text: no loans
+    expect: {templates: [RL-S2-EXISTING-COVER]}
+  - text: none
+    expect: {templates: [RL-S2-EMPLOYER-COVER]}
+  - text: "no"
+    expect: {templates: [RL-S2-EXISTING-PREMIUM]}
+  - text: 2.5 lakh a year
+    expect: {templates: [readback], contains: ["Just to check: ₹2,50,000 a year. Is that right?"]}
+  - text: "yes"
+    expect: {templates: [RL-S2-ASSETS]}
+  - action: {type: SLOT, payload: {slot: earmarked_assets_inr, value: declined}}
+    expect: {templates: [RL-S2-BUDGET]}
+  - action: {type: SLOT, payload: {slot: premium_budget_inr_pa, value: declined}}
+    expect:
+      templates: [needs_summary, summary_question]
+      engine: {service: suitability, outcome: ESCALATE, result: {affordability: red, escalation_reason: HE_AFFORDABILITY_RED}}
+  - text: "yes"
+    expect: {state: HUMAN_ESCALATION, row: S2.1b, reason: HE_AFFORDABILITY_RED, templates: [advisor_consent_ask]}

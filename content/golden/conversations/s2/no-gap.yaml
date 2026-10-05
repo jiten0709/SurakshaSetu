@@ -1,0 +1,35 @@
+id: s2-no-gap
+description: >-
+  Existing cover far above the need: the engine's N <= 0 (NO_GAP); once the summary is confirmed,
+  S2.1 exits advisory with "existing cover appears sufficient", no product shown, and the
+  helpline for an advisor review.
+prelude: to-s2
+turns:
+  - action: {type: SLOT, payload: {slot: goals, value: income_protection}}
+    expect: {templates: [RL-S2-INCOME]}
+  - text: 24 lakh
+    expect: {templates: [readback]}
+  - text: "yes"
+    expect: {templates: [RL-S2-INCOME-TYPE]}
+  - action: {type: SLOT, payload: {slot: income_type, value: salaried}}
+    expect: {templates: [RL-S2-DEPENDANTS]}
+  - text: no one
+    expect: {templates: [RL-S2-LIABILITIES]}
+  - text: no loans
+    expect: {templates: [RL-S2-EXISTING-COVER]}
+  - text: 5 crore
+    expect: {templates: [readback], contains: ["Just to check: ₹5,00,00,000. Is that right?"]}
+  - text: "yes"
+    expect: {templates: [RL-S2-EMPLOYER-COVER]}
+  - text: "no"
+    expect: {templates: [RL-S2-EXISTING-PREMIUM]}
+  - text: none
+    expect: {templates: [RL-S2-ASSETS]}
+  - text: none
+    expect: {templates: [RL-S2-BUDGET]}
+  - text: 30,000 a year
+    expect: {templates: [readback]}
+  - text: "yes"
+    expect: {templates: [needs_summary, summary_question], engine: {service: suitability, outcome: NO_GAP}}
+  - text: "yes"
+    expect: {state: EXIT_ADVISORY, row: S2.1, reason: NO_GAP, templates: [no_gap], lacks: ["999N", Suraksha]}

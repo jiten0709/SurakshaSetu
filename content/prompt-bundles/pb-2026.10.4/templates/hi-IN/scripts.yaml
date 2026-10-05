@@ -1,0 +1,281 @@
+# hi-IN: every body is a DUMMY placeholder until an approved translation exists (A6). Generated
+# from en-IN with the prefix below; the structure and {fields} match en-IN exactly.
+
+readback: 'DUMMY: [hi translation pending approval] To confirm: {facts}. Correct?'
+money_readback: 'DUMMY: [hi translation pending approval] Just to check: {amount} a year. Is that right?'
+needs_summary: |-
+  DUMMY: [hi translation pending approval] Here is what you told me, and the assumptions used:
+  {facts}
+  Assumptions: cover to age {cover_to_age}, {dependency_years} years of dependency, income growth of {growth} a year, a discount rate of {discount} a year, {consumption} of income as your own spending, and {final_expenses} for final expenses.
+clarify: 'DUMMY: [hi translation pending approval] Sorry, I didn''t quite follow. {question}'
+ask_to_shorten: 'DUMMY: [hi translation pending approval] That message is too long for me to read in one go. Could you shorten it and send it again?'
+abstain: 'DUMMY: [hi translation pending approval] I can''t confirm that from the documents I have. A licensed advisor can help with this question.'
+advisor_offer: 'DUMMY: [hi translation pending approval] Would you like a licensed advisor to contact you?'
+release_blocked: 'DUMMY: [hi translation pending approval] Sorry, I can''t show this answer right now.'
+handoff: 'DUMMY: [hi translation pending approval] Approved hand-off script pending. A licensed advisor will continue this conversation.'
+safety: 'DUMMY: [hi translation pending approval] Approved crisis script and helpline numbers pending. If you are in danger, please contact local emergency services now.'
+ai_redisclosure: |-
+  DUMMY: [hi translation pending approval] I'm SurakshaSetu, an AI assistant from {insurer}. I'm not a human advisor.
+  {disclosure}
+erasure_done: 'DUMMY: [hi translation pending approval] Approved erasure confirmation pending. We have stopped processing your information and deleted this conversation and your answers. Any consent you gave is withdrawn. We keep an encrypted audit record of this conversation and your consent history, because the law requires it; they become unreadable when the retention period ends.'
+erasure_pending: 'DUMMY: [hi translation pending approval] Approved erasure confirmation pending. We have stopped processing your information and deleted this conversation and your answers. Recording the withdrawal of your consent has not completed yet; we will retry and record it. We keep an encrypted audit record of this conversation, because the law requires it; it becomes unreadable when the retention period ends.'
+minor_exit: 'DUMMY: [hi translation pending approval] Approved polite-exit script pending. Sorry, this service is only for people aged 18 or over. We have deleted the information you shared, and we keep nothing that can be read.'
+contact_options: 'DUMMY: [hi translation pending approval] Approved contact options pending. You can reach a licensed advisor through our helpline or at any branch.'
+advisor_consent_ask: 'DUMMY: [hi translation pending approval] Approved advisor-contact consent text pending. May a licensed advisor contact you? If you agree, we will share your answers so far with the advisor, so you won''t have to repeat them.'
+paused: 'DUMMY: [hi translation pending approval] I''ve saved your progress. You can come back to this conversation any time before it expires.'
+greeting: |-
+  DUMMY: [hi translation pending approval] Namaste, I'm SurakshaSetu, an AI assistant from {insurer}. I'm not a human advisor.
+  I can help you work out how much life cover you may need and explain our plans.
+  Final terms are decided during application and underwriting. This chat is recorded.
+consent_reprompt: 'DUMMY: [hi translation pending approval] Please choose your options below to continue.'
+consent_renew: 'DUMMY: [hi translation pending approval] Approved re-consent text pending. Our privacy notice has changed, or your earlier consent has expired. Please review the notice and choose your options again.'
+consent_retry: 'DUMMY: [hi translation pending approval] Sorry, I can''t record your choices right now. Please try again in a moment.'
+notice_updated: 'DUMMY: [hi translation pending approval] Approved text pending. The privacy notice has been updated. Please review it and choose your options again.'
+age_confirm_ask: 'DUMMY: [hi translation pending approval] Approved age-confirmation text pending. Before I continue, please confirm that you are 18 or older. Type yes or no.'
+consent_declined: 'DUMMY: [hi translation pending approval] Approved helpline and branch-locator text pending. No problem: I won''t collect any information. You can reach us through our helpline or at any branch.'
+intent_ask: 'DUMMY: [hi translation pending approval] Are you looking to explore new life insurance plans, or do you have questions about an existing policy?'
+consent_form:
+  purposes:
+    P1: 'DUMMY: [hi translation pending approval] Use my answers, including basic health and lifestyle details, to assess my needs and suggest plans'
+    P2: 'DUMMY: [hi translation pending approval] Let a licensed advisor contact me'
+    P3: 'DUMMY: [hi translation pending approval] Send me product updates'
+  adult: 'DUMMY: [hi translation pending approval] I confirm I am 18 or older'
+  submit: 'DUMMY: [hi translation pending approval] Continue'
+  retry: 'DUMMY: [hi translation pending approval] Try again'
+  languages:
+    en-IN: 'DUMMY: [hi translation pending approval] Read in English'
+    hi-IN: 'DUMMY: [hi translation pending approval] Read in हिंदी'
+intents:
+  new_purchase: 'DUMMY: [hi translation pending approval] Buy new cover'
+  specific_plan: 'DUMMY: [hi translation pending approval] Price a plan'
+  general_faq: 'DUMMY: [hi translation pending approval] General question'
+  existing_policy: 'DUMMY: [hi translation pending approval] Existing policy'
+advisor_contact:
+  granted: 'DUMMY: [hi translation pending approval] Yes, please'
+  declined: 'DUMMY: [hi translation pending approval] No, thanks'
+side_query_caveat:
+  S0: 'DUMMY: [hi translation pending approval] At this stage I can only answer questions about privacy and how your information is used.'
+  S1: 'DUMMY: [hi translation pending approval] This is general information, not a decision about your eligibility.'
+  S2: 'DUMMY: [hi translation pending approval] This is general information; any recommendation will be based on your own answers.'
+  S3: 'DUMMY: [hi translation pending approval] This is general information; the policy wording decides.'
+  QUOTE_ONLY: 'DUMMY: [hi translation pending approval] This is general information; the quote is indicative.'
+labels:
+  goals:
+    income_protection: 'DUMMY: [hi translation pending approval] Protect your family''s income'
+    loan_cover: 'DUMMY: [hi translation pending approval] Repay loans'
+    child_education: 'DUMMY: [hi translation pending approval] Fund a child''s education'
+    retirement: 'DUMMY: [hi translation pending approval] Retirement'
+    savings: 'DUMMY: [hi translation pending approval] Savings'
+  ppt:
+    regular: 'DUMMY: [hi translation pending approval] Regular pay'
+    limited_10: 'DUMMY: [hi translation pending approval] Limited pay (10 years)'
+    single: 'DUMMY: [hi translation pending approval] Single premium'
+  benefit_payment:
+    lumpsum: 'DUMMY: [hi translation pending approval] Lump sum'
+    monthly_income: 'DUMMY: [hi translation pending approval] Monthly income'
+    lumpsum_plus_income: 'DUMMY: [hi translation pending approval] Lump sum plus income'
+  product_types:
+    TERM: 'DUMMY: [hi translation pending approval] Term'
+    TERM_ROP: 'DUMMY: [hi translation pending approval] Term with return of premium'
+    NON_PAR_SAVINGS: 'DUMMY: [hi translation pending approval] Non-participating savings'
+    PAR: 'DUMMY: [hi translation pending approval] Participating'
+    ULIP: 'DUMMY: [hi translation pending approval] Unit-linked'
+  documents:
+    CIS: 'DUMMY: [hi translation pending approval] Customer information sheet'
+    BI: 'DUMMY: [hi translation pending approval] Benefit illustration'
+    POLICY_WORDING: 'DUMMY: [hi translation pending approval] Policy wording'
+  none: 'DUMMY: [hi translation pending approval] None'
+  or_more: 'DUMMY: [hi translation pending approval] {amount} or more'
+# Step 19: State-1 and Quote-Only (generated from en-IN with the prefix above).
+readback_fix: 'DUMMY: [hi translation pending approval] Which detail should I change? Choose one below, or tell me the correct value.'
+format_hint: 'DUMMY: [hi translation pending approval] Sorry, I couldn''t use that answer. {hint}'
+redirect: 'DUMMY: [hi translation pending approval] Let''s get back to my question.'
+reask: 'DUMMY: [hi translation pending approval] I need an answer to this one to continue.'
+screening_retry: 'DUMMY: [hi translation pending approval] Sorry, I can''t continue the checks right now. Please try again in a moment.'
+screening_done: 'DUMMY: [hi translation pending approval] Thank you. Next, I''ll ask about your family and finances, to work out what cover may suit you.'
+express_offer: 'DUMMY: [hi translation pending approval] I can give you an indicative price for a plan you name once I''ve checked a few basics. Applying for a plan would still need a needs check and a recommendation first.'
+medical_ack: 'DUMMY: [hi translation pending approval] Approved acknowledgement pending. Thank you for telling me. I can''t say how this affects an application: the insurer''s underwriters decide that. A licensed advisor can talk it through with you at any time.'
+underwriting_note: 'DUMMY: [hi translation pending approval] Approved text pending. Whether cover is offered, and on what terms, is decided by the insurer''s underwriting after an application, so I can''t say how a health condition would be treated. A licensed advisor can help with this question.'
+nondisclosure_note: 'DUMMY: [hi translation pending approval] Approved text pending. Every answer here needs to be accurate: an inaccurate or withheld answer about a material fact, such as tobacco use, can affect a claim later.'
+not_eligible: 'DUMMY: [hi translation pending approval] Approved text pending. Sorry, I can''t arrange cover for you in this chat. {reason} A licensed advisor can look at other options with you through our helpline or at any branch.'
+not_eligible_reasons:
+  REASON_PIN_UNSERVICEABLE: 'DUMMY: [hi translation pending approval] We can''t yet serve your area online.'
+  default: 'DUMMY: [hi translation pending approval] The plans available here don''t fit the details you gave.'
+plan_ask: 'DUMMY: [hi translation pending approval] Which plan would you like a price for? Please tell me its name or its UIN.'
+plan_unknown: 'DUMMY: [hi translation pending approval] Sorry, I couldn''t find that plan. Please check its name or UIN.'
+plan_unavailable: 'DUMMY: [hi translation pending approval] {plan} isn''t available to buy right now, so I can''t price it. You can name another plan.'
+quote_card: |-
+  DUMMY: [hi translation pending approval] Indicative premium for {plan} (UIN {uin}): {premium} {period}.
+  Cover: {cover} for {term} years. Premium payment: {ppt}. Valid until {valid_until}.
+quote_caveat: 'DUMMY: [hi translation pending approval] This is an indicative premium based on age, gender, and tobacco use only. It isn''t advice on whether this plan suits you. If you''d like a proper recommendation, I''ll need about four more minutes of questions.'
+quote_next: 'DUMMY: [hi translation pending approval] Would you like a full needs check and a recommendation? Applying for any plan needs one.'
+quote_withheld: 'DUMMY: [hi translation pending approval] I can''t give a price without an answer about tobacco use, because premium rates depend on it. You can answer the tobacco question, or go on to a full needs check and recommendation.'
+cover_bounds: 'DUMMY: [hi translation pending approval] For {plan}, cover can be {range}, in steps of {step}. How much cover would you like?'
+term_bounds: 'DUMMY: [hi translation pending approval] For {plan}, the policy term can be {range} years. How many years of cover would you like?'
+age_bounds: 'DUMMY: [hi translation pending approval] {plan} is open to ages {range}, so I can''t price it for you. You can name another plan.'
+rating_unavailable: 'DUMMY: [hi translation pending approval] Sorry, I can''t calculate a price right now. Please try again in a moment.'
+hard_block: 'DUMMY: [hi translation pending approval] An application needs a full needs check and a recommendation first, so I can''t start one from an indicative quote. Would you like to start the needs check now?'
+quote_summary: 'DUMMY: [hi translation pending approval] Here is your indicative quote again: {plan} (UIN {uin}), {premium} {period}, valid until {valid_until}. Thank you for chatting with us.'
+reengage: 'DUMMY: [hi translation pending approval] Approved re-engagement text pending. As you agreed to receive product updates, we may remind you about this quote before it expires.'
+goodbye: 'DUMMY: [hi translation pending approval] Thank you for chatting with us.'
+screening:
+  facts:
+    age_years: 'DUMMY: [hi translation pending approval] {value}'
+    gender:
+      male: 'DUMMY: [hi translation pending approval] male'
+      female: 'DUMMY: [hi translation pending approval] female'
+      transgender: 'DUMMY: [hi translation pending approval] transgender'
+    residency:
+      resident: 'DUMMY: [hi translation pending approval] resident in India'
+      nri: 'DUMMY: [hi translation pending approval] a non-resident Indian'
+      oci_pio: 'DUMMY: [hi translation pending approval] an OCI or PIO cardholder'
+    pincode: 'DUMMY: [hi translation pending approval] {district}'
+    tobacco_12m:
+      "yes": 'DUMMY: [hi translation pending approval] tobacco in the last 12 months'
+      "no": 'DUMMY: [hi translation pending approval] no tobacco in the last 12 months'
+      declined: 'DUMMY: [hi translation pending approval] tobacco: prefer not to say'
+    occupation_code: 'DUMMY: [hi translation pending approval] {label}'
+    health_flags:
+      "yes": 'DUMMY: [hi translation pending approval] yes to the health question'
+      "no": 'DUMMY: [hi translation pending approval] no to the health question'
+      declined: 'DUMMY: [hi translation pending approval] health question: prefer not to say'
+    proposer.is_life_assured:
+      "yes": 'DUMMY: [hi translation pending approval] cover for your own life'
+      "no": 'DUMMY: [hi translation pending approval] cover for someone else'
+    proposer.relationship: 'DUMMY: [hi translation pending approval] your {value}'
+    proposer.la_age: 'DUMMY: [hi translation pending approval] aged {value}'
+    proposer.business_cover:
+      "yes": 'DUMMY: [hi translation pending approval] business cover'
+      "no": 'DUMMY: [hi translation pending approval] not business cover'
+  names:
+    age_years: 'DUMMY: [hi translation pending approval] Age'
+    gender: 'DUMMY: [hi translation pending approval] Gender'
+    residency: 'DUMMY: [hi translation pending approval] Residency'
+    pincode: 'DUMMY: [hi translation pending approval] Pincode'
+    tobacco_12m: 'DUMMY: [hi translation pending approval] Tobacco'
+    occupation_code: 'DUMMY: [hi translation pending approval] Occupation'
+    health_flags: 'DUMMY: [hi translation pending approval] Health'
+    proposer.is_life_assured: 'DUMMY: [hi translation pending approval] Whose life is covered'
+    proposer.relationship: 'DUMMY: [hi translation pending approval] Relationship'
+    proposer.la_age: 'DUMMY: [hi translation pending approval] Their age'
+    proposer.business_cover: 'DUMMY: [hi translation pending approval] Business cover'
+  choices:
+    gender:
+      male: 'DUMMY: [hi translation pending approval] Male'
+      female: 'DUMMY: [hi translation pending approval] Female'
+      transgender: 'DUMMY: [hi translation pending approval] Transgender'
+    residency:
+      resident: 'DUMMY: [hi translation pending approval] Resident in India'
+      nri: 'DUMMY: [hi translation pending approval] Non-resident Indian'
+      oci_pio: 'DUMMY: [hi translation pending approval] OCI or PIO cardholder'
+    proposer.relationship:
+      spouse: 'DUMMY: [hi translation pending approval] Spouse'
+      child: 'DUMMY: [hi translation pending approval] Child'
+      parent: 'DUMMY: [hi translation pending approval] Parent'
+      other: 'DUMMY: [hi translation pending approval] Someone else'
+    yes_no:
+      "yes": 'DUMMY: [hi translation pending approval] Yes'
+      "no": 'DUMMY: [hi translation pending approval] No'
+    yes_no_declined:
+      "yes": 'DUMMY: [hi translation pending approval] Yes'
+      "no": 'DUMMY: [hi translation pending approval] No'
+      declined: 'DUMMY: [hi translation pending approval] Prefer not to say'
+  period:
+    regular: 'DUMMY: [hi translation pending approval] a year'
+    limited_10: 'DUMMY: [hi translation pending approval] a year'
+    single: 'DUMMY: [hi translation pending approval] as a single premium'
+  range: 'DUMMY: [hi translation pending approval] from {min} to {max}'
+  confirm: 'DUMMY: [hi translation pending approval] Yes, that''s right'
+  fix: 'DUMMY: [hi translation pending approval] No, change something'
+  retry: 'DUMMY: [hi translation pending approval] Try again'
+  advisor: 'DUMMY: [hi translation pending approval] Talk to a licensed advisor'
+  keep_going: 'DUMMY: [hi translation pending approval] No, let''s continue'
+  opt_in: 'DUMMY: [hi translation pending approval] Yes, start the needs check'
+  satisfied: 'DUMMY: [hi translation pending approval] No, that''s all'
+# Step 20: State-2.
+amount_readback: 'DUMMY: [hi translation pending approval] Just to check: {amount}. Is that right?'
+period_ask: 'DUMMY: [hi translation pending approval] Is {amount} a month or a year?'
+summary_assumed: 'DUMMY: [hi translation pending approval] Not asked, so assumed: {items}.'
+summary_implausible: 'DUMMY: [hi translation pending approval] Some of these figures look unusual. Please check them: if they are right, say yes and I''ll note them for the underwriter.'
+summary_question: 'DUMMY: [hi translation pending approval] Is this correct?'
+partial_offer: 'DUMMY: [hi translation pending approval] Some questions weren''t answered, so any options would rest on a partial profile. Would you like to continue with what we have? If not, I''ll ask the remaining questions.'
+amber_confirm: 'DUMMY: [hi translation pending approval] The premium for the cover you may need could take a larger share of your income than is usually comfortable. Would you still like to see the options?'
+no_gap: 'DUMMY: [hi translation pending approval] Approved text pending. From what you told me, your existing cover appears sufficient for the needs we discussed, so I won''t suggest a new plan. A licensed advisor can review your cover with you through our helpline or at any branch.'
+needs_done: 'DUMMY: [hi translation pending approval] Thank you. I have what I need to look for plans that fit.'
+dependency_down: 'DUMMY: [hi translation pending approval] Sorry, I can''t work out your needs right now.'
+needs_retry: 'DUMMY: [hi translation pending approval] Sorry, I can''t continue right now. Your answers are saved: please try again in a moment.'
+non_earning_basis: 'DUMMY: [hi translation pending approval] Approved text pending. Without a personal income, cover can''t be worked out from income: it follows the insurer''s rules for people without an income, which a licensed advisor can explain.'
+distress_ack: 'DUMMY: [hi translation pending approval] Approved text pending. I''m sorry you''re going through this. There''s no rush: we can stop here and carry on later, as your answers are saved, or a licensed advisor can talk it through with you.'
+guarantee_note: 'DUMMY: [hi translation pending approval] Approved text pending. I can''t promise any returns. If we look at plans, I''ll explain which benefits are fixed and which can change, only from the policy documents.'
+competitor_note: 'DUMMY: [hi translation pending approval] Approved text pending. I can only explain {insurer}''s own plans, so I can''t compare plans from other insurers.'
+rephrase: 'DUMMY: [hi translation pending approval] Let me put that another way.'
+short_path_offer: 'DUMMY: [hi translation pending approval] I can work with just three questions: your income, who depends on you, and any loans. I''ll use standard assumptions for the rest and show them to you before anything is worked out. Shall we do that?'
+needs:
+  facts:
+    goals: 'DUMMY: [hi translation pending approval] Goals: {value}'
+    annual_income_inr: 'DUMMY: [hi translation pending approval] Annual income: {value}'
+    income_type: 'DUMMY: [hi translation pending approval] Income type: {value}'
+    dependants: 'DUMMY: [hi translation pending approval] Dependants: {value}'
+    liabilities: 'DUMMY: [hi translation pending approval] Loans: {value}'
+    existing_cover_inr: 'DUMMY: [hi translation pending approval] Your own life cover: {value}'
+    employer_cover_inr: 'DUMMY: [hi translation pending approval] Employer group cover: {value}'
+    existing_cover_counted: 'DUMMY: [hi translation pending approval] Existing cover counted: {value}'
+    existing_annual_premium_inr: 'DUMMY: [hi translation pending approval] Premiums on existing policies: {value}'
+    earmarked_assets_inr: 'DUMMY: [hi translation pending approval] Money set aside: {value}'
+    premium_budget_inr_pa: 'DUMMY: [hi translation pending approval] Premium budget: {value}'
+  declined:
+    annual_income_inr: 'DUMMY: [hi translation pending approval] not shared, so I can''t check what is affordable'
+    existing_annual_premium_inr: 'DUMMY: [hi translation pending approval] not shared, counted as none'
+    default: 'DUMMY: [hi translation pending approval] not shared'
+  assumed:
+    goals: 'DUMMY: [hi translation pending approval] the goal is to protect your family''s income'
+    income_type: 'DUMMY: [hi translation pending approval] you are salaried'
+    existing_cover_inr: 'DUMMY: [hi translation pending approval] no life cover of your own'
+    employer_cover_inr: 'DUMMY: [hi translation pending approval] no employer group cover'
+    existing_annual_premium_inr: 'DUMMY: [hi translation pending approval] no premiums on existing policies'
+    earmarked_assets_inr: 'DUMMY: [hi translation pending approval] no money set aside'
+    premium_budget_inr_pa: 'DUMMY: [hi translation pending approval] no premium budget'
+  names:
+    goals: 'DUMMY: [hi translation pending approval] Goals'
+    annual_income_inr: 'DUMMY: [hi translation pending approval] Income'
+    income_type: 'DUMMY: [hi translation pending approval] Income type'
+    dependants: 'DUMMY: [hi translation pending approval] Dependants'
+    liabilities: 'DUMMY: [hi translation pending approval] Loans'
+    existing_cover_inr: 'DUMMY: [hi translation pending approval] Your own cover'
+    employer_cover_inr: 'DUMMY: [hi translation pending approval] Employer cover'
+    existing_annual_premium_inr: 'DUMMY: [hi translation pending approval] Existing premiums'
+    earmarked_assets_inr: 'DUMMY: [hi translation pending approval] Money set aside'
+    premium_budget_inr_pa: 'DUMMY: [hi translation pending approval] Budget'
+  income_types:
+    salaried: 'DUMMY: [hi translation pending approval] Salaried'
+    self_employed: 'DUMMY: [hi translation pending approval] Self-employed'
+    homemaker: 'DUMMY: [hi translation pending approval] Homemaker'
+    student: 'DUMMY: [hi translation pending approval] Student'
+    retired: 'DUMMY: [hi translation pending approval] Retired'
+  relations:
+    spouse: 'DUMMY: [hi translation pending approval] spouse'
+    child: 'DUMMY: [hi translation pending approval] child'
+    parent: 'DUMMY: [hi translation pending approval] parent'
+    other: 'DUMMY: [hi translation pending approval] other dependant'
+  loan_kinds:
+    home: 'DUMMY: [hi translation pending approval] home loan'
+    vehicle: 'DUMMY: [hi translation pending approval] vehicle loan'
+    education: 'DUMMY: [hi translation pending approval] education loan'
+    personal: 'DUMMY: [hi translation pending approval] personal loan'
+    business: 'DUMMY: [hi translation pending approval] business loan'
+    other: 'DUMMY: [hi translation pending approval] other loan'
+  dependant: 'DUMMY: [hi translation pending approval] {relation} ({age})'
+  loan: 'DUMMY: [hi translation pending approval] {kind}, {outstanding} outstanding, {years} years left'
+  a_year: 'DUMMY: [hi translation pending approval] {amount} a year'
+  none: 'DUMMY: [hi translation pending approval] none'
+  period:
+    month: 'DUMMY: [hi translation pending approval] A month'
+    year: 'DUMMY: [hi translation pending approval] A year'
+  no_one: 'DUMMY: [hi translation pending approval] No one'
+  no_loans: 'DUMMY: [hi translation pending approval] No loans'
+  skip: 'DUMMY: [hi translation pending approval] Skip'
+  elect: 'DUMMY: [hi translation pending approval] Continue with what we have'
+  answer_more: 'DUMMY: [hi translation pending approval] Answer more questions'
+  see_options: 'DUMMY: [hi translation pending approval] Yes, show the options'
+  short_yes: 'DUMMY: [hi translation pending approval] Yes, three questions'
+  short_no: 'DUMMY: [hi translation pending approval] No, ask everything'

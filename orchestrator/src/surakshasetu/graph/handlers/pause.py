@@ -31,8 +31,12 @@ IST = ZoneInfo("Asia/Kolkata")
 
 async def pause(state: GraphState, *, runtime: Runtime[Any]) -> None:
     turn = runtime.context
-    turn.parts = [("paused", scripts(turn).paused)]
-    logger.info("session paused")
+    texts = scripts(turn)
+    # Step 20: a dependency down (CC3) says why before the saved-progress line.
+    down = bool(turn.signals.get("dependency_down"))
+    why = [("dependency_down", texts.dependency_down)] if down else []
+    turn.parts = [*why, ("paused", texts.paused)]
+    logger.info("session paused%s", " (dependency down)" if why else "")
 
 
 async def resume(state: GraphState, *, runtime: Runtime[Any]) -> None:

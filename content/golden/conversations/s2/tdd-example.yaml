@@ -1,0 +1,56 @@
+id: s2-tdd-example
+description: >-
+  The TDD §3.7 example through every S2 question, in the rules' order, each with its reason; money
+  read back (annual flows "a year", lump sums as amounts); the summary with the engine's
+  assumptions; confirmed, the needs hash binds the FIT record (I2) and S2.2 moves to S3.
+prelude: to-s2
+turns:
+  - text: income protection and loan cover
+    expect: {state: S2, templates: [RL-S2-INCOME], slots: {goals: proposed}, events: [MODEL_CALL]}
+  - text: 24 lakh
+    expect: {templates: [readback], contains: ["Just to check: ₹24,00,000 a year. Is that right?"]}
+  - text: "yes"
+    expect: {templates: [RL-S2-INCOME-TYPE]}
+  - action: {type: SLOT, payload: {slot: income_type, value: salaried}}
+    expect: {templates: [RL-S2-DEPENDANTS]}
+  - text: my wife is 32 and my son is 4
+    expect: {templates: [RL-S2-LIABILITIES], slots: {dependants: proposed}}
+  - text: home loan of 35 lakh, 18 years left
+    expect: {templates: [readback], contains: ["To confirm: home loan, ₹35,00,000 outstanding, 18 years left. Correct?"]}
+  - text: "yes"
+    expect: {templates: [RL-S2-EXISTING-COVER]}
+  - text: none
+    expect: {templates: [RL-S2-EMPLOYER-COVER], slots: {existing_cover_inr: proposed}}
+  - text: 15 lakh
+    expect: {templates: [readback], contains: ["Just to check: ₹15,00,000. Is that right?"]}
+  - text: "yes"
+    expect: {templates: [RL-S2-EXISTING-PREMIUM]}
+  - text: none
+    expect: {templates: [RL-S2-ASSETS]}
+  - action: {type: SLOT, payload: {slot: earmarked_assets_inr, value: declined}}
+    expect: {templates: [RL-S2-BUDGET], slots: {earmarked_assets_inr: declined}}
+  - text: 30,000 a year
+    expect: {templates: [readback], contains: ["Just to check: ₹30,000 a year. Is that right?"]}
+  - text: "yes"
+    expect:
+      state: S2
+      row: S2.STAY
+      templates: [needs_summary, summary_question]
+      engine: {service: suitability, outcome: FIT, result: {affordability: green, profile_sufficiency: 0.975}}
+      contains:
+        - "Goals: Protect your family's income, Repay loans"
+        - "Annual income: ₹24,00,000 a year"
+        - "Dependants: spouse (32), child (4)"
+        - "Loans: home loan, ₹35,00,000 outstanding, 18 years left"
+        - "Employer group cover: ₹15,00,000"
+        - "Money set aside: not shared"
+        - "Existing cover counted: ₹7,50,000"
+        - "Assumptions: cover to age 60, 26 years of dependency, income growth of 5% a year, a discount rate of 7% a year, 30% of income as your own spending, and ₹2,00,000 for final expenses."
+  - text: "yes"
+    expect:
+      state: S3
+      row: S2.2
+      reason: SUITABLE
+      templates: [needs_done]
+      absent: [ENGINE_DECISION]
+      slots: {goals: confirmed, annual_income_inr: confirmed, income_type: confirmed, dependants: confirmed, liabilities: confirmed, existing_cover_inr: confirmed, employer_cover_inr: confirmed, existing_annual_premium_inr: confirmed, earmarked_assets_inr: confirmed, premium_budget_inr_pa: confirmed}

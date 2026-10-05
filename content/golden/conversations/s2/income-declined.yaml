@@ -1,0 +1,33 @@
+id: s2-income-declined
+description: >-
+  Income declined: sent as null, so affordability is "unknown" and no underwriting cap exists; the
+  summary says affordability can't be checked; sufficiency 0.70 reaches the minimum, so S3.
+prelude: to-s2
+turns:
+  - text: income protection and loan cover
+    expect: {templates: [RL-S2-INCOME]}
+  - text: I'd prefer not to say
+    expect: {templates: [RL-S2-INCOME-TYPE], slots: {annual_income_inr: declined}}
+  - action: {type: SLOT, payload: {slot: income_type, value: salaried}}
+    expect: {templates: [RL-S2-DEPENDANTS]}
+  - text: my wife is 32 and my son is 4
+    expect: {templates: [RL-S2-LIABILITIES]}
+  - text: home loan of 35 lakh, 18 years left
+    expect: {templates: [readback]}
+  - text: "yes"
+    expect: {templates: [RL-S2-EXISTING-COVER]}
+  - text: none
+    expect: {templates: [RL-S2-EMPLOYER-COVER]}
+  - text: "no"
+    expect: {templates: [RL-S2-EXISTING-PREMIUM]}
+  - text: none
+    expect: {templates: [RL-S2-ASSETS]}
+  - action: {type: SLOT, payload: {slot: earmarked_assets_inr, value: declined}}
+    expect: {templates: [RL-S2-BUDGET]}
+  - action: {type: SLOT, payload: {slot: premium_budget_inr_pa, value: declined}}
+    expect:
+      templates: [needs_summary, summary_question]
+      engine: {service: suitability, outcome: FIT, result: {affordability: unknown, uw_cap_inr: null, profile_sufficiency: 0.7}}
+      contains: ["Annual income: not shared, so I can't check what is affordable"]
+  - text: "yes"
+    expect: {state: S3, row: S2.2, templates: [needs_done]}

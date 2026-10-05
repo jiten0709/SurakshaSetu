@@ -1,0 +1,16 @@
+id: s2-lpa-readback
+description: >-
+  "12 LPA" is read back annualised; a "no" asks again, and the new value is a corrected row read
+  back the same way.
+prelude: to-s2
+turns:
+  - action: {type: SLOT, payload: {slot: goals, value: income_protection}}
+    expect: {templates: [RL-S2-INCOME]}
+  - text: 12 LPA
+    expect: {templates: [readback], contains: ["Just to check: ₹12,00,000 a year. Is that right?"], slots: {annual_income_inr: proposed}}
+  - text: "no"
+    expect: {templates: [RL-S2-INCOME]}
+  - text: 15 LPA
+    expect: {templates: [readback], contains: ["Just to check: ₹15,00,000 a year. Is that right?"], slots: {annual_income_inr: corrected}}
+  - text: "yes"
+    expect: {templates: [RL-S2-INCOME-TYPE]}

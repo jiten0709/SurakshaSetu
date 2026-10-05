@@ -1,0 +1,24 @@
+id: s2-short-path
+description: >-
+  "Just tell me the best plan": the three-question short path is offered and taken (income,
+  dependants, loans); the summary lists the defaults Step 6 fixed for the rest; sufficiency 0.85,
+  so no election; confirmed -> S3.
+prelude: to-s2
+turns:
+  - text: just tell me the best plan
+    expect: {state: S2, templates: [short_path_offer]}
+  - text: "yes"
+    expect: {templates: [RL-S2-INCOME], counters: {short_path: 1}}
+  - text: 12 lpa
+    expect: {templates: [readback], contains: ["₹12,00,000 a year"]}
+  - text: "yes"
+    expect: {templates: [RL-S2-DEPENDANTS]}
+  - text: my daughter is 2
+    expect: {templates: [RL-S2-LIABILITIES]}
+  - text: no loans
+    expect:
+      templates: [needs_summary, summary_assumed, summary_question]
+      engine: {service: suitability, outcome: FIT, result: {profile_sufficiency: 0.85}}
+      contains: ["Not asked, so assumed: the goal is to protect your family's income; you are salaried; no life cover of your own; no employer group cover; no premiums on existing policies; no money set aside; no premium budget."]
+  - text: "yes"
+    expect: {state: S3, row: S2.2, templates: [needs_done]}

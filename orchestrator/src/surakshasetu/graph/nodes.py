@@ -67,7 +67,7 @@ from surakshasetu.graph.handlers import (
     safety,
 )
 from surakshasetu.graph.state import Frame, GraphState, SessionState, SlotRow, VersionPins
-from surakshasetu.graph.states import quote_only, s0, s1
+from surakshasetu.graph.states import quote_only, s0, s1, s2
 from surakshasetu.rails import redact
 from surakshasetu.rails.output import LexiconPack, OutputContext, Released, release
 from surakshasetu.store import conv as store
@@ -86,11 +86,13 @@ ENTERED = {
     "s0_enter": s0.enter,  # Step 18: G1 or a resume re-entered S0
     "s1_enter": s1.enter,  # Step 19: S0.4, QO.3b, G2 (V4) or a resume entered S1
     "quote_only_enter": quote_only.enter,  # Step 19: S0.3 or S1.3 entered Quote-Only
+    "s2_enter": s2.enter,  # Step 20: S1.4, QO.3, G3 (V4), S3.3 or a resume entered S2
 }
 ENTER = {
     FsmState.S0: "s0_enter",
     FsmState.S1: "s1_enter",
     FsmState.QUOTE_ONLY: "quote_only_enter",
+    FsmState.S2: "s2_enter",
 }
 LANGUAGE = {"en-IN": "en", "hi-IN": "hi"}
 
@@ -468,7 +470,7 @@ async def compose(state: GraphState, runtime: Runtime[Turn]) -> None:
     phrase = turn.phrase
     if (
         phrase is not None
-        and session.fsm_state is FsmState.S1
+        and session.fsm_state in (FsmState.S1, FsmState.S2)
         and turn.parts
         and not (turn.identity or turn.safety or turn.degraded)
     ):

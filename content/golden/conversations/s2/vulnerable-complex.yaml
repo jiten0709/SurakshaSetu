@@ -1,0 +1,33 @@
+id: s2-vulnerable-complex
+description: >-
+  Stated distress (a vulnerability flag) with a retirement goal (a complex product): the distress is
+  acknowledged with no sales language and recorded as financial_distress; the engine escalates
+  HE_VULNERABLE_COMPLEX (V5) once the summary is confirmed.
+prelude: to-s2
+turns:
+  - text: retirement
+    expect: {templates: [RL-S2-INCOME], slots: {goals: proposed}}
+  - text: 12 lpa
+    expect: {templates: [readback]}
+  - text: "yes"
+    expect: {templates: [RL-S2-INCOME-TYPE]}
+  - action: {type: SLOT, payload: {slot: income_type, value: salaried}}
+    expect: {templates: [RL-S2-DEPENDANTS]}
+  - text: my wife is 32, and honestly I lost my job last month
+    expect: {templates: [distress_ack, RL-S2-LIABILITIES], slots: {dependants: proposed, financial_distress: proposed}, absent: [MODEL_CALL]}
+  - text: no loans
+    expect: {templates: [RL-S2-EXISTING-COVER], absent: [MODEL_CALL]}
+  - text: none
+    expect: {templates: [RL-S2-EMPLOYER-COVER]}
+  - text: "no"
+    expect: {templates: [RL-S2-EXISTING-PREMIUM]}
+  - text: none
+    expect: {templates: [RL-S2-ASSETS]}
+  - action: {type: SLOT, payload: {slot: earmarked_assets_inr, value: declined}}
+    expect: {templates: [RL-S2-BUDGET]}
+  - action: {type: SLOT, payload: {slot: premium_budget_inr_pa, value: declined}}
+    expect:
+      templates: [needs_summary, summary_question]
+      engine: {service: suitability, outcome: ESCALATE, result: {escalation_reason: HE_VULNERABLE_COMPLEX, vulnerability_flags: [VULN_FINANCIAL_DISTRESS]}}
+  - text: "yes"
+    expect: {state: HUMAN_ESCALATION, row: S2.1b, reason: HE_VULNERABLE_COMPLEX, templates: [advisor_consent_ask]}

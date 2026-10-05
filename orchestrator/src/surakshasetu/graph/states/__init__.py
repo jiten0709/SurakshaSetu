@@ -1,5 +1,5 @@
-"""Per-state graph nodes. S0 is State-0 (Step 18), S1 and QUOTE_ONLY are Step 19's; S2 and S3
-stay stubs until Steps 20 and 21 replace them (each keeps calling s1.correction first, the V4 hook).
+"""Per-state graph nodes. S0 is State-0 (Step 18), S1 and QUOTE_ONLY are Step 19's, S2 is Step
+20's; S3 stays a stub until Step 21 replaces it (it calls s1.correction, then s2.correction: V4).
 Of the support states, HUMAN_ESCALATION and PAUSE run their Step 17 handlers (the P2 answer, and
 resume); the closed ones stay stubs.
 
@@ -53,13 +53,13 @@ def wrapped(state: FsmState, node: Node) -> Node:
     return node if state is FsmState.PAUSE else guarded(state.value, node)
 
 
-# The slot names nlu-extract is told about in each state (PendingSlotSpec.known_slots): S1's and
-# Quote-Only's, and the eligibility facts a later state may correct (V4). Step 20 adds S2's.
+# The slot names nlu-extract is told about in each state (PendingSlotSpec.known_slots): S1's,
+# Quote-Only's and S2's, and the eligibility and needs facts a later state may correct (V4).
 KNOWN_SLOTS: dict[FsmState, tuple[str, ...]] = {
     FsmState.S1: tuple(sorted(s1.ELIGIBILITY)),
     FsmState.QUOTE_ONLY: (*quote_only.QUOTE_SLOTS, *quote_only.STATED),
-    FsmState.S2: tuple(sorted(s1.ELIGIBILITY)),
-    FsmState.S3: tuple(sorted(s1.ELIGIBILITY)),
+    FsmState.S2: (*s2.NEEDS, *sorted(s1.ELIGIBILITY)),
+    FsmState.S3: (*sorted(s1.ELIGIBILITY), *s2.NEEDS),
 }
 
 NODES: dict[FsmState, Node] = {state: stub for state in FsmState} | {

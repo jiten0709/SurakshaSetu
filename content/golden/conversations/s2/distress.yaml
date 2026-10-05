@@ -1,0 +1,13 @@
+id: s2-distress
+description: >-
+  A bereavement mentioned at the income question: S2 slows down (no generated sentence, no sales
+  language), offers to pause or an advisor, records financial_distress, and the advisor quick reply
+  escalates (CC2), asking for P2 first.
+prelude: to-s2
+turns:
+  - action: {type: SLOT, payload: {slot: goals, value: income_protection}}
+    expect: {templates: [RL-S2-INCOME]}
+  - text: my husband passed away last year and things are hard
+    expect: {state: S2, templates: [distress_ack, RL-S2-INCOME], slots: {financial_distress: proposed}, absent: [MODEL_CALL]}
+  - action: {type: HUMAN_REQUEST}
+    expect: {state: HUMAN_ESCALATION, row: CC2, reason: HE_REQUEST, templates: [advisor_consent_ask]}

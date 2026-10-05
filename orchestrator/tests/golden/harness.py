@@ -17,16 +17,19 @@ import re
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal, Self
+from typing import Any, Literal, Self, cast
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from surakshasetu.audit.events import EventType
+from surakshasetu.crypto.jcs import sha256_hex
 from surakshasetu.fsm.states import FsmState
 from surakshasetu.rails import redact
 
 CONVERSATIONS = Path(__file__).resolve().parents[3] / "content" / "golden" / "conversations"
+# Step 20: shared opening turns (a list of turns), named by a conversation's `prelude`.
+PRELUDES = CONVERSATIONS.parent / "preludes"
 ROUTES = (
     "guard-input",
     "nlu-extract",
@@ -100,6 +103,7 @@ class EngineExpect(_Strict):
     outcome: str | None = None
     flags: list[str] | None = None
     reason_codes: list[str] | None = None
+    result: dict[str, Any] = {}  # Step 20: these members of the result (affordability, ...)
 
 
 class Expect(_Strict):
@@ -183,15 +187,31 @@ class Conversation(_Strict):
     locale: Literal["en-IN", "hi-IN"] = "en-IN"
     channel: Literal["web", "app"] = "web"
     given: Given = Given()
+    # Step 20: the opening turns of preludes/<name>.yaml, played before `turns` (they count in
+    # the turn indices of failures, and every global assertion covers them).
+    prelude: str | None = Field(default=None, pattern=r"^[a-z0-9][a-z0-9-]{2,63}$")
     turns: list[Turn] = Field(min_length=1)
 
 
-def load_conversations(root: Path = CONVERSATIONS) -> list[Conversation]:
+def with_prelude(raw: dict[str, Any], preludes: Path = PRELUDES) -> dict[str, Any]:
+    """A conversation's YAML with its prelude's turns put first."""
+    if not raw.get("prelude"):
+        return raw
+    opening = yaml.safe_load((preludes / f"{raw['prelude']}.yaml").read_text("utf-8"))
+    if not isinstance(opening, list) or not opening:
+        raise ValueError(f"prelude {raw['prelude']} is not a list of turns")
+    return {**raw, "turns": [*opening, *raw.get("turns", [])]}
+
+
+def load_conversations(root: Path = CONVERSATIONS, preludes: Path = PRELUDES) -> list[Conversation]:
     """Every <suite>/*.yaml, sorted. Dot-directories (tool caches) are skipped; ids are unique."""
     paths = sorted(
         p for p in root.glob("*/*.yaml") if not any(part.startswith(".") for part in p.parts)
     )
-    found = [Conversation.model_validate(yaml.safe_load(p.read_text("utf-8"))) for p in paths]
+    found = [
+        Conversation.model_validate(with_prelude(yaml.safe_load(p.read_text("utf-8")), preludes))
+        for p in paths
+    ]
     ids = [c.id for c in found]
     if len(ids) != len(set(ids)):
         raise ValueError("conversation ids must be unique")
@@ -332,19 +352,42 @@ def check_i1(t: Transcript) -> list[str]:
 
 
 def check_i2(t: Transcript) -> list[str]:
-    """Every entry to S3 has a current suitability record (the FSM's I2) and a decision for it."""
-    failures, decided = [], False
+    """Every entry to S3 has a current suitability record (the FSM's I2) and a decision for it.
+    Since Step 20 that decision is bound to the needs it was asked for: the JCS hash of the
+    request's needs (minus slots_sha256), recomputed here, equals the header's inputs_sha256, the
+    request's slots_sha256 and the result's inputs_sha256, and the outcome was FIT. (Once a subject
+    key is destroyed the payload is unreadable, and only the header-level check stands.)"""
+    failures: list[str] = []
+    decision: Event | None = None
     for e in t.events:
         if e.event_type == "ENGINE_DECISION" and e.header.get("service") == "suitability":
-            decided = True
+            decision = e
         entered = (
             e.event_type == "STATE_TRANSITION"
             and e.header["to_state"] == "S3"
             and e.header["from_state"] != "S3"
         )
-        if entered and not (e.header["invariants"].get("I2") and decided):
+        if not entered:
+            continue
+        if not (e.header["invariants"].get("I2") and decision is not None):
             failures.append(f"I2: S3 entered at seq {e.seq} without a current suitability")
+        elif decision.payload is not None and (problem := _bound(decision)):
+            failures.append(f"I2: S3 entered at seq {e.seq} on a decision {problem}")
     return failures
+
+
+def _bound(decision: Event) -> str | None:
+    payload = cast(dict[str, Any], decision.payload)
+    needs = dict(payload.get("request", {}).get("needs", {}))
+    result = payload.get("result", {})
+    sent = needs.pop("slots_sha256", None)
+    digest = sha256_hex(needs)
+    hashes = {digest, decision.header.get("inputs_sha256"), sent, result.get("inputs_sha256")}
+    if len(hashes) != 1:
+        return "whose hashes differ from the needs it was asked for"
+    if result.get("outcome") != "FIT":
+        return f"with outcome {result.get('outcome')}"
+    return None
 
 
 def named(text: str, products: dict[str, str]) -> set[str]:

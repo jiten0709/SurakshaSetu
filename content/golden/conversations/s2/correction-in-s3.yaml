@@ -1,0 +1,39 @@
+id: s2-correction-in-s3
+description: >-
+  V4: in S3 the customer corrects their dependants; the corrected row drops the suitability record,
+  G3 re-runs S2's rows (a new summary and a new decision on the new needs), and S3 reopens only
+  once the new record is bound to the new hash (I2, checked on every S3 entry).
+prelude: to-s2
+turns:
+  - text: just tell me the best plan
+    expect: {templates: [short_path_offer]}
+  - text: "yes"
+    expect: {templates: [RL-S2-INCOME]}
+  - text: 24 lakh
+    expect: {templates: [readback]}
+  - text: "yes"
+    expect: {templates: [RL-S2-DEPENDANTS]}
+  - text: my wife is 32 and my son is 4
+    expect: {templates: [RL-S2-LIABILITIES]}
+  - text: home loan of 35 lakh, 18 years left
+    expect: {templates: [readback]}
+  - text: "yes"
+    expect: {templates: [needs_summary, summary_assumed, summary_question], engine: {service: suitability, outcome: FIT}}
+  - text: "yes"
+    expect: {state: S3, row: S2.2}
+  - text: actually we have two kids now, 4 and 7
+    script:
+      nlu-extract:
+        - intents: [CORRECTION]
+          slots:
+            - {slot: dependants, value: [{relation: spouse, age: 32}, {relation: child, age: 4}, {relation: child, age: 7}], confidence: 0.95, evidence_span: "two kids now, 4 and 7"}
+    expect:
+      state: S2
+      row: G3
+      reason: CORRECTION_NEEDS
+      templates: [needs_summary, summary_assumed, summary_question]
+      slots: {dependants: corrected}
+      engine: {service: suitability, outcome: FIT}
+      contains: ["Dependants: spouse (32), child (4), child (7)"]
+  - text: "yes"
+    expect: {state: S3, row: S2.2, templates: [needs_done], slots: {dependants: confirmed}}

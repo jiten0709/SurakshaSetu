@@ -23,7 +23,9 @@ from harness import (  # noqa: E402
     sha256_text,
 )
 
-PINS = {"prompt_bundle": "pb-2026.10.3", "rules": "2026.09.1"}
+from surakshasetu.crypto.jcs import sha256_hex  # noqa: E402
+
+PINS = {"prompt_bundle": "pb-2026.10.4", "rules": "2026.09.1"}
 
 
 def body(text: str = "Hi", state: str = "S0", turn_id: str = "t1", **message: Any) -> bytes:
@@ -82,7 +84,7 @@ def transcript(*turns: dict[str, Any], **update: Any) -> Transcript:
     raw = body()
     t = Transcript(
         conversation=conversation,
-        active_bundle="pb-2026.10.3",
+        active_bundle="pb-2026.10.4",
         consent_valid_from_start=False,
         initial_pins=PINS,
         sent=[Sent(0, 200, raw, customer_text="hello")],
@@ -123,6 +125,50 @@ def test_i2_s3_needs_a_current_suitability_decision() -> None:
     assert not any(f.startswith("I2") for f in check(t))
     t.events[-1] = Event(4, "STATE_TRANSITION", entry | {"invariants": {"I2": False}}, PINS)
     assert any(f.startswith("I2") for f in check(t))
+
+
+def suitability_decision(outcome: str = "FIT", **tamper: Any) -> Event:
+    """A suitability ENGINE_DECISION as S2 records it (Step 20): the needs as sent, with their
+    slots_sha256, and the result echoing the hash."""
+    needs = {"goals": ["income_protection"], "annual_income_inr": "1200000", "income_type": "x"}
+    digest = sha256_hex(needs)
+    request = {"needs": needs | {"slots_sha256": tamper.get("sent", digest)}}
+    result = {"outcome": outcome, "inputs_sha256": tamper.get("result", digest)}
+    header = {"service": "suitability", "inputs_sha256": tamper.get("header", digest)}
+    return Event(0, "ENGINE_DECISION", header, PINS, {"request": request, "result": result})
+
+
+@pytest.mark.parametrize(
+    ("decision", "fails"),
+    [
+        (suitability_decision(), False),
+        (suitability_decision(sent="0" * 64), True),  # bound to other needs
+        (suitability_decision(result="1" * 64), True),  # the engine decided other inputs
+        (suitability_decision(header="2" * 64), True),
+        (suitability_decision("NO_GAP"), True),  # S3 on a decision that wasn't FIT
+    ],
+)
+def test_i2_s3_needs_the_decision_bound_to_the_needs_it_was_asked_for(
+    decision: Event, fails: bool
+) -> None:
+    t = transcript()
+    entry = {"from_state": "S2", "to_state": "S3", "trigger": "S2.2", "invariants": {"I2": True}}
+    t.events = [decision, *t.events, Event(4, "STATE_TRANSITION", entry, PINS)]
+    assert any(f.startswith("I2") for f in check(t)) is fails
+
+
+def test_a_prelude_puts_its_turns_first(tmp_path: Path) -> None:
+    conversations, preludes = tmp_path / "conversations", tmp_path / "preludes"
+    (conversations / "suite").mkdir(parents=True)
+    preludes.mkdir()
+    (preludes / "opening.yaml").write_text("- {action: {type: START}}\n")
+    convo = "{id: with-prelude, description: x, prelude: opening, turns: [{text: hi}]}\n"
+    (conversations / "suite" / "c.yaml").write_text(convo)
+    (loaded,) = load_conversations(conversations, preludes)
+    assert [t.action.type if t.action else t.text for t in loaded.turns] == ["START", "hi"]
+    (conversations / "suite" / "c.yaml").write_text(convo.replace("opening", "missing"))
+    with pytest.raises(FileNotFoundError):
+        load_conversations(conversations, preludes)
 
 
 @pytest.mark.parametrize("leak", ["Our 999N001V02 fits", "the Suraksha Term Shield fits"])
@@ -389,6 +435,37 @@ def test_the_s1_and_quote_only_suites_cover_the_step_19_paths() -> None:
     assert {"QO.1", "QO.2", "QO.3", "QO.3b"} <= {t.expect.row for c in quote_only for t in c.turns}
     for c in s1 + quote_only:  # reached through real S0 turns, never seeded
         assert c.given.consent is None and c.given.state is None, c.id
+
+
+def test_the_s2_suite_covers_the_step_20_paths() -> None:
+    s2 = [c for c in load_conversations() if c.id.startswith("s2-")]
+    assert len(s2) >= 14
+    turns = [t for c in s2 for t in c.turns]
+    assert {"S2.1", "S2.1b", "S2.2", "G3"} <= {t.expect.row for t in turns}
+    assert {
+        "NO_GAP",
+        "HE_AFFORDABILITY_RED",
+        "HE_VULNERABLE_COMPLEX",
+        "HE_OUT_OF_SCOPE",
+        "SUITABLE",
+        "CORRECTION_NEEDS",
+    } <= {t.expect.reason for t in turns}
+    templates = {i for t in turns for i in (t.expect.templates or [])}
+    assert {
+        "period_ask",
+        "short_path_offer",
+        "summary_assumed",
+        "summary_implausible",
+        "partial_offer",
+        "amber_confirm",
+        "distress_ack",
+        "non_earning_basis",
+        "guarantee_note",
+        "competitor_note",
+    } <= templates
+    assert any("SUFFICIENCY_ELECTION" in t.expect.events for t in turns)
+    for c in s2:  # reached through real S0 and S1 turns, never seeded
+        assert c.prelude == "to-s2" and c.given.consent is None and c.given.state is None, c.id
 
 
 @pytest.mark.parametrize(

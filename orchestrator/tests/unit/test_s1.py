@@ -341,7 +341,7 @@ async def test_a_confirmed_read_back_writes_confirmed_rows_then_the_engine_decid
     assert decision["header"].service == "eligibility"
     assert set(decision["payload"]) == {"request", "result"}
     assert transition(t) == ("S1.4", FsmState.S2)
-    assert ids(t) == ["template:screening_done"]
+    assert ids(t) == ["template:screening_done", "template:RL-S2-GOALS"]  # Step 20: S2 asks
     assert t.next is not None and isinstance(t.next.eligibility, EligibilityPayload)
 
 

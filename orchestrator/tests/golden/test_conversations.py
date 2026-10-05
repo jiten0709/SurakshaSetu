@@ -522,6 +522,10 @@ class Play:
                 if value is not None and all(r.get(name) != value for r in results):
                     got = [r.get(name) for r in results]
                     self.fail(s.turn, f"{want.service} {name} {got}, want {value}")
+            for name, value in want.result.items():  # Step 20
+                if all(r.get(name) != value for r in results):
+                    got = [r.get(name) for r in results]
+                    self.fail(s.turn, f"{want.service} {name} {got}, want {value}")
         if expect.slots is not None:
             got = {k: s.slots.get(k) for k in expect.slots}
             if got != expect.slots:
@@ -616,7 +620,12 @@ CASES = load_conversations()
 async def test_golden_conversation(conversation: Conversation, tmp_path: Path) -> None:
     # SS_* come from `make eval` (the dev database, the infra/.env tokens); a developer's
     # orchestrator/.env never redirects a golden run.
-    settings = Settings(_env_file=None, log_level="INFO", log_dir=tmp_path)
+    # A conversation replays a customer's turns at machine speed: S2's full discovery alone is 26
+    # turns inside a minute, over the production limit of 20 a minute per subject. The limiter
+    # itself is covered by the runtime tests; here it only needs to let the conversation through.
+    settings = Settings(
+        _env_file=None, log_level="INFO", log_dir=tmp_path, rate_limits={60: 60, 3600: 600}
+    )
     app = create_app(settings)
     async with app.router.lifespan_context(app):
         run = Play(app, settings, conversation, tmp_path)

@@ -1,0 +1,52 @@
+# The S3 parts that are never generated (TDD §3.8): every number, table cell and disclosure comes
+# from a deterministic service; these templates only lay them out. Disclosure bodies are never here:
+# they are inserted verbatim from the registry response.
+
+needs_recap: |-
+  Your needs, as you confirmed them
+  Goals: {goals}
+  Cover you may need: {need}. Recommended cover: {cover} for {term} years.
+  Assumptions: cover to age {cover_to_age}, {dependency_years} years of dependency, existing cover counted {existing_cover}, income growth of {growth} a year and a discount rate of {discount} a year.
+partial_profile: "These options are based on a partial profile: some questions were not answered."
+option_card: |-
+  Option {rank}: {name} ({uin})
+  Cover: {cover}
+  Policy term: {term} years
+  Premium-paying term: {ppt} years
+  Riders: {riders}
+  {premium}
+  Protection gap against your recommended cover: {gap}
+  Documents: {documents}
+premium: "Indicative premium: {amount} a year, including GST. Quote {quote_id}, valid until {valid_until}. The final premium is set after underwriting."
+premium_single: "Indicative single premium: {amount}, including GST. Quote {quote_id}, valid until {valid_until}. The final premium is set after underwriting."
+premium_withheld: "Premium not shown: it is worked out during application and underwriting."
+document: "{label} {version} ({uri})"
+comparison:
+  heading: "How the options compare"
+  # The fixed attribute set per product category, in row order; values come from the Product Catalog.
+  attributes:
+    TERM: [category, entry_age, maturity_age, cover_range, term_range, ppt_options, benefit_payment, riders]
+    TERM_ROP: [category, entry_age, maturity_age, cover_range, term_range, ppt_options, benefit_payment, riders]
+    NON_PAR_SAVINGS: [category, entry_age, maturity_age, cover_range, term_range, ppt_options, benefit_payment, riders]
+    PAR: [category, entry_age, maturity_age, cover_range, term_range, ppt_options, benefit_payment, riders]
+    ULIP: [category, entry_age, maturity_age, cover_range, term_range, ppt_options, benefit_payment, riders]
+  rows:
+    category: "Plan type"
+    entry_age: "Entry age (years)"
+    maturity_age: "Maximum age at maturity (years)"
+    cover_range: "Cover range"
+    term_range: "Policy term (years)"
+    ppt_options: "Premium-paying options"
+    benefit_payment: "Benefit payment options"
+    riders: "Riders available"
+deterministic_card: "These options and amounts come from our rules and rating engine. A licensed advisor can explain how each one fits your needs."
+disclosures_heading: "Important information about {name} ({uin})"
+# Four equal choices, in a fixed order, with no default and no urgency (TDD §3.8).
+cta:
+  heading: "What would you like to do next?"
+  apply: "Apply for one of these plans"
+  advisor: "Talk to a licensed advisor"
+  revise: "Change my answers"
+  save: "Save for later"
+sources_heading: "Sources"
+source_line: "{title}, {section}, version {version}, effective {effective_from}: {uri}"

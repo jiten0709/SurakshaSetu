@@ -31,4 +31,4 @@ turns:
   - text: 999N001V02
     expect: {parts: [template:quote_card, registry:DISC-GLOBAL-QUOTE-02, template:quote_caveat, template:quote_next], contains: ["₹16,000 a year"], engine: {service: quote}}
   - action: {type: OPT_IN}
-    expect: {state: S2, row: QO.3, reason: ADVISORY_OPT_IN, templates: [screening_done]}
+    expect: {state: S2, row: QO.3, reason: ADVISORY_OPT_IN, templates: [screening_done, RL-S2-GOALS]}
