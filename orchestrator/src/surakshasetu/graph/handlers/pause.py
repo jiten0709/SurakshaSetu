@@ -15,12 +15,13 @@ released) and does not resume on stale consent.
 """
 
 import logging
-from datetime import UTC, datetime
 from typing import Any
 from zoneinfo import ZoneInfo
 
 from langgraph.runtime import Runtime
 
+from surakshasetu.domain.client import DomainError
+from surakshasetu.graph import handlers
 from surakshasetu.graph.handlers import scripts, session
 from surakshasetu.graph.state import GraphState, RecommendationPayload
 
@@ -32,10 +33,11 @@ IST = ZoneInfo("Asia/Kolkata")
 async def pause(state: GraphState, *, runtime: Runtime[Any]) -> None:
     turn = runtime.context
     texts = scripts(turn)
-    # Step 20: a dependency down (CC3) says why before the saved-progress line.
+    # Step 20: a dependency down (CC3) says why before the saved-progress line. Step 21: what the
+    # state node prepared follows it (S3.2's summary of the options shown).
     down = bool(turn.signals.get("dependency_down"))
     why = [("dependency_down", texts.dependency_down)] if down else []
-    turn.parts = [*why, ("paused", texts.paused)]
+    turn.parts = [*why, ("paused", texts.paused), *turn.parts]
     logger.info("session paused%s", " (dependency down)" if why else "")
 
 
@@ -58,16 +60,25 @@ def _valid(consent: Any) -> bool:
 
 
 async def _stale(turn: Any, recommendation: RecommendationPayload) -> str | None:
-    now = datetime.now(UTC)
+    """Also S3's revalidation on every turn (Step 21): why the recommendation shown is out of date,
+    or None. A product that can no longer be sold comes first (S3 ranks again), then an expired
+    quote (S3 quotes it again)."""
+    now = handlers.now()
     today = now.astimezone(IST).date()
-    for option in recommendation.options:
-        if ("product", option.uin) in turn.kill_switches:
-            return "PRODUCT_KILL_SWITCH"
-        if option.quote is not None and option.quote.valid_until < today:
-            return "QUOTE_EXPIRED"
-        product = await turn.domain.get_product(option.uin, as_of=now)
+    uins = [option.uin for option in recommendation.options]
+    if any(("product", uin) in turn.kill_switches for uin in uins):
+        return "PRODUCT_KILL_SWITCH"
+    for uin in uins:
+        try:
+            product = await turn.domain.get_product(uin, as_of=now)
+        except DomainError as exc:
+            if exc.code != "NOT_FOUND":  # a withdrawn product's catalog row ends with its sale
+                raise
+            return "PRODUCT_WITHDRAWN"
         if product.status != "in_force" or (
             product.effective_to is not None and product.effective_to < today
         ):
             return "PRODUCT_WITHDRAWN"
+    if any(o.quote is not None and o.quote.valid_until < today for o in recommendation.options):
+        return "QUOTE_EXPIRED"
     return None

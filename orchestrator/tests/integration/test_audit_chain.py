@@ -26,6 +26,7 @@ from surakshasetu.audit.chain import (
     append,
     decrypt_payload,
     events,
+    tail,
     verify_session,
 )
 from surakshasetu.audit.events import ConfigReleaseHeader, EventType, StateTransitionHeader
@@ -86,6 +87,19 @@ def test_a_chain_of_five_verifies(app_db: Conn, keys: LocalKeyService, key_ref: 
     )
     assert verify_session(app_db, session_id) == VerifyResult(ok=True, checked=5)
     assert decrypt_payload(keys, chain[2]) == {"note": "event 2"}
+
+
+def test_tail_is_the_latest_event_seen_from_the_transaction(
+    app_db: Conn, keys: LocalKeyService, key_ref: str
+) -> None:
+    """The hand-off's audit anchor (Step 21): (0, genesis) before any event, then the last
+    append's seq and hash, uncommitted appends of the same transaction included."""
+    session_id = uuid7()
+    assert tail(app_db, session_id) == (0, GENESIS)
+    add(app_db, keys, session_id, key_ref, count=3)
+
+    last = events(app_db, session_id)[-1]
+    assert tail(app_db, session_id) == (3, bytes(last.hash))
 
 
 @pytest.mark.parametrize(

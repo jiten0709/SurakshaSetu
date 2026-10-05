@@ -1,0 +1,34 @@
+# I6 (TDD §3.2): asking whether the customer is talking to a person gets the templated AI
+# re-disclosure, in any state. A message matches when it contains a phrase as whole words, after
+# NFKC, case-folding and collapsing spaces. Owner: compliance; the red-team suite extends it.
+phrases:
+  - are you a human
+  - are you human
+  - are you a person
+  - are you a real person
+  - is this a real person
+  - is this a human
+  - am i talking to a human
+  - am i talking to a person
+  - am i talking to a real person
+  - am i speaking to a human
+  - am i speaking to a person
+  - am i chatting with a human
+  - are you a bot
+  - are you a robot
+  - is this a bot
+  - is this a robot
+  - are you an ai
+  - kya aap insaan ho
+  - kya aap insan ho
+  - kya tum insaan ho
+  - kya aap bot ho
+  - kya aap robot ho
+  - kya main insaan se baat kar raha hoon
+  - kya main insaan se baat kar rahi hoon
+  - क्या आप इंसान हैं
+  - क्या आप इंसान हो
+  - क्या आप रोबोट हैं
+  - क्या आप बॉट हैं
+  - क्या मैं इंसान से बात कर रहा हूँ
+  - क्या मैं इंसान से बात कर रही हूँ

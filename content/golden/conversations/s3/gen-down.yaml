@@ -1,0 +1,13 @@
+id: s3-gen-down
+description: >-
+  gen-recommend unavailable: the recommendation goes out as the deterministic card (fail closed),
+  with every option, number and disclosure set.
+prelude: to-s3
+turns:
+  - text: "yes"
+    script: {gen-recommend: [{content: "model unavailable", status: 503}]}
+    expect:
+      state: S3
+      disclosures: ["999N001V02", "999N002V01"]
+      citations: false
+      contains: ["These options and amounts come from our rules and rating engine."]

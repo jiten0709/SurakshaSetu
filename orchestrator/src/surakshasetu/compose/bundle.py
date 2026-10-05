@@ -61,6 +61,7 @@ CONSENT_LEXICON = "lexicons/consent_affirmation.yaml"  # Step 18
 IDENTITY_LEXICON = "lexicons/identity_question.yaml"
 SCREENING_LEXICON = "lexicons/screening.yaml"  # Step 19
 NEEDS_LEXICON = "lexicons/needs.yaml"  # Step 20
+S3_LEXICON = "lexicons/s3.yaml"  # Step 21
 # Word edges that also hold inside Devanagari (as rails/output.py's lexicon matching).
 _START, _END = r"(?<![\wऀ-ॿ])", r"(?![\wऀ-ॿ])"
 
@@ -203,6 +204,30 @@ class NeedsLabels(_Strict):
         return self
 
 
+class S3Labels(_Strict):
+    """State-3 labels (Step 21): the quick replies, the ranker's reason codes and the alternatives'
+    changes as a customer reads them, why a named plan is not an option, and the citation labels
+    of the engine facts the model may cite ([R#])."""
+
+    acknowledge: str
+    apply_plan: str  # "Apply for {name}"
+    cheaper_plan: str  # "Make {name} cheaper"
+    alternative: str  # "Choose {n}"
+    revisit: str
+    reasons: dict[str, str]  # a ranker reason code (or "default") -> a reason line
+    changes: dict[Literal["LOWER_COVER", "FEWER_RIDERS", "OTHER_PPT"], str]
+    not_recommended: dict[Literal["not_eligible", "not_fit", "default"], str]
+    premium_not_shown: str
+    engine_option: str  # "{name} ({uin}), ranked {rank}": an option's engine fact
+    engine_needs: str  # the needs assessment's engine fact
+
+    @model_validator(mode="after")
+    def _a_default_reason(self) -> Self:
+        if "default" not in self.reasons:
+            raise ValueError("s3.reasons needs a default")
+        return self
+
+
 class Scripts(_Strict):
     readback: str
     money_readback: str
@@ -286,6 +311,37 @@ class Scripts(_Strict):
     rephrase: str  # comprehension difficulty: the question again, more simply
     short_path_offer: str  # "just tell me the best plan": three questions
     needs: NeedsLabels
+    # State-3 (Step 21, pb-2026.10.5 on; required, so pb-2026.10.4 no longer loads). Every number
+    # in them comes from the ranker, a quote or the catalog; the hand-off and journey texts are
+    # legally significant and stay DUMMY until approved.
+    rec_retry: str  # the ranker or the registry is down while S3 is entered: retry
+    no_option: str  # the ranker found nothing (NO_ELIGIBLE_OPTION): a careful line, then HE
+    rerank_note: str  # a plan shown can no longer be sold: the options again
+    requote_note: str  # an indicative premium expired: priced again
+    choose_option: str  # "apply" without a plan: which one
+    selection_card: str  # the chosen plan and the quote it rests on
+    gap_choice: str  # less cover than recommended, chosen by the customer
+    ack_ask: str  # read the disclosures and documents shown, then confirm (V7)
+    ack_mismatch: str  # an acknowledgment of something not shown: shown again
+    ack_recorded: str  # acknowledged without a plan chosen: apply?
+    apply_needs_premium: str  # no indicative premium (withheld or unrated): an advisor completes
+    handoff_application: str  # the intake taken by the application journey
+    journey_down: str  # the intake kept for a retry; an advisor completes it
+    alternatives: str  # the heading of the engine's cheaper variants
+    alternative_line: str
+    cheaper_unavailable: str  # no premium to make cheaper
+    which_one: str  # "which should I buy?": the top option and its reasons; the choice is theirs
+    not_recommended: str  # a named plan that is not an option, and why
+    exclusion_note: str  # an exclusion disputed: the approved wording; an advisor or grievance
+    tax_condition: str  # tax: the rules depend on the regime; no personal computation
+    revise_ask: str  # "change my answers": which one
+    s3_choices: str  # anything else in S3: structured choices only (TDD §3.9)
+    s3_summary: str  # need time: the options shown, kept in the session
+    s3_summary_line: str
+    rediscovery: str  # all rejected: the architecture spec's re-discovery framing, then S2
+    decline_first: str  # a decline before any re-discovery: revisit, save or an advisor
+    declined_exit: str  # a decline after re-discovery: a graceful exit
+    s3: S3Labels
 
 
 Attribute = Literal[
@@ -425,6 +481,20 @@ class NeedsLexicon(_Strict):
         return _phrases(entries)
 
 
+class S3Lexicon(_Strict):
+    """lexicons/s3.yaml (Step 21): whole-word phrases anywhere in the turn, like needs.yaml."""
+
+    which_one: frozenset[str]
+    exclusion_dispute: frozenset[str]
+    cheaper: frozenset[str]
+    need_time: frozenset[str]
+
+    @field_validator("which_one", "exclusion_dispute", "cheaper", "need_time", mode="before")
+    @classmethod
+    def _normalised(cls, entries: list[str]) -> frozenset[str]:
+        return _phrases(entries)
+
+
 @dataclass(frozen=True)
 class PromptBundle:
     manifest: Manifest
@@ -436,6 +506,7 @@ class PromptBundle:
     identity_lexicon: IdentityLexicon
     screening_lexicon: ScreeningLexicon
     needs_lexicon: NeedsLexicon
+    s3_lexicon: S3Lexicon
 
     @property
     def version(self) -> str:
@@ -466,6 +537,7 @@ def load_bundle(version: str, *, env: str, root: Path = PROMPT_BUNDLES) -> Promp
         IDENTITY_LEXICON,
         SCREENING_LEXICON,
         NEEDS_LEXICON,
+        S3_LEXICON,
     }
     if missing := sorted((set(manifest.files) | required) - present):
         raise _refuse(version, "FILE_MISSING", missing[0])
@@ -493,6 +565,7 @@ def load_bundle(version: str, *, env: str, root: Path = PROMPT_BUNDLES) -> Promp
             yaml.safe_load(files[SCREENING_LEXICON])
         )
         needs_lexicon = NeedsLexicon.model_validate(yaml.safe_load(files[NEEDS_LEXICON]))
+        s3_lexicon = S3Lexicon.model_validate(yaml.safe_load(files[S3_LEXICON]))
     except (ValidationError, yaml.YAMLError) as exc:
         raise _refuse(version, "LEXICON_INVALID") from exc
     l0 = files[L0_PATH].decode("utf-8")
@@ -512,6 +585,7 @@ def load_bundle(version: str, *, env: str, root: Path = PROMPT_BUNDLES) -> Promp
         identity_lexicon=identity_lexicon,
         screening_lexicon=screening_lexicon,
         needs_lexicon=needs_lexicon,
+        s3_lexicon=s3_lexicon,
     )
     logger.info("prompt bundle %s loaded: %d files", version, len(files))
     return bundle

@@ -1,0 +1,18 @@
+id: s3-need-time
+description: >-
+  "I need some time to think about it": S3.2 pauses with the options kept in the session as a
+  summary, and the re-engagement line only because P3 was granted (no outbound message). The
+  customer comes back: PAUSE.R resumes into S3, which ranks and presents again.
+prelude: to-s3
+turns:
+  - text: "yes"
+    expect: {state: S3}
+  - text: I need some time to think about it
+    expect:
+      state: PAUSE
+      row: S3.2
+      reason: NEED_TIME
+      templates: [paused, s3_summary, reengage]
+      contains: ["Suraksha Term Shield (999N001V02): cover ₹3,75,00,000 for 26 years, ₹1,06,875 a year"]
+  - text: I'm back, show me the plans again
+    expect: {state: S3, row: PAUSE.R, disclosures: ["999N001V02", "999N002V01"], engine: {service: ranking}}

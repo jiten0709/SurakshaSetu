@@ -133,6 +133,11 @@ def stored(monkeypatch: pytest.MonkeyPatch) -> dict[str, tuple[str, Any]]:
     """conv.slot_value's newest row per slot: S1's confirmed answers, plus what a test adds."""
     found: dict[str, tuple[str, Any]] = {slot: ("confirmed", v) for slot, v in TDD.items()}
     monkeypatch.setattr(store, "latest_slots", lambda *a: dict(found))
+    monkeypatch.setattr(  # Step 21: S3, entered from S2.2, reads the confirmed slots
+        store,
+        "current_slots",
+        lambda *a: {k: v for k, (st, v) in found.items() if st == "confirmed"},
+    )
     monkeypatch.setattr(handlers, "_PRODUCT_NAMES", {})
     return found
 
@@ -385,8 +390,11 @@ async def test_confirming_the_summary_binds_the_hash_and_s2_2_moves_to_s3(
     assert set(rows(t)) == set(NEEDS)
     assert transition(t) == ("S2.2", FsmState.S3)
     assert t.transition is not None and t.transition.invariants["I2"]
-    assert ids(t) == ["template:needs_done"]
-    assert len(events(audited, "ENGINE_DECISION")) == 1  # the summary's, never a second
+    # Step 21: S3's enter presents the recommendation after the bridge.
+    assert ids(t)[:3] == ["template:needs_done", "needs_recap", "option_card:999N001V02"]
+    # The summary's suitability decision stands (never a second); S3 adds its ranking.
+    decisions = [e["header"].service for e in events(audited, "ENGINE_DECISION")]
+    assert decisions == ["suitability", "ranking"]
 
 
 @pytest.mark.asyncio
@@ -449,7 +457,7 @@ async def test_below_the_sufficiency_minimum_an_election_is_recorded_then_s3(
     assert (header.score, header.threshold, header.elected) == (0.65, 0.7, True)
     assert header.missing_slot_count == 2  # dependants declined, assets declined
     assert transition(t) == ("S2.2", FsmState.S3)
-    assert ids(t) == ["template:needs_done", "template:partial_profile"]
+    assert ids(t)[:3] == ["template:needs_done", "template:partial_profile", "needs_recap"]
 
 
 @pytest.mark.asyncio

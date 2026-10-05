@@ -42,7 +42,7 @@ from surakshasetu.audit.events import (
     TurnInputHeader,
 )
 from surakshasetu.compose.bundle import L1Name, PromptBundle, load_pinned
-from surakshasetu.compose.citations import issue
+from surakshasetu.compose.citations import TurnHandles, issue
 from surakshasetu.compose.composer import Rendered
 from surakshasetu.compose.envelope import EnvelopeError, SessionFacts, model_call_event
 from surakshasetu.compose.envelope import build as build_envelope
@@ -50,6 +50,7 @@ from surakshasetu.config import Settings
 from surakshasetu.crypto.jcs import canonical_json
 from surakshasetu.crypto.keys import KeyService
 from surakshasetu.domain.client import DomainClient
+from surakshasetu.domain.models import DisclosureSet
 from surakshasetu.fsm.facts import Facts
 from surakshasetu.fsm.states import TERMINAL, FsmState
 from surakshasetu.fsm.transition import Transition, transition
@@ -66,10 +67,19 @@ from surakshasetu.graph.handlers import (
     product_names,
     safety,
 )
-from surakshasetu.graph.state import Frame, GraphState, SessionState, SlotRow, VersionPins
-from surakshasetu.graph.states import quote_only, s0, s1, s2
+from surakshasetu.graph.state import (
+    Frame,
+    GraphState,
+    RecommendationPayload,
+    SessionState,
+    Shown,
+    SlotRow,
+    VersionPins,
+)
+from surakshasetu.graph.states import quote_only, s0, s1, s2, s3
 from surakshasetu.rails import redact
-from surakshasetu.rails.output import LexiconPack, OutputContext, Released, release
+from surakshasetu.rails.output import LexiconPack, Numbers, OutputContext, Released, release
+from surakshasetu.retrieval.service import RetrievalService
 from surakshasetu.store import conv as store
 from surakshasetu.store.conv import Conn, SessionRow
 from surakshasetu.uuid7 import uuid7
@@ -87,12 +97,14 @@ ENTERED = {
     "s1_enter": s1.enter,  # Step 19: S0.4, QO.3b, G2 (V4) or a resume entered S1
     "quote_only_enter": quote_only.enter,  # Step 19: S0.3 or S1.3 entered Quote-Only
     "s2_enter": s2.enter,  # Step 20: S1.4, QO.3, G3 (V4), S3.3 or a resume entered S2
+    "s3_enter": s3.enter,  # Step 21: S2.2 or a resume entered S3: the recommendation
 }
 ENTER = {
     FsmState.S0: "s0_enter",
     FsmState.S1: "s1_enter",
     FsmState.QUOTE_ONLY: "quote_only_enter",
     FsmState.S2: "s2_enter",
+    FsmState.S3: "s3_enter",
 }
 LANGUAGE = {"en-IN": "en", "hi-IN": "hi"}
 
@@ -149,6 +161,15 @@ class Turn:
     # Quote-Only's plan detection and I3's output rail.
     phrase: tuple[L1Name, str, tuple[str, ...]] | None = None
     products: dict[str, str] = dataclasses.field(default_factory=dict)
+    # Step 21. The retrieval service (None: no evidence, as in the unit tests). A state that
+    # composes its own reply (S3: the recommendation, a cited answer) sets draft/render/regenerate
+    # and what the output rails check it against: the handles the model saw, the engine values the
+    # placeholders fill from, the disclosure sets shown. The recommendation the commit records.
+    retrieval: RetrievalService | None = None
+    handles: TurnHandles | None = None
+    numbers: Numbers | None = None
+    disclosure_sets: dict[str, DisclosureSet] = dataclasses.field(default_factory=dict)
+    recommendation: RecommendationPayload | None = None
     # decide, compose, validate
     transition: Transition | None = None
     draft: str | None = None
@@ -449,6 +470,10 @@ async def compose(state: GraphState, runtime: Runtime[Turn]) -> None:
     turn = _turn(runtime)
     session = _session(turn)
     await _status(turn, "composing")
+    overlong = turn.pipeline is not None and turn.pipeline.overlong
+    if turn.render is not None and not (overlong or turn.degraded or turn.identity or turn.safety):
+        return  # Step 21: the state composed its own reply (S3); the rails check it next
+    turn.handles, turn.numbers, turn.disclosure_sets, turn.recommendation = None, None, {}, None
     scripts = cast(PromptBundle, turn.bundle).templates[session.locale].scripts
     chosen: list[tuple[str, str]]
     if turn.parts:
@@ -540,7 +565,7 @@ async def validate(state: GraphState, runtime: Runtime[Turn]) -> None:
         key_ref=row.key_ref,
         locale=session.locale,
         route=Route.GEN_RECOMMEND if session.fsm_state is FsmState.S3 else Route.GEN_CONVERSE,
-        handles=issue([], []),
+        handles=turn.handles or issue([], []),
         customer_text=turn.pipeline.stored_raw if turn.pipeline else "",
         products=turn.products,
         customer_uins=frozenset(session.focus_uins),
@@ -557,6 +582,8 @@ async def validate(state: GraphState, runtime: Runtime[Turn]) -> None:
         draft=turn.draft,
         regenerate=turn.regenerate or _no_regeneration,
         render=cast(Callable[[str | None], Rendered], turn.render),
+        numbers=turn.numbers,
+        disclosure_sets=turn.disclosure_sets,
     )
 
 
@@ -664,6 +691,27 @@ async def commit(state: GraphState, runtime: Runtime[Turn]) -> dict[str, Any]:
             source_turn=in_id,
             consent_id=consent_id,
         )
+    # Step 21: the recommendation as released (I2's hash, the exact text's hash); a blocked
+    # release shows no options, so none is recorded and S3 presents again next turn.
+    if turn.recommendation is not None and released.rendered is not None:
+        shown = released.rendered
+        rendered_rec = turn.recommendation.model_copy(
+            update={
+                "rendered_sha256": shown.rendered_sha256,
+                "evidence_map": shown.citations,
+                # what each option's render showed: an acknowledgment must match it (V7)
+                "shown": {
+                    uin: Shown(
+                        registry_version=turn.disclosure_sets[uin].registry_version,
+                        set_sha256=set_sha256,
+                        documents=shown.documents_shown.get(uin, {}),
+                    )
+                    for uin, set_sha256 in shown.disclosure_hashes.items()
+                },
+            }
+        )
+        rec_id = store.insert_recommendation(conn, session_id=turn.session_id, payload=rendered_rec)
+        session.recommendation = rendered_rec.model_copy(update={"rec_id": rec_id})
     store.update_session(
         conn,
         turn.session_id,

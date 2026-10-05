@@ -1,0 +1,17 @@
+id: s3-tax
+description: >-
+  "How much tax will I save?": the general rule from the tax evidence, cited and verified; the
+  regime condition and no personal computation; DISC-GLOBAL-TAX-05 verbatim from the registry.
+prelude: to-s3
+turns:
+  - text: "yes"
+    expect: {state: S3}
+  - text: How much tax will I save under section 80C?
+    script:
+      nlu-extract: [{intents: [SIDE_QUERY], side_query: "How much tax will I save under section 80C?"}]
+      gen-recommend: ["Premiums can qualify for a deduction only under the old tax regime, subject to conditions [E2]."]
+    expect:
+      state: S3
+      parts: [generated:answer, template:side_query_caveat, template:tax_condition, "registry:DISC-GLOBAL-TAX-05", template:sources]
+      citations: true
+      abstained: false

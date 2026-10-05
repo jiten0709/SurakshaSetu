@@ -336,8 +336,12 @@ class HandoffRow:
 
 
 def has_handoff(conn: Conn, session_id: UUID) -> bool:
+    """An advisor or care hand-off exists. The application journey's intake rows (Step 21, queue
+    application) are not a person taking over."""
     row = conn.execute(
-        "SELECT EXISTS (SELECT 1 FROM conv.handoff WHERE session_id = %s)", (session_id,)
+        "SELECT EXISTS (SELECT 1 FROM conv.handoff WHERE session_id = %s"
+        " AND queue <> 'application')",
+        (session_id,),
     ).fetchone()
     return bool(row and row[0])
 

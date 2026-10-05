@@ -1,0 +1,20 @@
+id: s3-reject-loops
+description: >-
+  All options rejected three times: twice back to S2 with the re-discovery framing (the summary to
+  confirm again, the plans ranked again), then the rediscovery limit escalates to an advisor (P2 is
+  granted, so the hand-off carries the recommendation record).
+prelude: to-s3
+turns:
+  - text: "yes"
+    expect: {state: S3, row: S2.2}
+  - action: {type: REJECT_ALL}
+    expect: {state: S2, row: S3.3, templates: [rediscovery, needs_summary, summary_question], counters: {rediscovery_loops: 1}}
+  - text: "yes"
+    expect: {state: S3, row: S2.2, disclosures: ["999N001V02", "999N002V01"]}
+  - text: none of these work for me
+    script: {nlu-extract: [{intents: [REJECT_ALL]}]}
+    expect: {state: S2, row: S3.3, templates: [rediscovery, needs_summary, summary_question], counters: {rediscovery_loops: 2}}
+  - text: "yes"
+    expect: {state: S3, row: S2.2}
+  - action: {type: REJECT_ALL}
+    expect: {state: HUMAN_ESCALATION, row: S3.3b, reason: HE_REDISCOVERY_LIMIT, templates: [handoff], handoff: HE_REDISCOVERY_LIMIT}

@@ -1,7 +1,7 @@
 # One entry point for local work and CI. Placeholder targets are filled in by later steps.
 COMPOSE := docker compose -f infra/compose.yaml --profile core
 PYTEST_MARKERS := not stack and not golden and not redteam and not live and not db
-PLACEHOLDERS := seed-eval e2e-scripted \
+PLACEHOLDERS := seed-eval \
 	verify-release-gate eval-live local-setup
 SPEC := contracts/openapi/domain-services.v1.yaml
 MODELS := src/surakshasetu/domain/models.py
@@ -37,7 +37,7 @@ TEST_ENV := SS_TEST_PG_DSN_ADMIN="postgresql://postgres:$(POSTGRES_PASSWORD)@127
 .PHONY: up down logs check check-py check-java check-stubs check-db check-stack check-contracts \
 	db-migrate seed-catalog contracts contracts-lint contract-test verify-audit gateway-up \
 	gateway-verify kb-ingest kb-verify kb-chunks check-ingest calibrate-retrieval eval-retrieval \
-	bakeoff-embed bakeoff-rerank test-invariants eval $(PLACEHOLDERS)
+	bakeoff-embed bakeoff-rerank test-invariants eval e2e-scripted $(PLACEHOLDERS)
 
 # Postgres first, then the migrations, so domain-services finds its domain_rw role on a fresh
 # volume. `up --wait` treats an exited one-shot as a failure, so the one-shots run on their own.
@@ -195,6 +195,12 @@ GOLDEN_ENV := SS_EVAL_PG_DSN_ADMIN="postgresql://postgres:$(POSTGRES_PASSWORD)@1
 	SS_REDIS_URL="redis://127.0.0.1:6379/0" $(DOMAIN_ENV)
 eval: db-migrate
 	@cd orchestrator && $(GOLDEN_ENV) uv run --locked pytest -m "golden or redteam"
+
+# The scripted S0-S3 conversation of TDD §7.4 alone (Step 21): greeting, consent, eligibility, needs,
+# the recommendation with its disclosures, a chosen rider set re-quoted, the acknowledgment and the
+# signed hand-off to the stub application journey. `make eval` runs it too. Same needs as eval.
+e2e-scripted: db-migrate
+	@cd orchestrator && $(GOLDEN_ENV) uv run --locked pytest -m golden -k scripted-s0-s3
 
 # Verify every audit chain active on DATE (UTC) and anchor the day's Merkle root in MinIO and
 # audit.chain_anchor, as app_rw. DB=surakshasetu_test checks the test database instead.

@@ -1,0 +1,14 @@
+id: s3-which-one
+description: >-
+  "Which one should I buy?": the top option and the reasons the rules placed it first, as labels of
+  the ranker's reason codes; the decision stays with the customer (the four choices again).
+prelude: to-s3
+turns:
+  - text: "yes"
+    expect: {state: S3}
+  - text: Which one should I buy?
+    expect:
+      state: S3
+      templates: [which_one]
+      actions: [APPLY, HUMAN_REQUEST, REVISE, SAVE]
+      contains: ["The choice is yours.", "Suraksha Term Shield (999N001V02) first because it is a pure protection plan"]

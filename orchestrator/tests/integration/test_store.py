@@ -237,6 +237,17 @@ def test_recommendation_ack_handoff_and_kill_switch_rows(db: Conn, keys: LocalKe
         acked_at=datetime.now(UTC),
     )
     store.insert_disclosure_ack(db, rec_id=rec_id, ack=ack)
+    # Step 21: the application journey's intake row is not a person taking over.
+    store.insert_handoff(
+        db,
+        keys,
+        key_ref,
+        session_id=session_id,
+        reason_code="INTAKE_PENDING",
+        queue="application",
+        payload={"intake": {"signature": "DUMMY"}},
+    )
+    assert not store.has_handoff(db, session_id)
     handoff_id = store.insert_handoff(
         db,
         keys,
@@ -246,6 +257,7 @@ def test_recommendation_ack_handoff_and_kill_switch_rows(db: Conn, keys: LocalKe
         queue="advisors",
         payload={"briefing": "DUMMY"},
     )
+    assert store.has_handoff(db, session_id)
     target = f"route-{uuid7()}"
     store.insert_kill_switch(db, kind="route", target=target, active=True, reason="R", actor="ops")
 

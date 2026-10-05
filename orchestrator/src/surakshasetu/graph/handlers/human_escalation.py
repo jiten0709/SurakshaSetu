@@ -56,6 +56,7 @@ REASON_CODES = frozenset(
         "HE_RE_ASK_LIMIT",
         "HE_ELIGIBILITY",
         "HE_SUITABILITY",
+        "HE_JOURNEY_DOWN",  # Step 21: the application journey did not take the intake
     }
 )
 # Distress and vulnerability go to a care queue; everything else to the advisors.

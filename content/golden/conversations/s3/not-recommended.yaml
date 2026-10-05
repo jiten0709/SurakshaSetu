@@ -1,0 +1,10 @@
+id: s3-not-recommended
+description: >-
+  A plan that is not one of the options (the savings plan, switched off): why, from the engines'
+  current decisions for the confirmed inputs, and an advisor among the choices.
+prelude: to-s3
+turns:
+  - text: "yes"
+    expect: {state: S3}
+  - text: what about the Suraksha Saver Guarantee
+    expect: {state: S3, templates: [not_recommended], contains: ["Suraksha Saver Guarantee (999N010V01) is not one of your options because it isn't available to you"]}

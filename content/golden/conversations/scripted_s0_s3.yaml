@@ -1,6 +1,52 @@
-# The scripted S0-S3 conversation of TDD §7.4: a placeholder. Step 21 fills it (greeting and AI
-# disclosure, consent, eligibility, needs, recommendation with disclosures, hand-off), and
-# `make e2e-scripted` runs it end to end.
-conversation: scripted_s0_s3
-status: placeholder
-turns: []
+# The scripted S0-S3 conversation of TDD §7.4 (Step 21; `make e2e-scripted` runs it alone, `make
+# eval` with the suites). The opening turns are preludes/to-s3.yaml: greeting and AI disclosure,
+# full consent, eligibility, needs and the summary. Here: the recommendation with its disclosures,
+# the customer's own rider set re-quoted, the hash-bound acknowledgment and the signed hand-off.
+id: scripted-s0-s3
+description: >-
+  TDD §7.4's scripted customer (full consent, 34, Pune, salaried, no tobacco, spouse and two
+  children, a home loan) through S0-S3: the ranker offers Suraksha Term Shield first (₹3.75 crore,
+  26 years, riders 007, 008 and 009, ₹1,06,875) and the ROP plan second (capped at ₹2 crore, a ₹1.75
+  crore gap, rider 007, ₹90,000); the customer keeps only rider 999A007V01 (re-quoted at ₹71,250),
+  acknowledges the disclosures shown and is handed off with a signed intake the journey verifies.
+prelude: to-s3
+turns:
+  - text: "yes"
+    expect:
+      state: S3
+      row: S2.2
+      reason: SUITABLE
+      templates: [needs_done]
+      parts: [template:needs_done, needs_recap, "option_card:999N001V02", "option_card:999N002V01", comparison, why_it_fits, "disclosures:999N001V02", "disclosures:999N002V01", cta, sources]
+      engine: {service: ranking, reason_codes: []}
+      events: [RETRIEVAL, MODEL_CALL]
+      disclosures: ["999N001V02", "999N002V01"]
+      citations: true
+      actions: [APPLY, HUMAN_REQUEST, REVISE, SAVE]
+      contains:
+        - "Option 1: Suraksha Term Shield (999N001V02)"
+        - "Cover: ₹3,75,00,000"
+        - "Policy term: 26 years"
+        - "Riders: Accidental death benefit, Waiver of premium, Critical illness"
+        - "Indicative premium: ₹1,06,875 a year, including GST."
+        - "Option 2: Suraksha Term Shield ROP (999N002V01)"
+        - "Cover: ₹2,00,00,000"
+        - "Indicative premium: ₹90,000 a year, including GST."
+        - "Protection gap against your recommended cover: ₹1,75,00,000"
+        - "What would you like to do next?"
+  - action: {type: APPLY, payload: {uin: "999N001V02", rider_uins: ["999A007V01"]}}
+    expect:
+      state: S3
+      row: S3.STAY
+      templates: [selection_card, ack_ask]
+      engine: {service: quote, result: {annual_premium_inr: "71250", rider_premiums: {"999A007V01": "11250"}}}
+      actions: [DISCLOSURE_ACK, HUMAN_REQUEST]
+      contains: ["Riders: Accidental death benefit", "Indicative premium: ₹71,250 a year"]
+  - action: {type: DISCLOSURE_ACK, payload: {uin: "999N001V02"}}
+    expect:
+      state: HANDOFF
+      row: S3.4
+      reason: HANDOFF
+      templates: [handoff_application]
+      events: [DISCLOSURE_ACK, HANDOFF]
+      intake: true

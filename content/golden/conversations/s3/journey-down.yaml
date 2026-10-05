@@ -1,0 +1,16 @@
+id: s3-journey-down
+description: >-
+  The application journey down at the hand-off: the state stays S3, the signed intake is kept for a
+  retry (queue application) and, with P2 granted, an advisor is handed the session to complete it;
+  the next acknowledgment, the journey back, hands off.
+prelude: to-s3
+turns:
+  - text: "yes"
+    expect: {state: S3}
+  - action: {type: APPLY, payload: {uin: "999N001V02"}}
+    expect: {state: S3, templates: [selection_card, ack_ask]}
+  - action: {type: DISCLOSURE_ACK, payload: {uin: "999N001V02"}}
+    journey_down: true
+    expect: {state: S3, row: S3.STAY, templates: [journey_down, handoff], events: [DISCLOSURE_ACK, HANDOFF], intake: false}
+  - action: {type: APPLY, payload: {uin: "999N001V02"}}
+    expect: {state: HANDOFF, row: S3.4, templates: [handoff_application], intake: true}

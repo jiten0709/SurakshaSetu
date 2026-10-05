@@ -16,7 +16,7 @@ import hashlib
 import json
 import os
 import unicodedata
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -27,6 +27,7 @@ import psycopg
 import pytest
 from fastapi import FastAPI
 from harness import (
+    FIXTURE_UIN,
     ROUTES,
     Conversation,
     Event,
@@ -44,11 +45,14 @@ from qdrant_client import AsyncQdrantClient, models
 from surakshasetu.api.app import create_app
 from surakshasetu.audit.chain import AuditEvent, decrypt_payload
 from surakshasetu.config import Settings
+from surakshasetu.crypto.jcs import sha256_hex
 from surakshasetu.crypto.keys import KeyDestroyed
 from surakshasetu.domain.client import DomainError
 from surakshasetu.domain.models import ConsentRecordCreate, PurposeGrant
+from surakshasetu.graph import handlers
 from surakshasetu.graph.nodes import build_graph
 from surakshasetu.graph.runtime import Runtime
+from surakshasetu.handoff import intake
 from surakshasetu.uuid7 import uuid7
 
 pytestmark = [pytest.mark.golden, pytest.mark.asyncio]
@@ -57,6 +61,15 @@ STUBS = os.environ.get("SS_TEST_STUBS_URL", "http://127.0.0.1:8090")
 SYSTEM = UUID(int=0)
 PURPOSES = {"P1": "P1_NEEDS_RECO", "P2": "P2_ADVISOR_CONTACT", "P3": "P3_MARKETING"}
 CONV_TABLES = ("recommendation", "handoff", "slot_value", "turn", "session")
+# Step 21: the tampered registry version a turn's `registry_tamper` adds (and removes).
+TAMPERED = "9999.12.1"
+FIXTURE_SET = (
+    "DISC-GLOBAL-SOLICIT-01",
+    "DISC-GLOBAL-QUOTE-02",
+    "DISC-GLOBAL-S45-03",
+    "DISC-GLOBAL-FREELOOK-04",
+    "DISC-GLOBAL-TAX-05",
+)
 CHECKPOINT_TABLES = ("checkpoint_writes", "checkpoint_blobs", "checkpoints")
 IST = ZoneInfo("Asia/Kolkata")
 
@@ -99,6 +112,8 @@ class Play:
         self.last: tuple[int, Turn, UUID] | None = None  # the previous request, for a retry
         self.form: dict[str, Any] | None = None  # the last consent form released (Step 18)
         self.bumped: list[str] = []  # notice versions this conversation added
+        self.quick: list[dict[str, Any]] = []  # the last quick replies released (Step 21)
+        self.fixture = False  # FIXTURE_UIN was added to the catalog (Step 21)
 
     def fail(self, turn: int, message: str) -> None:
         self.failures.append(f"{self.conversation.id} turn {turn}: {message}")
@@ -134,6 +149,8 @@ class Play:
         """Apply the `given` block as superuser. True when a valid P1 exists from the start."""
         g, sets, params = self.conversation.given, [], []
         valid = False
+        if g.fixture_product:
+            self.add_fixture()
         if g.consent is not None:
             notice = await self.runtime.domain.get_current_consent_notice(self.conversation.locale)
             record = await self.runtime.domain.create_consent_record(
@@ -183,6 +200,92 @@ class Play:
             )
         return valid
 
+    def add_fixture(self) -> None:
+        """FIXTURE_UIN in the dev catalog (Step 21): a TERM plan in force since yesterday (IST),
+        launched, with the global disclosures as its set (hashed as the registry hashes) and a CIS
+        and policy wording; absent from the DUMMY rate table, so its option is RATING_UNAVAILABLE.
+        Seed rows are never touched; close() deletes these."""
+        self.fixture = True
+        since = datetime.now(IST).date() - timedelta(days=1)
+        self.db.execute(
+            "INSERT INTO catalog.product (uin, name, category, status, entry_age_min,"
+            " entry_age_max, maturity_age_max, sa_min_inr, sa_max_inr, term_years, ppt_options,"
+            " payout_options, rider_uins, effective_from, launch_enabled, is_dummy) VALUES"
+            " (%s, 'Golden Fixture Term', 'TERM', 'in_force', 18, 65, 85, 2500000, 100000000,"
+            " '[10,41)', '{regular}', '{lumpsum}', '{}', %s, true, true)",
+            (FIXTURE_UIN, since),
+        )
+        for kind in ("CIS", "POLICY_WORDING"):
+            self.db.execute(
+                "INSERT INTO catalog.product_document (uin, kind, version, language, uri, sha256,"
+                " is_dummy) VALUES (%s, %s, 'v1', 'en-IN', %s, %s, true)",
+                (
+                    FIXTURE_UIN,
+                    kind,
+                    f"golden://{FIXTURE_UIN}/{kind}",
+                    hashlib.sha256(kind.encode()).digest(),
+                ),
+            )
+        for channel in ("web", "app"):
+            for language in ("en-IN", "hi-IN"):
+                self.insert_set(FIXTURE_UIN, channel, language, "2026.09.1", list(FIXTURE_SET))
+
+    def insert_set(
+        self,
+        uin: str,
+        channel: str,
+        language: str,
+        version: str,
+        ids: list[str],
+        *,
+        bad: bool = False,
+    ) -> None:
+        hashes = dict(
+            self.db.execute(
+                "SELECT disclosure_id, encode(body_sha256, 'hex') FROM catalog.disclosure"
+                " WHERE language = %s AND disclosure_id = ANY(%s)",
+                (language, ids),
+            ).fetchall()
+        )
+        digest = (
+            bytes(32)
+            if bad
+            else bytes.fromhex(
+                sha256_hex(
+                    {
+                        "registry_version": version,
+                        "uin": uin,
+                        "channel": channel,
+                        "language": language,
+                        "items": [{"disclosure_id": i, "body_sha256": hashes[i]} for i in ids],
+                    }
+                )
+            )
+        )
+        self.db.execute(
+            "INSERT INTO catalog.disclosure_set (uin, channel, language, registry_version,"
+            " disclosure_ids, set_sha256) VALUES (%s, %s, %s, %s, %s, %s)",
+            (uin, channel, language, version, ids, digest),
+        )
+
+    def tamper(self, uin: str) -> None:
+        """A newer set for the conversation's channel and language whose stored hash is wrong:
+        the registry refuses to serve it (REGISTRY_INTEGRITY)."""
+        c = self.conversation
+        ids = self.one(
+            "SELECT disclosure_ids FROM catalog.disclosure_set WHERE uin = %s AND channel = %s"
+            " AND language = %s ORDER BY registry_version DESC LIMIT 1",
+            uin,
+            c.channel,
+            c.locale,
+        )
+        self.insert_set(uin, c.channel, c.locale, TAMPERED, list(ids), bad=True)
+
+    def untamper(self) -> None:
+        self.db.execute(
+            "DELETE FROM catalog.disclosure_set WHERE registry_version = %s", (TAMPERED,)
+        )
+
     # --- turns -------------------------------------------------------------------------------
     def headers(self, key: UUID) -> dict[str, str]:
         return {"Authorization": f"Bearer {self.token}", "Idempotency-Key": str(key)}
@@ -197,6 +300,8 @@ class Play:
         sent = Sent(index, response.status_code, response.content, customer_text=turn.text)
         if (released := sent.released) is not None and released["message"].get("form"):
             self.form = released["message"]["form"]
+        if released is not None:
+            self.quick = released["message"]["quick_replies"]
         return sent
 
     def action(self, turn: Turn) -> dict[str, Any]:
@@ -206,6 +311,17 @@ class Play:
         if action["type"] == "CONSENT_SUBMIT" and self.form is not None:
             shown = {k: self.form[k] for k in ("notice_version", "notice_sha256")}
             action["payload"] = shown | action["payload"]
+        if action["type"] == "DISCLOSURE_ACK":  # Step 21: as the client sends the ack it was shown
+            offered = next(
+                (
+                    q["action"]["payload"]
+                    for q in self.quick
+                    if q["action"]["type"] == "DISCLOSURE_ACK"
+                    and q["action"]["payload"]["uin"] == action["payload"].get("uin")
+                ),
+                {},
+            )
+            action["payload"] = offered | action["payload"]
         return action
 
     def bump_notice(self) -> None:
@@ -226,6 +342,17 @@ class Play:
             await self.kill_switch(index, turn)
         if turn.notice_bump:
             self.bump_notice()
+        if turn.registry_tamper is not None:
+            self.tamper(turn.registry_tamper)
+        if turn.journey_down:
+            failed = await self.stubs.post(
+                "/journey/__fail", json={"session_id": str(self.session_id), "status": 503}
+            )
+            failed.raise_for_status()
+        clock = handlers.now
+        if turn.days_later:
+            ahead = timedelta(days=turn.days_later)
+            handlers.now = lambda: datetime.now(UTC) + ahead  # type: ignore[assignment]
         before = len(t.sent)
         for route in ROUTES:
             if replies := turn.replies(route):
@@ -263,6 +390,11 @@ class Play:
                 self.last = (len(t.sent) - 1, turn, key)
         finally:
             self.runtime.graph = graph
+            handlers.now = clock  # type: ignore[assignment]
+            if turn.registry_tamper is not None:
+                self.untamper()
+        if turn.expect.intake is not None:
+            await self.check_intake(index, turn.expect.intake, t)
         if turn.expect.hydrated and "checkpoint lags conv" not in self.logs_since(logged):
             self.fail(index, "expected the session to be hydrated from conv")
         counters = self.one(
@@ -281,6 +413,23 @@ class Play:
         for sent in t.sent[before:]:
             sent.counters, sent.slot_rows, sent.slots = counters, slot_rows, slots
         self.snapshot(t)
+
+    async def check_intake(self, index: int, want: bool, t: Transcript) -> None:
+        """The stub journey verified a signed intake for this session (Step 21), and it is the one
+        the orchestrator's HANDOFF recorded (checked again in expectations, from the audit)."""
+        found = await self.stubs.get(f"/journey/__intake/{self.session_id}")
+        got = found.status_code == 200
+        if got != want:
+            self.fail(index, f"journey intake received: {got}, want {want}")
+            return
+        if got:
+            signed = found.json()["payload"]
+            public = intake.public_key_b64(
+                intake.signing_key(self.settings.intake_signing_key_b64.get_secret_value())
+            )
+            if not intake.verify(signed, public) or signed["session_id"] != str(self.session_id):
+                self.fail(index, "the journey's intake does not verify for this session")
+            t.intakes.append(signed)
 
     async def kill_switch(self, index: int, turn: Turn) -> None:
         switch = turn.kill_switch
@@ -400,7 +549,11 @@ class Play:
                 continue  # not held: the check reports it
             t.notices[version] = (notice.body, notice.body_sha256)
         for language in ("en-IN", "hi-IN"):
-            for disclosure_id in ("DISC-GLOBAL-AI-06", "DISC-GLOBAL-QUOTE-02"):
+            for disclosure_id in (
+                "DISC-GLOBAL-AI-06",
+                "DISC-GLOBAL-QUOTE-02",
+                "DISC-GLOBAL-TAX-05",
+            ):
                 found = await self.runtime.domain.get_disclosure(disclosure_id, language)
                 t.registry_bodies.add(found.body)
 
@@ -441,7 +594,12 @@ class Play:
                     ),
                     limit=len(chunk_ids) * 4,
                 )
-                found |= {p.payload["chunk_id"]: p.payload["text"] for p in points if p.payload}
+                # the text, and (Step 21) the citation label a rendered [Source: ...] shows
+                found |= {
+                    p.payload["chunk_id"]: f"{p.payload['text']} {p.payload['citation_label']}"
+                    for p in points
+                    if p.payload
+                }
         finally:
             await qdrant.close()
         return found
@@ -501,6 +659,17 @@ class Play:
             if expect.erased is not None:
                 self.expect_erased(s.turn, expect.erased)
             self.expect_step19(s, expect, released, events)
+            if expect.actions is not None:
+                got = [q["action"]["type"] for q in released["message"]["quick_replies"]]
+                if got != expect.actions:
+                    self.fail(s.turn, f"quick replies {got}, want {expect.actions}")
+            if expect.intake:
+                sent = [
+                    e.payload["intake"] for e in events
+                    if e.event_type == "HANDOFF" and e.payload and "intake_ref" in e.payload
+                ]  # fmt: skip
+                if sent != t.intakes[-1:]:
+                    self.fail(s.turn, "the HANDOFF intake is not the one the journey verified")
 
     def expect_step19(
         self, s: Sent, expect: Any, released: dict[str, Any], events: list[Event]
@@ -600,6 +769,8 @@ class Play:
                     "DELETE FROM consent.notice_version WHERE notice_version = ANY(%s)",
                     (self.bumped,),
                 )
+            if self.session_id is not None:
+                await self.stubs.delete(f"/journey/__intake/{self.session_id}")
             if self.switches:
                 self.db.execute("DELETE FROM conv.kill_switch WHERE id = ANY(%s)", (self.switches,))
                 self.db.execute(
@@ -607,6 +778,12 @@ class Play:
                     (SYSTEM, self.system_seq),
                 )
         finally:
+            # Step 21: whatever failed above, no tampered set or fixture product outlives the
+            # conversation (a fixture left behind would be ranked for every later session).
+            self.untamper()
+            if self.fixture:
+                for table in ("product_document", "disclosure_set", "product"):
+                    self.db.execute(f"DELETE FROM catalog.{table} WHERE uin = %s", (FIXTURE_UIN,))  # noqa: S608
             await self.api.aclose()
             await self.stubs.aclose()
             self.db.close()

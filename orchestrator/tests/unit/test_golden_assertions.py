@@ -25,7 +25,7 @@ from harness import (  # noqa: E402
 
 from surakshasetu.crypto.jcs import sha256_hex  # noqa: E402
 
-PINS = {"prompt_bundle": "pb-2026.10.4", "rules": "2026.09.1"}
+PINS = {"prompt_bundle": "pb-2026.10.5", "rules": "2026.09.1"}
 
 
 def body(text: str = "Hi", state: str = "S0", turn_id: str = "t1", **message: Any) -> bytes:
@@ -84,7 +84,7 @@ def transcript(*turns: dict[str, Any], **update: Any) -> Transcript:
     raw = body()
     t = Transcript(
         conversation=conversation,
-        active_bundle="pb-2026.10.4",
+        active_bundle="pb-2026.10.5",
         consent_valid_from_start=False,
         initial_pins=PINS,
         sent=[Sent(0, 200, raw, customer_text="hello")],
@@ -379,6 +379,70 @@ def test_released_numbers_come_from_engine_values_or_cited_evidence() -> None:
     assert check(transcript(sent=[Sent(0, 200, templated)], events=events(templated))) == []
 
 
+def test_an_engine_amount_may_read_as_a_filled_placeholder_and_s3_template_parts_are_fixed() -> (
+    None
+):
+    """Step 21: why_it_fits carries ₹1,06,875 where the engine's JSON says 106875; the composer's
+    own parts (cards, comparison, sources) are filled from the engines and the catalog."""
+    parts = [{"id": "why_it_fits", "text": "about ₹1,06,875 a year [Source: PW §3]"}]
+    raw = body(parts=parts)
+    t = transcript(sent=[Sent(0, 200, raw)], events=events(raw))
+    t.events.insert(1, Event(9, "ENGINE_DECISION", {"service": "quote"}, PINS, {"p": "106875"}))
+    t.consent_valid_from_start, t.chain_checked = True, 4
+    assert any("['3']" in f for f in check(t))  # the label's number needs its evidence
+    t.evidence = {"product:x:3:abc": "DUMMY: the exclusions. PW §3"}
+    assert check(t) == []
+    t.events[1] = Event(9, "ENGINE_DECISION", {"service": "quote"}, PINS, {"p": "106874"})
+    assert any("1,06,875" in f for f in check(t))
+    fixed = [
+        {"id": "option_card:999N001V02", "text": "Cover: ₹3,75,00,000 for 26 years"},
+        {"id": "comparison", "text": "| Entry age (years) | 18–65 |"},
+        {"id": "sources", "text": "Policy Wording, version v2, effective 1 Sep 2026"},
+    ]
+    raw = body(parts=fixed)
+    assert check(transcript(sent=[Sent(0, 200, raw)], events=events(raw))) == []
+
+
+def handed_off(*, ack: str | None = "s" * 64, valid_until: str = "2099-01-01") -> Transcript:
+    """A transcript whose last turn hands off: the quote, the acknowledgment, the intake, S3.4."""
+    t = transcript(registry={"999N001V02": "s" * 64})
+    planted = [
+        Event(10, "ENGINE_DECISION", {"service": "quote"}, PINS,
+              {"result": {"quote_id": "Q-1", "valid_until": valid_until}}),
+        *([Event(11, "DISCLOSURE_ACK", {"uin": "999N001V02", "set_sha256": ack}, PINS)]
+          if ack else []),
+        Event(12, "HANDOFF", {"reason_code": "APPLICATION_INTAKE", "queue": "application"}, PINS,
+              {"intake": {"selected": {"uin": "999N001V02", "quote_id": "Q-1"}},
+               "intake_ref": "I"}),
+        Event(13, "STATE_TRANSITION", {"from_state": "S3", "to_state": "HANDOFF",
+                                       "trigger": "S3.4", "invariants": {}}, PINS),
+    ]  # fmt: skip
+    t.events += planted
+    return t
+
+
+def v7(t: Transcript) -> list[str]:
+    return [f for f in check(t) if f.startswith("V7")]
+
+
+def test_a_handoff_rests_on_an_ack_of_the_registry_set_and_a_valid_quote() -> None:
+    assert v7(handed_off()) == []
+    assert v7(handed_off(ack=None)) == ["V7: HANDOFF at seq 13 without an acknowledgment"]
+    assert "not of the registry set" in v7(handed_off(ack="0" * 64))[0]
+    assert "not issued or not valid" in v7(handed_off(valid_until="2020-01-01"))[0]
+    no_intake = handed_off()
+    no_intake.events = [e for e in no_intake.events if e.event_type != "HANDOFF"]
+    assert v7(no_intake) == ["V7: HANDOFF at seq 13 without an intake sent"]
+    ranked = handed_off()  # an option's own quote, from the ranking decision
+    ranked.events[3] = Event(10, "ENGINE_DECISION", {"service": "ranking"}, PINS, {"result": {
+        "options": [{"quote": {"quote_id": "Q-1", "valid_until": "2099-01-01"}}]}})  # fmt: skip
+    assert v7(ranked) == []
+    stays = handed_off(ack=None)  # a turn after the hand-off stays; only the entry is checked
+    stay = {"from_state": "HANDOFF", "to_state": "HANDOFF", "trigger": "HANDOFF.STAY"}
+    stays.events.append(Event(14, "STATE_TRANSITION", stay | {"invariants": {}}, PINS))
+    assert len(v7(stays)) == 1
+
+
 # --- the conversation files -----------------------------------------------------------------------
 def test_every_conversation_file_validates_and_core_covers_the_step_17_paths() -> None:
     conversations = {c.id: c for c in load_conversations()}
@@ -466,6 +530,43 @@ def test_the_s2_suite_covers_the_step_20_paths() -> None:
     assert any("SUFFICIENCY_ELECTION" in t.expect.events for t in turns)
     for c in s2:  # reached through real S0 and S1 turns, never seeded
         assert c.prelude == "to-s2" and c.given.consent is None and c.given.state is None, c.id
+
+
+def test_the_s3_suite_and_the_scripted_conversation_cover_the_step_21_paths() -> None:
+    every = {c.id: c for c in load_conversations()}
+    scripted = every["scripted-s0-s3"]
+    assert scripted.prelude == "to-s3" and scripted.turns[-1].expect.intake
+    assert scripted.turns[-1].expect.state is not None
+    assert scripted.turns[-1].expect.state.value == "HANDOFF"
+    s3 = [c for c in every.values() if c.id.startswith("s3-")]
+    assert len(s3) >= 16
+    turns = [t for c in s3 for t in c.turns]
+    assert {"S3.1", "S3.2", "S3.3", "S3.3b", "S3.4", "PAUSE.R", "CC5"} <= {
+        t.expect.row for t in turns
+    }
+    templates = {i for t in turns for i in (t.expect.templates or [])}
+    assert {
+        "alternatives",
+        "gap_choice",
+        "rerank_note",
+        "requote_note",
+        "which_one",
+        "not_recommended",
+        "ack_mismatch",
+        "journey_down",
+        "apply_needs_premium",
+        "release_blocked",
+        "s3_summary",
+        "rediscovery",
+        "decline_first",
+        "declined_exit",
+    } <= templates
+    parts = {i for t in turns for i in (t.expect.parts or [])}
+    assert {"template:exclusion_note", "template:tax_condition", "registry:DISC-GLOBAL-TAX-05",
+            "template:guarantee_note"} <= parts  # fmt: skip
+    assert any(t.registry_tamper for t in turns) and any(t.journey_down for t in turns)
+    assert any(t.days_later for t in turns) and any(c.given.fixture_product for c in s3)
+    assert any(t.kill_switch and t.kill_switch.kind == "product" for t in turns)
 
 
 @pytest.mark.parametrize(

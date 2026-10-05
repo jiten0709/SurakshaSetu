@@ -1,0 +1,29 @@
+id: s3-cheaper
+description: >-
+  "Make it cheaper": the engine's alternatives for the top option (lower cover -25% and -50%, each
+  rider dropped, none, other premium-paying options), each with its protection gap; the customer
+  picks the first, which is re-quoted for exactly that choice and its gap recorded as theirs.
+prelude: to-s3
+turns:
+  - text: "yes"
+    expect: {state: S3, row: S2.2, disclosures: ["999N001V02", "999N002V01"]}
+  - text: can you make it cheaper
+    script: {nlu-extract: [{intents: [OBJECTION_PRICE]}]}
+    expect:
+      state: S3
+      row: CC5
+      templates: [alternatives]
+      engine: {service: alternatives}
+      contains:
+        - "Here are lower-cost versions of Suraksha Term Shield (999N001V02)"
+        - "1. Lower cover: cover ₹2,80,00,000"
+        - "Protection gap: ₹95,00,000."
+        - "2. Lower cover: cover ₹1,85,00,000"
+        - "Protection gap: ₹1,90,00,000."
+        - "Fewer riders: cover ₹3,75,00,000"
+  - action: {type: APPLY, payload: {uin: "999N001V02", sum_assured_inr: "28000000", term_years: 26, ppt: regular, rider_uins: ["999A007V01", "999A008V01", "999A009V01"]}}
+    expect:
+      state: S3
+      templates: [selection_card, gap_choice, ack_ask]
+      engine: {service: quote, result: {sum_assured_inr: "28000000"}}
+      contains: ["Protection gap against your recommended cover: ₹95,00,000", "The protection gap is your choice"]

@@ -1,0 +1,16 @@
+id: s3-rating-unavailable
+description: >-
+  A third plan the rating engine cannot rate (the golden fixture product, absent from the DUMMY rate
+  table): ranked with RATING_UNAVAILABLE and shown without a premium, with its own disclosure set.
+given: {fixture_product: true}
+prelude: to-s3
+turns:
+  - text: "yes"
+    expect:
+      state: S3
+      row: S2.2
+      disclosures: ["999N001V02", "999N002V01", "999N097V01"]
+      contains:
+        - "Golden Fixture Term (999N097V01)"
+        - "Premium not shown: it is worked out during application and underwriting."
+        - "Indicative premium: ₹1,06,875 a year"

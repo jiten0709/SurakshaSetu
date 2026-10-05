@@ -231,6 +231,10 @@ services:
     build: ../tools/stubs
     profiles: [core]
     ports: ["127.0.0.1:8090:8090"]
+    environment:
+      # Step 21: the stub application journey verifies the hand-off intake with the orchestrator's
+      # public key (the dev default is the public half of SS_INTAKE_SIGNING_KEY_B64's default).
+      INTAKE_PUBLIC_KEY_B64: ${INTAKE_PUBLIC_KEY_B64:-Cs0xZpIyN1r+Rjn/+6T9QX2+w26nb4rVbZKwy0wWPKo=}
     healthcheck:
       <<: *healthcheck
       test:

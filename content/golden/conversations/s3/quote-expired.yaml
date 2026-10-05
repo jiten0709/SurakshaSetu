@@ -1,0 +1,18 @@
+id: s3-quote-expired
+description: >-
+  The customer returns after the indicative quotes expired (the orchestrator's clock 31 days on):
+  each option's quote is priced again with its own values (POST /v1/quotes, not a new ranking) and
+  the recommendation is presented again with its disclosure sets.
+prelude: to-s3
+turns:
+  - text: "yes"
+    expect: {state: S3}
+  - action: {type: CONTINUE}
+    days_later: 31
+    expect:
+      state: S3
+      row: S3.STAY
+      templates: [requote_note]
+      engine: {service: quote}
+      disclosures: ["999N001V02", "999N002V01"]
+      contains: ["Indicative premium: ₹1,06,875 a year"]

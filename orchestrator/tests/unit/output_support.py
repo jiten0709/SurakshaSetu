@@ -12,16 +12,14 @@ from uuid import UUID
 
 import httpx
 import pytest
-import yaml
 from compose_support import ROP, TERM, bundle, chunk, needs, option, product, ranking, suitability
+from runtime_support import seed_set
 
 from surakshasetu.compose.citations import EngineFact, TurnHandles, issue
 from surakshasetu.compose.composer import Rendered, compose
 from surakshasetu.config import Settings
-from surakshasetu.crypto.jcs import sha256_hex
-from surakshasetu.domain.models import DisclosureItem, DisclosureSet
+from surakshasetu.domain.models import DisclosureSet
 from surakshasetu.gateway import Gateway, Route
-from surakshasetu.kb.payload import content_sha256
 from surakshasetu.rails import output
 from surakshasetu.rails.output import LexiconPack, Numbers, OutputContext, load_pack
 from surakshasetu.retrieval.service import EvidenceChunk
@@ -96,7 +94,7 @@ def ctx(**update: Any) -> OutputContext:
         turn_id=TURN,
         subject_ref=SUBJECT,
         fsm_state="S3",
-        pins={"prompt_bundle": "pb-2026.10.4"},
+        pins={"prompt_bundle": "pb-2026.10.5"},
         key_ref="key-ref",
         locale="en-IN",
         route=Route.GEN_RECOMMEND,
@@ -117,33 +115,6 @@ def numbers() -> Numbers:
 
 def settings(**update: Any) -> Settings:
     return Settings(_env_file=None, gateway_base_url="http://gateway.test/v1", **update)
-
-
-def seed_set(uin: str = TERM, language: str = "en-IN", channel: str = "web") -> DisclosureSet:
-    """The seed registry set, with bodies and hashes as the registry computes them."""
-    seed = yaml.safe_load(SEED.read_text(encoding="utf-8"))
-    bodies = {d["disclosure_id"]: d["bodies"][language] for d in seed["disclosures"]}
-    row = next(s for s in seed["disclosure_sets"] if s["uin"] == uin)
-    items = [
-        DisclosureItem(disclosure_id=i, body=bodies[i], body_sha256=content_sha256(bodies[i]))
-        for i in row["disclosure_ids"]
-    ]
-    payload = {
-        "registry_version": row["registry_version"],
-        "uin": uin,
-        "channel": channel,
-        "language": language,
-        "items": [{"disclosure_id": i.disclosure_id, "body_sha256": i.body_sha256} for i in items],
-    }
-    return DisclosureSet(
-        uin=uin,
-        channel=channel,
-        language=language,
-        registry_version=row["registry_version"],
-        items=items,
-        set_sha256=sha256_hex(payload),
-        is_dummy=True,
-    )
 
 
 def render_s3(

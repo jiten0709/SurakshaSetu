@@ -52,5 +52,5 @@ turns:
       row: S2.2
       reason: SUITABLE
       templates: [needs_done]
-      absent: [ENGINE_DECISION]
+      engine: {service: ranking}  # Step 21: S3's enter ranks; S2 decides nothing new
       slots: {goals: confirmed, annual_income_inr: confirmed, income_type: confirmed, dependants: confirmed, liabilities: confirmed, existing_cover_inr: confirmed, employer_cover_inr: confirmed, existing_annual_premium_inr: confirmed, earmarked_assets_inr: confirmed, premium_budget_inr_pa: confirmed}

@@ -89,9 +89,12 @@ def compose(
         filled, placeholders = fill(narrative, ranking, suitability)
         cited = render(filled, handles)
     try:
-        parts = [("needs_recap", _needs_recap(rec, labels, needs, suitability, partial_profile))]
+        parts = [("needs_recap", _needs_recap(rec, labels, needs, suitability))]
         parts += [
-            (f"option_card:{o.uin}", _card(rec, labels, o, products[o.uin], shown[o.uin]))
+            (
+                f"option_card:{o.uin}",
+                _card(rec, labels, o, products[o.uin], shown[o.uin], partial_profile),
+            )
             for o in options
         ]
         if len(options) > 1:
@@ -132,14 +135,10 @@ def compose(
 
 
 def _needs_recap(
-    rec: Recommendation,
-    labels: Labels,
-    needs: NeedsPayload,
-    suitability: SuitabilityResult,
-    partial_profile: bool,
+    rec: Recommendation, labels: Labels, needs: NeedsPayload, suitability: SuitabilityResult
 ) -> str:
     a = suitability.assumptions
-    recap = rec.needs_recap.format(
+    return rec.needs_recap.format(
         goals=", ".join(labels.goals[g] for g in needs.goals) or labels.none,
         need=format_inr(suitability.need_inr),
         cover=format_inr(suitability.recommended_cover_inr),
@@ -150,7 +149,6 @@ def _needs_recap(
         growth=_percent(a.income_growth),
         discount=_percent(a.discount_rate),
     )
-    return f"{recap}\n{rec.partial_profile}" if partial_profile else recap
 
 
 def _card(
@@ -159,7 +157,10 @@ def _card(
     option: RecommendedOption,
     product: Product,
     documents: list[ProductDocument],
+    partial_profile: bool,
 ) -> str:
+    """One option, every value from the ranker, its quote and the catalog. After an election below
+    the sufficiency threshold, every card says it rests on a partial profile (Step 21)."""
     quote = option.quote
     if quote is None:
         premium = rec.premium_withheld
@@ -170,7 +171,7 @@ def _card(
             valid_until=format_date(quote.valid_until),
         )
     riders = {r.uin: r.name for r in product.riders}
-    return rec.option_card.format(
+    card = rec.option_card.format(
         rank=option.rank,
         name=product.name,
         uin=option.uin,
@@ -185,6 +186,7 @@ def _card(
             for d in documents
         ),
     )
+    return f"{card}\n{rec.partial_profile}" if partial_profile else card
 
 
 def _comparison(rec: Recommendation, labels: Labels, products: list[Product]) -> str:

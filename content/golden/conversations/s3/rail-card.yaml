@@ -1,0 +1,17 @@
+id: s3-rail-card
+description: >-
+  gen-recommend writes a number no engine value or evidence supports, twice: the output rails ask
+  for one regeneration with the error list, then fall back to the deterministic card; the options,
+  numbers and disclosures still come from the engines and the registry.
+prelude: to-s3
+turns:
+  - text: "yes"
+    script:
+      gen-recommend:
+        - "Both options cost about 5000 a year less than most plans [R1]."
+        - "Both options cost about 5000 a year less than most plans [R1]."
+    expect:
+      state: S3
+      disclosures: ["999N001V02", "999N002V01"]
+      contains: ["These options and amounts come from our rules and rating engine."]
+      lacks: ["5000"]

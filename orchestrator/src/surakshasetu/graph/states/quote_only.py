@@ -27,7 +27,7 @@ from langgraph.runtime import Runtime
 
 from surakshasetu.analysis.models import Intent
 from surakshasetu.audit.events import EngineDecisionHeader, EventType
-from surakshasetu.compose.bundle import mentions
+from surakshasetu.compose.bundle import Scripts, mentions
 from surakshasetu.compose.placeholders import format_inr
 from surakshasetu.domain.client import DomainError
 from surakshasetu.domain.models import Pins, Problem, Product, QuoteRequest
@@ -238,25 +238,14 @@ def _bounds(screen: Screen, product: Product, problem: Problem) -> None:
     quote takes the defaults unless the customer states another. An entry age outside the band is
     not re-asked: another plan is."""
     texts = scripts(screen.turn)
-    sc = texts.screening
     field, low, high = problem.field, problem.allowed_min, problem.allowed_max
     logger.info("quote out of bounds on %s", field)
-    if field == "sum_assured_inr" and low is not None:
-        span = (
-            sc.range.format(min=format_inr(low), max=format_inr(high))
-            if high is not None
-            else texts.labels.or_more.format(amount=format_inr(low))
-        )
-        step = format_inr(problem.allowed_step) if problem.allowed_step else format_inr(low)
-        part = ("cover_bounds", texts.cover_bounds.format(plan=product.name, range=span, step=step))
-    elif field == "term_years" and low is not None and high is not None:
-        span = sc.range.format(min=int(float(low)), max=int(float(high)))
-        part = ("term_bounds", texts.term_bounds.format(plan=product.name, range=span))
-    elif field == "age_years" and low is not None and high is not None:
-        span = sc.range.format(min=int(float(low)), max=int(float(high)))
+    part = bounds_part(texts, product.name, problem)
+    if part is None and field == "age_years" and low is not None and high is not None:
+        span = texts.screening.range.format(min=int(float(low)), max=int(float(high)))
         _unavailable(screen, ("age_bounds", texts.age_bounds.format(plan=product.name, range=span)))
         return
-    else:  # a member the customer never set (PPT, riders): the plan cannot be priced here
+    if part is None:  # a member the customer never set (PPT, riders): the plan can't be priced here
         _unavailable(screen, ("plan_unavailable", texts.plan_unavailable.format(plan=product.name)))
         return
     if field in screen.known:
@@ -265,6 +254,24 @@ def _bounds(screen: Screen, product: Product, problem: Problem) -> None:
     screen.session.last_prompt_id = f"qo.ask:{field}"  # the answer is read like any question's
     screen.turn.phrase = None
     screen.reply([part], [])
+
+
+def bounds_part(texts: Scripts, plan: str, problem: Problem) -> tuple[str, str] | None:
+    """A refused cover or term, with the problem's own bounds (also S3's customer re-quote, Step
+    21); None for any other member."""
+    field, low, high = problem.field, problem.allowed_min, problem.allowed_max
+    if field == "sum_assured_inr" and low is not None:
+        span = (
+            texts.screening.range.format(min=format_inr(low), max=format_inr(high))
+            if high is not None
+            else texts.labels.or_more.format(amount=format_inr(low))
+        )
+        step = format_inr(problem.allowed_step) if problem.allowed_step else format_inr(low)
+        return "cover_bounds", texts.cover_bounds.format(plan=plan, range=span, step=step)
+    if field == "term_years" and low is not None and high is not None:
+        span = texts.screening.range.format(min=int(float(low)), max=int(float(high)))
+        return "term_bounds", texts.term_bounds.format(plan=plan, range=span)
+    return None
 
 
 def _unavailable(screen: Screen, part: tuple[str, str]) -> None:

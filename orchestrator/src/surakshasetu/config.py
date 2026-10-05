@@ -30,6 +30,8 @@ REQUIRED_OUTSIDE_DEV = (
     "tei_embed_url",
     "tei_rerank_url",
     "qdrant_url",
+    "intake_signing_key_b64",
+    "journey_url",
 )
 
 
@@ -112,7 +114,7 @@ class Settings(BaseSettings):
     # session TTL (TDD §4.4, D7 open); the single-writer lock and idempotency TTLs (TDD §7.2); turn
     # rate limits per subject as {window seconds: max turns}; the side-query stack depth (TDD §2.6);
     # injection hits before HE_INJECTION (TDD §3.9); the app_rw pool size per process.
-    prompt_bundle: str = Field(default="pb-2026.10.4", pattern=r"^pb-\d{4}\.\d{2}\.\d+$")
+    prompt_bundle: str = Field(default="pb-2026.10.5", pattern=r"^pb-\d{4}\.\d{2}\.\d+$")
     session_ttl_days: int = Field(default=30, ge=1)
     session_lock_ttl_s: int = Field(default=30, ge=1)
     idempotency_ttl_s: int = Field(default=86_400, ge=1)
@@ -133,6 +135,11 @@ class Settings(BaseSettings):
     )
     key_retention_days: int = Field(default=397, ge=1)
     advisor_queue_open: bool = True
+    # The hand-off adapter (Step 21, TDD §7.1): the Ed25519 key that signs the intake payload (KMS
+    # in prod; the dev default is 32 public bytes, whose public key the stub journey holds), and the
+    # application journey's intake endpoint (locally the stubs' receiver).
+    intake_signing_key_b64: SecretStr = SecretStr("c3VyYWtzaGFzZXR1LWRldi1pbnRha2Utc2lnbmluZyE=")
+    journey_url: str = "http://127.0.0.1:8090/journey/intake"
 
     @model_validator(mode="after")
     def _require_dependencies_outside_dev(self) -> Self:

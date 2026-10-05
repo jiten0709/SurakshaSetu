@@ -19,7 +19,7 @@ ID = UUID("0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b")
 
 def session(**update: Any) -> SessionState:
     pins = VersionPins(
-        prompt_bundle="pb-2026.10.4",
+        prompt_bundle="pb-2026.10.5",
         rules="2026.09.1",
         corpus={},
         consent_notice="2026.09.1-en",

@@ -34,6 +34,8 @@ def test_healthz_is_liveness_only() -> None:
         tei_embed_url="http://unreachable.invalid:8081",
         tei_rerank_url="http://unreachable.invalid:8082",
         qdrant_url="http://unreachable.invalid:6333",
+        intake_signing_key_b64=SecretStr("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="),
+        journey_url="http://unreachable.invalid/intake",
     )
     client = TestClient(create_app(settings))
 

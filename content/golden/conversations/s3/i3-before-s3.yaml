@@ -1,0 +1,26 @@
+id: s3-i3-before-s3
+description: >-
+  I3: before S3 a generated sentence that names a product is refused by the output rail (twice: the
+  question goes out alone); in S3 the engine's options are named with their disclosures.
+prelude: to-s2
+turns:
+  - text: income protection and loan cover
+    script:
+      gen-converse:
+        - "Suraksha Term Shield could be a good fit for you."
+        - "Suraksha Term Shield could be a good fit for you."
+    expect: {state: S2, templates: [RL-S2-INCOME], lacks: ["Suraksha"]}
+  - text: just tell me the best plan
+    expect: {templates: [short_path_offer]}
+  - text: "yes"
+    expect: {templates: [RL-S2-INCOME]}
+  - text: 12 lpa
+    expect: {templates: [readback]}
+  - text: "yes"
+    expect: {templates: [RL-S2-DEPENDANTS]}
+  - text: my daughter is 2
+    expect: {templates: [RL-S2-LIABILITIES]}
+  - text: no loans
+    expect: {templates: [needs_summary, summary_assumed, summary_question]}
+  - text: "yes"
+    expect: {state: S3, row: S2.2, disclosures: ["999N001V02", "999N002V01"], contains: ["Suraksha Term Shield (999N001V02)"]}

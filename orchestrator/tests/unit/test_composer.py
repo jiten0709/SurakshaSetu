@@ -182,7 +182,18 @@ def test_the_needs_recap_states_the_assumptions() -> None:
         "Cover you may need: ₹1,25,00,000. Recommended cover: ₹1,00,00,000 for 30 years." in recap
     )
     assert "income growth of 6.5% a year and a discount rate of 7% a year" in recap
-    assert recap.endswith(bundle().templates["en-IN"].recommendation.partial_profile)
+
+
+def test_every_option_card_of_a_partial_profile_says_so() -> None:
+    """Step 21: the label is on each card (the S2 bridge said it once already), not the recap."""
+    label = bundle().templates["en-IN"].recommendation.partial_profile
+    partial = dict(s3(partial_profile=True, ranking=ranking(option(1, TERM), option(2, ROP))).parts)
+    full = dict(s3(ranking=ranking(option(1, TERM), option(2, ROP))).parts)
+
+    assert partial[f"option_card:{TERM}"].endswith(label)
+    assert partial[f"option_card:{ROP}"].endswith(label)
+    assert label not in partial["needs_recap"]
+    assert all(label not in text for text in full.values())
 
 
 @pytest.mark.usefixtures("restore_logging")

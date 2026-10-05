@@ -1,0 +1,18 @@
+id: s3-decline-after-rediscovery
+description: >-
+  A decline before any re-discovery stays in S3 and offers to revisit, save or an advisor; after one
+  re-discovery loop it is a graceful exit (S3.1), with the re-engagement line as P3 is granted.
+prelude: to-s3
+turns:
+  - text: "yes"
+    expect: {state: S3}
+  - text: no thanks, I don't want any of these
+    script: {nlu-extract: [{intents: [DECLINE]}]}
+    expect: {state: S3, row: S3.STAY, templates: [decline_first], actions: [REJECT_ALL, SAVE, HUMAN_REQUEST]}
+  - action: {type: REJECT_ALL}
+    expect: {state: S2, row: S3.3}
+  - text: "yes"
+    expect: {state: S3, row: S2.2}
+  - text: no thanks, I don't want any of these
+    script: {nlu-extract: [{intents: [DECLINE]}]}
+    expect: {state: EXIT, row: S3.1, templates: [declined_exit, reengage]}

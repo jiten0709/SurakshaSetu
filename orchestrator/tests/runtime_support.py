@@ -7,24 +7,28 @@ import json
 import os
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any
 from uuid import UUID
 
 import httpx
 import pytest
+import yaml
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from psycopg.rows import dict_row
 from psycopg_pool import AsyncConnectionPool, ConnectionPool
 from redis.exceptions import ConnectionError as RedisConnectionError
 
 from surakshasetu.config import Settings
-from surakshasetu.crypto.jcs import canonical_json
+from surakshasetu.crypto.jcs import canonical_json, sha256_hex
 from surakshasetu.crypto.keys import KeyService
 from surakshasetu.domain.client import DomainClient
+from surakshasetu.domain.models import DisclosureItem, DisclosureSet
 from surakshasetu.gateway import Gateway
 from surakshasetu.graph.nodes import build_graph
 from surakshasetu.graph.runtime import Runtime
 from surakshasetu.graph.state import VersionPins
+from surakshasetu.kb.payload import content_sha256
 from surakshasetu.rails.output import load_pack
 
 GATEWAY = "http://gateway.test/v1"
@@ -38,7 +42,7 @@ def settings(**update: Any) -> Settings:
 
 def pins() -> VersionPins:
     return VersionPins(
-        prompt_bundle="pb-2026.10.4",
+        prompt_bundle="pb-2026.10.5",
         rules="2026.09.1",
         corpus={},
         consent_notice=NOTICE,
@@ -62,9 +66,11 @@ class Models:
         down: tuple[str, ...] = (),
         slots: tuple[dict[str, Any], ...] = (),
         converse: tuple[str, ...] = (),
+        recommend: tuple[str, ...] = (),
     ) -> None:
         self.intents, self.side_query, self.slots = intents, side_query, slots
         self.converse = list(converse)  # gen-converse drafts, in order; then FRIENDLY
+        self.recommend = list(recommend)  # Step 21: gen-recommend drafts, in order; then CITED
         self.safety, self.injection, self.down = safety, injection, down
         self.routes: list[str] = []
 
@@ -86,12 +92,16 @@ class Models:
             answer = {"verdict": "entailed"}
         elif route == "gen-converse":  # Step 19: S1's one friendly sentence
             return completion(route, self.converse.pop(0) if self.converse else FRIENDLY)
+        elif route == "gen-recommend":  # Step 21: S3's narrative and cited answers
+            return completion(route, self.recommend.pop(0) if self.recommend else CITED)
         else:
             raise AssertionError(f"unexpected route {route}")
         return completion(route, json.dumps(answer))
 
 
 FRIENDLY = "Thanks, that helps me understand what you are looking for."
+# Step 21: a narrative citing the first option's engine fact (always issued in S3), no number.
+CITED = "This option fits the needs you confirmed [R1]."
 
 
 def completion(route: str, content: str) -> httpx.Response:
@@ -182,6 +192,23 @@ PRODUCTS = {
     SAVER: ("Suraksha Saver Guarantee", "NON_PAR_SAVINGS", 18, 55, "1000000", 15, False),
 }
 SIMPLE = {"self", "spouse", "child", "parent"}
+# Step 21: the seed riders (name, DUMMY rate per 1,000) and the products they attach to.
+RIDERS = {
+    "999A007V01": ("Accidental death benefit", 0.30),
+    "999A008V01": ("Waiver of premium", 0.15),
+    "999A009V01": ("Critical illness", 0.80),
+}
+PRODUCT_RIDERS = {TERM: ["999A007V01", "999A008V01", "999A009V01"], ROP: ["999A007V01"]}
+
+
+def document_json(uin: str, kind: str) -> dict[str, Any]:
+    return {
+        "kind": kind,
+        "version": "v2",
+        "language": "en-IN",
+        "uri": f"content/seed/kb/product/{uin}-{kind.lower()}-v2.md",
+        "sha256": hashlib.sha256(f"{uin}:{kind}:v2".encode()).hexdigest(),
+    }
 
 
 def problem(status: int, code: str, **extra: Any) -> httpx.Response:
@@ -205,13 +232,22 @@ def product_json(uin: str) -> dict[str, Any]:
         "term_years_max": 40,
         "ppt_options": ["regular"],
         "benefit_payment_options": ["lumpsum"],
-        "rider_uins": [],
+        "rider_uins": PRODUCT_RIDERS.get(uin, []),
         "effective_from": "2026-09-01",
         "effective_to": None,
         "launch_enabled": launched,
         "is_dummy": True,
-        "riders": [],
-        "documents": [],
+        "riders": [
+            {
+                "uin": r,
+                "name": RIDERS[r][0],
+                "attaches_to": [TERM, ROP],
+                "sa_max_inr": None,
+                "is_dummy": True,
+            }
+            for r in PRODUCT_RIDERS.get(uin, [])
+        ],
+        "documents": [document_json(uin, kind) for kind in ("CIS", "POLICY_WORDING")],
         "quote_defaults": {
             "sum_assured_inr": cover,
             "term_years": term,
@@ -276,26 +312,32 @@ def quote_json(body: dict[str, Any]) -> httpx.Response:
     if not 2_500_000 <= cover <= 100_000_000 or cover % 500_000:
         bounds = {"allowed_min": "2500000", "allowed_max": "100000000", "allowed_step": "500000"}
         return problem(422, "QUOTE_OUT_OF_BOUNDS", field="sum_assured_inr", **bounds)
-    return httpx.Response(
-        200,
-        json={
-            "decision_id": "0199a1b2-0000-7000-8000-0000000004a0",
-            "quote_id": "Q-2026-10-04-0001",
-            "uin": uin,
-            "sum_assured_inr": str(cover),
-            "term_years": body["term_years"],
-            "ppt": body["ppt"],
-            "annual_premium_inr": f"{cover * 16 // 10_000}.00",
-            "frequency": body["frequency"],
-            "valid_until": "2026-11-03",
-            "indicative": True,
-            "rider_premiums": {},
-            "gst_included": True,
-            "rating_version": "rating-dummy-2026.09.1",
-            "inputs_sha256": hashlib.sha256(json.dumps(body).encode()).hexdigest(),
-            "reason_codes": [],
-        },
-    )
+    return httpx.Response(200, json=priced(body))
+
+
+def priced(body: dict[str, Any], valid_until: str = "2026-11-03") -> dict[str, Any]:
+    """The quote for a request the adapter accepted: ₹16 per ₹10,000 of cover, plus each rider at
+    its DUMMY rate per ₹1,000 (Step 21)."""
+    cover = int(float(body["sum_assured_inr"]))
+    riders = {r: f"{round(cover / 1000 * RIDERS[r][1])}" for r in body.get("rider_uins", [])}
+    base = cover * 16 // 10_000
+    return {
+        "decision_id": "0199a1b2-0000-7000-8000-0000000004a0",
+        "quote_id": f"Q-2026-10-04-{abs(hash(json.dumps(body, sort_keys=True))) % 10_000:04d}",
+        "uin": body["uin"],
+        "sum_assured_inr": str(cover),
+        "term_years": body["term_years"],
+        "ppt": body["ppt"],
+        "annual_premium_inr": f"{base + sum(int(v) for v in riders.values())}",
+        "frequency": body["frequency"],
+        "valid_until": valid_until,
+        "indicative": True,
+        "rider_premiums": riders,
+        "gst_included": True,
+        "rating_version": "rating-dummy-2026.09.1",
+        "inputs_sha256": hashlib.sha256(json.dumps(body).encode()).hexdigest(),
+        "reason_codes": [],
+    }
 
 
 # --- Step 20: a stand-in for the Suitability Service behind S2 ------------------------------------
@@ -357,8 +399,135 @@ def suitability_json(body: dict[str, Any], **result: Any) -> dict[str, Any]:
     } | result
 
 
+# --- Step 21: the ranker, alternatives and the registry behind S3 ---------------------------------
+# An imitation of the ranker over the seed products (the probe's DUMMY shape: the term plan at the
+# recommended cover with its rule-fit riders, the ROP plan capped at ₹2 crore), the quote adapter's
+# alternatives, and the seed registry sets with the bodies and hashes the registry computes.
+SEED_DISCLOSURES = Path(__file__).resolve().parents[2] / "content" / "seed" / "catalog"
+COVER = {TERM: "37500000", ROP: "20000000"}
+
+
+def ranking_json(body: dict[str, Any]) -> dict[str, Any]:
+    suitability = body["suitability"]
+    excluded = set(body["excluded_uins"])
+    withheld = body["tobacco_12m"] is None or "PREMIUM_WITHHELD" in body["flags"]
+    candidates = [
+        u for u in body["eligible_uins"]
+        if u not in excluded and PRODUCTS[u][1] in suitability["fit_types"] and PRODUCTS[u][6]
+    ]  # fmt: skip
+    options = []
+    for rank, uin in enumerate(candidates[:3], start=1):
+        cover = COVER.get(uin, "10000000")
+        riders = PRODUCT_RIDERS.get(uin, [])
+        request = {
+            "uin": uin,
+            "sum_assured_inr": cover,
+            "term_years": suitability["term_years"],
+            "ppt": "regular",
+            "rider_uins": riders,
+            "frequency": "annual",
+        }
+        gap = max(int(float(suitability["recommended_cover_inr"])) - int(cover), 0)
+        options.append(
+            {
+                "rank": rank,
+                "uin": uin,
+                "sum_assured_inr": cover,
+                "term_years": suitability["term_years"],
+                "ppt_years": suitability["term_years"],
+                "rider_uins": riders,
+                "quote": None if withheld else priced(request, "2026-11-04"),
+                "reason_codes": [f"RANK-FIT-{PRODUCTS[uin][1]}"]
+                + (["RANK-SA-CAPPED"] if gap else [])
+                + (["PREMIUM_WITHHELD"] if withheld else []),
+                "protection_gap_inr": str(gap),
+            }
+        )
+    return {
+        "decision_id": "0199a1b2-0000-7000-8000-0000000000a1",
+        "options": options,
+        "ranker_version": "ranker-2026.09.1",
+        "suitability_inputs_sha256": suitability["inputs_sha256"],
+        "inputs_sha256": hashlib.sha256(canonical_json(body)).hexdigest(),
+        "reason_codes": [] if options else ["NO_ELIGIBLE_OPTION"],
+    }
+
+
+def alternatives_json(body: dict[str, Any]) -> list[dict[str, Any]]:
+    """LOWER_COVER -25%/-50% and each rider dropped, as the adapter offers them."""
+    cover = int(float(body["sum_assured_inr"]))
+    recommended = int(float(body["recommended_cover_inr"]))
+    variants = [
+        ("LOWER_COVER", {**body, "sum_assured_inr": str(cover * 3 // 4)}),
+        ("LOWER_COVER", {**body, "sum_assured_inr": str(cover // 2)}),
+        *(
+            ("FEWER_RIDERS", {**body, "rider_uins": [r for r in body["rider_uins"] if r != drop]})
+            for drop in body["rider_uins"]
+        ),
+    ]
+    return [
+        {
+            "quote": priced(request, "2026-11-04"),
+            "protection_gap_inr": str(max(recommended - int(request["sum_assured_inr"]), 0)),
+            "change": change,
+        }
+        for change, request in variants
+    ]
+
+
+def seed_set(uin: str = TERM, language: str = "en-IN", channel: str = "web") -> DisclosureSet:
+    """The seed registry set, with bodies and hashes as the registry computes them."""
+    seed = yaml.safe_load((SEED_DISCLOSURES / "disclosures.yaml").read_text(encoding="utf-8"))
+    bodies = {d["disclosure_id"]: d["bodies"][language] for d in seed["disclosures"]}
+    row = next(s for s in seed["disclosure_sets"] if s["uin"] == uin)
+    items = [
+        DisclosureItem(disclosure_id=i, body=bodies[i], body_sha256=content_sha256(bodies[i]))
+        for i in row["disclosure_ids"]
+    ]
+    payload = {
+        "registry_version": row["registry_version"],
+        "uin": uin,
+        "channel": channel,
+        "language": language,
+        "items": [{"disclosure_id": i.disclosure_id, "body_sha256": i.body_sha256} for i in items],
+    }
+    return DisclosureSet(
+        uin=uin,
+        channel=channel,
+        language=language,
+        registry_version=row["registry_version"],
+        items=items,
+        set_sha256=sha256_hex(payload),
+        is_dummy=True,
+    )
+
+
+def disclosure_json(disclosure_id: str, language: str) -> dict[str, Any]:
+    seed = yaml.safe_load((SEED_DISCLOSURES / "disclosures.yaml").read_text(encoding="utf-8"))
+    body = next(d for d in seed["disclosures"] if d["disclosure_id"] == disclosure_id)["bodies"][
+        language
+    ]
+    return {
+        "disclosure_id": disclosure_id,
+        "language": language,
+        "body": body,
+        "body_sha256": content_sha256(body),
+        "is_dummy": True,
+    }
+
+
 def screening_handler(request: httpx.Request) -> httpx.Response:
     path, params = request.url.path, request.url.params
+    if path == "/v1/ranking/rank":
+        return httpx.Response(200, json=ranking_json(json.loads(request.content)))
+    if path == "/v1/quotes/alternatives":
+        return httpx.Response(200, json=alternatives_json(json.loads(request.content)))
+    if path.startswith("/v1/disclosures/sets/"):
+        uin = path.rsplit("/", 1)[1]
+        found = seed_set(uin, params.get("language", "en-IN"), params.get("channel", "web"))
+        return httpx.Response(200, json=found.model_dump(mode="json"))
+    if path == "/v1/disclosures/DISC-GLOBAL-TAX-05":
+        return httpx.Response(200, json=disclosure_json("DISC-GLOBAL-TAX-05", params["language"]))
     if path == "/v1/suitability/required-slots":
         return httpx.Response(200, json=REQUIRED_SLOTS)
     if path == "/v1/suitability/evaluate":

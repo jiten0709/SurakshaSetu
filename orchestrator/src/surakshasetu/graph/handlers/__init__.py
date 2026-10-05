@@ -9,6 +9,7 @@ graph.nodes.Turn), appends its audit events on the turn's transaction, and sets 
 compose renders.
 """
 
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, cast
 
 from surakshasetu.audit import chain as audit_chain
@@ -19,6 +20,12 @@ from surakshasetu.store.conv import SessionRow
 
 if TYPE_CHECKING:
     from surakshasetu.graph.nodes import Turn
+
+
+def now() -> datetime:
+    """The turn's clock for quote validity and as_of (Step 21). One seam, so the golden harness
+    can play a turn "days later"; call it as handlers.now(), never import the name."""
+    return datetime.now(UTC)
 
 
 def session(turn: "Turn") -> SessionState:

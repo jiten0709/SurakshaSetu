@@ -2,8 +2,9 @@
 
 Additions to the TDD, marked below: VersionPins.params/ranker/registry (recorded for the audit;
 only `rules` is ever sent to the domain tier, which derives params and ranking weights from the
-rules release), SessionState.last_prompt_id/focus_uins (the §2.6 turn_router reads them), and
-SessionState.quote (Quote-Only's last quote, Step 19).
+rules release), SessionState.last_prompt_id/focus_uins (the §2.6 turn_router reads them),
+SessionState.quote (Quote-Only's last quote, Step 19), and RecommendationPayload.rec_id/shown/
+selection/ranking (Step 21).
 
 GraphState is what the LangGraph checkpoint holds. Only the commit node writes it, after the
 conv/audit transaction commits; every other node works on the turn's scratch copy (graph/nodes.py).
@@ -23,6 +24,7 @@ from surakshasetu.domain.models import (
     EligibilityResult,
     NeedsPayload,
     PremiumQuote,
+    RankingResult,
     RecommendedOption,
     SuitabilityResult,
 )
@@ -70,6 +72,25 @@ class DisclosureAck(BaseModel):
     acked_at: datetime
 
 
+class Shown(BaseModel):
+    """addition (Step 21): what a render showed for one option, which its acknowledgment must
+    match (V7): the registry set and the documents, by hash."""
+
+    registry_version: str
+    set_sha256: str
+    documents: dict[str, str]  # "CIS", "BI", "POLICY_WORDING" -> sha256
+
+
+class Selection(BaseModel):
+    """addition (Step 21): the plan the customer chose and the quote it rests on: the option's own,
+    or a re-quote of their choice of cover, term, PPT or riders (the gap is then theirs)."""
+
+    uin: str
+    quote: PremiumQuote
+    protection_gap_inr: str
+    customer_choice: bool
+
+
 class RecommendationPayload(BaseModel):
     options: list[RecommendedOption] = Field(min_length=1, max_length=3)
     ranker_version: str
@@ -78,6 +99,13 @@ class RecommendationPayload(BaseModel):
     rendered_sha256: str  # exact text released
     acks: list[DisclosureAck] = []
     cta: Literal["apply", "advisor", "revise", "save"] | None = None
+    # addition (Step 21): the conv.recommendation row and what each option's render showed (both
+    # set at the commit), the customer's selection, and the ranking presented (re-quoted options
+    # swapped in), which a re-render fills its placeholders from.
+    rec_id: UUID | None = None
+    shown: dict[str, Shown] = {}
+    selection: Selection | None = None
+    ranking: RankingResult | None = None
 
 
 class SessionState(BaseModel):

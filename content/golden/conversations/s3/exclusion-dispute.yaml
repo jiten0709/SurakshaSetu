@@ -1,0 +1,17 @@
+id: s3-exclusion-dispute
+description: >-
+  Disputing an exclusion: answered only from the policy wording, cited and verified; it is part of
+  the approved wording and can't change in chat; an advisor or the grievance channel. (Not the
+  "suicide clause" wording of the TDD's example: the stub guard's phrase list reads it as a
+  self-harm signal and the Safety handler answers, which is the fail-safe reading.)
+prelude: to-s3
+turns:
+  - text: "yes"
+    expect: {state: S3}
+  - text: I don't accept the exclusions in this policy, remove the exclusion
+    script: {gen-recommend: ["The policy wording sets out the exclusions and waiting periods for these plans [E1]."]}
+    expect:
+      state: S3
+      parts: [generated:answer, template:side_query_caveat, template:exclusion_note, template:sources]
+      citations: true
+      abstained: false

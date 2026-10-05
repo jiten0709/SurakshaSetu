@@ -1,0 +1,17 @@
+id: s3-guarantee
+description: >-
+  A guarantee asked for: no promise first, then only what the policy wording defines, cited and
+  verified (CC5, an objection: the state stays).
+prelude: to-s3
+turns:
+  - text: "yes"
+    expect: {state: S3}
+  - text: Is the death benefit guaranteed?
+    script:
+      nlu-extract: [{intents: [OBJECTION_GUARANTEE]}]
+      gen-recommend: ["The policy wording defines when the death benefit is paid [E1]."]
+    expect:
+      state: S3
+      row: CC5
+      parts: [template:guarantee_note, generated:answer, template:side_query_caveat, template:sources]
+      citations: true

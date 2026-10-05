@@ -152,6 +152,16 @@ def chain_hash(event: AuditEvent) -> bytes:
     return hashlib.sha256(event.prev_hash + canonical_json(hashed) + payload_hash).digest()
 
 
+def tail(conn: Conn, session_id: UUID) -> tuple[int, bytes]:
+    """The session's latest event as (seq, hash), seen from the caller's transaction (its own
+    appends included); (0, genesis) for an empty chain. The hand-off's audit anchor (Step 21)."""
+    last = conn.execute(
+        "SELECT seq, hash FROM audit.audit_event WHERE session_id = %s ORDER BY seq DESC LIMIT 1",
+        (session_id,),
+    ).fetchone()
+    return (last[0], bytes(last[1])) if last else (0, GENESIS)
+
+
 def events(conn: Conn, session_id: UUID) -> list[AuditEvent]:
     with conn.cursor(row_factory=class_row(AuditEvent)) as cur:
         return cur.execute(

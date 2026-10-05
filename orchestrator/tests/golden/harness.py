@@ -16,13 +16,16 @@ import json
 import re
 from collections.abc import Iterable
 from dataclasses import dataclass, field
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Literal, Self, cast
+from zoneinfo import ZoneInfo
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from surakshasetu.audit.events import EventType
+from surakshasetu.compose.placeholders import format_inr
 from surakshasetu.crypto.jcs import sha256_hex
 from surakshasetu.fsm.states import FsmState
 from surakshasetu.rails import redact
@@ -43,8 +46,26 @@ ANALYSIS = {"intents": [], "slots": [], "side_query": None, "language": "en"}
 UIN = re.compile(r"\b999[NA]\d{3}V\d{2}\b", re.IGNORECASE)
 NUMBER = re.compile(r"\d+(?:[.,]\d+)*")
 # Part ids whose text is approved, fixed content rather than model output: bundle templates,
-# disclosure sets, and (Step 18) the registry's single disclosures and the consent notice.
-FIXED_PARTS = ("template:", "disclosures:", "registry:", "notice:")
+# disclosure sets, and (Step 18) the registry's single disclosures and the consent notice; (Step 21)
+# the S3 composer's template parts, filled from the ranker, the quotes, the catalog and the KB's
+# source metadata. The narrative (why_it_fits) and a generated answer are still checked.
+FIXED_PARTS = (
+    "template:",
+    "disclosures:",
+    "registry:",
+    "notice:",
+    "needs_recap",
+    "option_card:",
+    "comparison",
+    "cta",
+    "sources",
+)
+# Step 21: the golden fixture product (TERM, absent from the DUMMY rate table, so its option is
+# RATING_UNAVAILABLE), inserted for a conversation that asks for it and deleted afterwards; the only
+# product a golden may kill-switch (the seed products' kill switch is irreversible in the dev
+# catalog).
+FIXTURE_UIN = "999N097V01"
+IST = ZoneInfo("Asia/Kolkata")
 
 
 class _Strict(BaseModel):
@@ -68,6 +89,7 @@ class Given(_Strict):
     state: FsmState | None = None
     paused_from: FsmState | None = None  # with state PAUSE: the frame a resume returns to
     pins: dict[str, str] = {}  # e.g. a session created on a bundle since retired
+    fixture_product: bool = False  # Step 21: FIXTURE_UIN in the dev catalog for this conversation
 
     @model_validator(mode="after")
     def _pause_has_a_frame(self) -> Self:
@@ -77,9 +99,16 @@ class Given(_Strict):
 
 
 class KillSwitch(_Strict):
-    kind: Literal["prompt_bundle", "route"]  # never a product: the dev catalog's are irreversible
+    # A product only the fixture (Step 21): the seed products' kill switch is irreversible.
+    kind: Literal["prompt_bundle", "route", "product"]
     target: str
     reason_code: str = "GOLDEN_KILL_SWITCH"
+
+    @model_validator(mode="after")
+    def _only_the_fixture_product(self) -> Self:
+        if self.kind == "product" and self.target != FIXTURE_UIN:
+            raise ValueError(f"a golden may kill-switch only the fixture product {FIXTURE_UIN}")
+        return self
 
 
 class Action(_Strict):
@@ -99,7 +128,7 @@ class EngineExpect(_Strict):
     """An ENGINE_DECISION in the turn (Step 19): its service, and the result's outcome, flags and
     reason codes where given (from the decrypted payload)."""
 
-    service: Literal["eligibility", "quote", "suitability", "ranking"]
+    service: Literal["eligibility", "quote", "suitability", "ranking", "alternatives"]
     outcome: str | None = None
     flags: list[str] | None = None
     reason_codes: list[str] | None = None
@@ -131,6 +160,9 @@ class Expect(_Strict):
     lacks: list[str] = []  # none appears in the released text
     row: str | None = None  # the turn's STATE_TRANSITION trigger (the fsm row id)
     reason: str | None = None  # ... and its reason code
+    # Step 21
+    actions: list[str] | None = None  # the quick replies' action types, in order
+    intake: bool | None = None  # the stub journey verified this session's signed intake
 
 
 class Turn(_Strict):
@@ -142,6 +174,12 @@ class Turn(_Strict):
     checkpoint_lost: bool = False  # the process dies after the commit, before the checkpoint
     identity: bool = False  # an "am I talking to a person?" question (I6)
     kill_switch: KillSwitch | None = None  # set by ops before this turn is sent
+    # Step 21: a newer disclosure set with a wrong hash for this UIN, for this turn only (the
+    # registry refuses it: REGISTRY_INTEGRITY); the stub journey fails this session's next intake;
+    # the orchestrator's clock is this many days ahead for this turn (graph.handlers.now).
+    registry_tamper: str | None = None
+    journey_down: bool = False
+    days_later: int = Field(default=0, ge=0)
     # A newer consent notice for the session's language takes effect before this turn (Step 18);
     # the harness removes it afterwards.
     notice_bump: bool = False
@@ -204,9 +242,12 @@ def with_prelude(raw: dict[str, Any], preludes: Path = PRELUDES) -> dict[str, An
 
 
 def load_conversations(root: Path = CONVERSATIONS, preludes: Path = PRELUDES) -> list[Conversation]:
-    """Every <suite>/*.yaml, sorted. Dot-directories (tool caches) are skipped; ids are unique."""
+    """Every <suite>/*.yaml and (Step 21) the top-level scripted conversation, sorted.
+    Dot-directories (tool caches) are skipped; ids are unique."""
     paths = sorted(
-        p for p in root.glob("*/*.yaml") if not any(part.startswith(".") for part in p.parts)
+        p
+        for p in [*root.glob("*.yaml"), *root.glob("*/*.yaml")]
+        if not any(part.startswith(".") for part in p.parts)
     )
     found = [
         Conversation.model_validate(with_prelude(yaml.safe_load(p.read_text("utf-8")), preludes))
@@ -273,12 +314,14 @@ class Transcript:
     erased: bool | None = None  # after a withdrawal: live rows, checkpoint gone, key handled
     products: dict[str, str] = field(default_factory=dict)  # base product UIN -> catalog name
     registry: dict[str, str] = field(default_factory=dict)  # uin -> registry set_sha256
-    evidence: dict[str, str] = field(default_factory=dict)  # chunk_id -> text
+    evidence: dict[str, str] = field(default_factory=dict)  # chunk_id -> text and its label
     # Step 18: the Consent Service's notices (version -> (body, body_sha256)) for the parts and
     # forms released, and the registry's single-disclosure bodies (every language) that registry:
-    # parts may carry: DISC-GLOBAL-AI-06 (Step 18) and DISC-GLOBAL-QUOTE-02 (Step 19).
+    # parts may carry: DISC-GLOBAL-AI-06 (Step 18), DISC-GLOBAL-QUOTE-02 (Step 19) and
+    # DISC-GLOBAL-TAX-05 (Step 21, with an S3 tax answer).
     notices: dict[str, tuple[str, str]] = field(default_factory=dict)
     registry_bodies: set[str] = field(default_factory=set)
+    intakes: list[dict[str, Any]] = field(default_factory=list)  # Step 21: the journey's, verified
 
     def turn_events(self, released: dict[str, Any]) -> list[Event]:
         """One committed turn's events: from its TURN_INPUT to the next TURN_INPUT."""
@@ -327,6 +370,7 @@ def check(t: Transcript) -> list[str]:
         *check_numbers(t),
         *check_s0_no_generation(t),
         *check_consent_prompt(t),
+        *check_handoff(t),
     ]
 
 
@@ -551,11 +595,15 @@ def check_pii(t: Transcript) -> list[str]:
 
 
 def check_numbers(t: Transcript) -> list[str]:
-    """Numbers in model-written parts come from engine values or the cited evidence only."""
+    """Numbers in model-written parts come from engine values or the cited evidence only. An
+    engine amount may read as the composer fills a placeholder with it (₹1,06,875; Step 21)."""
     engine = " ".join(
         json.dumps(e.payload) for e in t.events if e.event_type == "ENGINE_DECISION" and e.payload
     )
-    allowed = set(NUMBER.findall(engine)) | set(NUMBER.findall(" ".join(t.evidence.values())))
+    values = set(NUMBER.findall(engine))
+    amounts = (v for v in values if re.fullmatch(r"\d{1,15}(\.\d{1,2})?", v))  # not a hash
+    grouped = {format_inr(v).lstrip("-₹") for v in amounts}
+    allowed = values | grouped | set(NUMBER.findall(" ".join(t.evidence.values())))
     failures = []
     for s in t.sent:
         released = s.released
@@ -601,3 +649,55 @@ def check_consent_prompt(t: Transcript) -> list[str]:
             if held is None or held[1] != form["notice_sha256"]:
                 failures.append(f"consent: turn {s.turn} form names a notice not held")
     return failures
+
+
+def check_handoff(t: Transcript) -> list[str]:
+    """V7 (Step 21): every move to HANDOFF rests on the intake it sent, an acknowledgment of the
+    chosen plan bound to the registry's set, and the chosen quote, issued by the engine and valid on
+    the IST date."""
+    failures: list[str] = []
+    today = datetime.now(IST).date()
+    for i, e in enumerate(t.events):
+        entered = e.event_type == "STATE_TRANSITION" and e.header["to_state"] == "HANDOFF"
+        if not entered or e.header["from_state"] == "HANDOFF":
+            continue
+        before = t.events[:i]
+        sent = [
+            h.payload["intake"] for h in before
+            if h.event_type == "HANDOFF" and h.header["reason_code"] == "APPLICATION_INTAKE"
+            and h.payload is not None
+        ]  # fmt: skip
+        if not sent:
+            if not any(h.event_type == "HANDOFF" for h in before):
+                failures.append(f"V7: HANDOFF at seq {e.seq} without an intake sent")
+            continue  # the key is destroyed: the payloads are unreadable
+        selected = sent[-1]["selected"]
+        acks = [
+            a.header for a in before
+            if a.event_type == "DISCLOSURE_ACK" and a.header["uin"] == selected["uin"]
+        ]  # fmt: skip
+        if not acks:
+            failures.append(f"V7: HANDOFF at seq {e.seq} without an acknowledgment")
+        elif any(a["set_sha256"] != t.registry.get(selected["uin"]) for a in acks):
+            failures.append(
+                f"V7: HANDOFF at seq {e.seq} on an acknowledgment not of the registry set"
+            )
+        valid_until = _quoted(before, selected["quote_id"])
+        if valid_until is None or valid_until < today:
+            failures.append(f"V7: HANDOFF at seq {e.seq} on a quote not issued or not valid")
+    return failures
+
+
+def _quoted(events: list[Event], quote_id: str) -> date | None:
+    """The validity of a quote the engine issued: a quote decision, or a ranked option's."""
+    for e in reversed(events):
+        if e.event_type != "ENGINE_DECISION" or not e.payload:
+            continue
+        result = e.payload.get("result")
+        quotes = [result] if isinstance(result, dict) else []
+        if isinstance(result, dict):
+            quotes += [o["quote"] for o in result.get("options", []) if o.get("quote")]
+        for q in quotes:
+            if q.get("quote_id") == quote_id:
+                return date.fromisoformat(q["valid_until"])
+    return None

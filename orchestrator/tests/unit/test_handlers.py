@@ -154,7 +154,7 @@ def test_after_decide_runs_the_handler_of_the_state_entered() -> None:
     assert case(FsmState.S1, FsmState.DATA_ERASURE) == "data_erasure"
     assert case(FsmState.S1, FsmState.HUMAN_ESCALATION) == "human_escalation"
     assert case(FsmState.S3, FsmState.PAUSE) == "pause"
-    assert case(FsmState.S2, FsmState.S3) == "compose"
+    assert case(FsmState.S2, FsmState.S3) == "s3_enter"  # Step 21: the recommendation
     assert case(FsmState.S1, FsmState.S2) == "s2_enter"  # Step 20: S2's first question
     # Staying in a handler's state runs that state's node instead, never the entry again.
     assert case(FsmState.HUMAN_ESCALATION, FsmState.HUMAN_ESCALATION) == "compose"

@@ -1,0 +1,13 @@
+id: s3-registry-tamper
+description: >-
+  A disclosure set whose stored hash no longer matches its bodies (a tampered registry row): the
+  registry refuses it (REGISTRY_INTEGRITY), so no option is shown without its verified set and the
+  release is blocked with an advisor offer (I4). Once the registry is whole, the next turn presents.
+channel: app
+prelude: to-s3
+turns:
+  - text: "yes"
+    registry_tamper: "999N001V02"
+    expect: {state: S3, templates: [needs_done, release_blocked, advisor_offer], disclosures: [], actions: [HUMAN_REQUEST]}
+  - action: {type: CONTINUE}
+    expect: {state: S3, disclosures: ["999N001V02", "999N002V01"], engine: {service: ranking}}

@@ -16,8 +16,9 @@ import secrets
 from collections.abc import AsyncIterator
 from contextlib import AsyncExitStack, asynccontextmanager
 from datetime import UTC, datetime, timedelta
+from functools import partial
 from http import HTTPStatus
-from typing import Any, Literal, Self
+from typing import Any, Literal, Self, cast
 from uuid import UUID
 
 import psycopg
@@ -25,6 +26,7 @@ from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from langgraph.graph.state import CompiledStateGraph
 from psycopg.rows import dict_row
 from psycopg_pool import AsyncConnectionPool, ConnectionPool
+from qdrant_client import AsyncQdrantClient
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
 from starlette.exceptions import HTTPException
@@ -44,6 +46,7 @@ from surakshasetu.graph.handlers import data_erasure
 from surakshasetu.graph.nodes import Turn, build_graph
 from surakshasetu.graph.state import VersionPins
 from surakshasetu.rails.output import LexiconPack, load_pack
+from surakshasetu.retrieval.service import RetrievalService, load_snapshot_meta
 from surakshasetu.store import conv as store
 from surakshasetu.store.conv import Conn, HandoffRow, SessionRow
 from surakshasetu.uuid7 import uuid7
@@ -81,10 +84,11 @@ class Runtime:
         gateway: Gateway,
         pack: LexiconPack,
         graph: CompiledStateGraph[Any, Any],
+        retrieval: RetrievalService | None = None,
     ) -> None:
         self.settings, self.pool, self.erasure, self.keys = settings, pool, erasure, keys
         self.gate, self.domain, self.gateway, self.pack = gate, domain, gateway, pack
-        self.graph = graph
+        self.graph, self.retrieval = graph, retrieval
 
     @classmethod
     @asynccontextmanager
@@ -138,6 +142,13 @@ class Runtime:
             with pool.connection() as conn:  # commits on exit
                 activate(conn, keys, bundle)  # CONFIG_RELEASE, once per bundle version
             graph = build_graph(AsyncPostgresSaver(saver_pool))
+            # Step 21: S3's evidence. The client connects lazily: Qdrant down is a turn's
+            # RetrievalUnavailable (an uncited card), never a refused start.
+            qdrant = AsyncQdrantClient(url=settings.qdrant_url)
+            stack.push_async_callback(qdrant.close)
+            retrieval = RetrievalService(
+                gateway, qdrant, partial(load_snapshot_meta, cast(Any, pool))
+            )
             await data_erasure.sweep(pool, erasure, keys, domain, settings)
             logger.info("runtime ready: bundle %s, lexicon %s", bundle.version, pack.version)
             yield cls(
@@ -150,6 +161,7 @@ class Runtime:
                 gateway=gateway,
                 pack=pack,
                 graph=graph,
+                retrieval=retrieval,
             )
 
     @asynccontextmanager
@@ -238,6 +250,7 @@ class Runtime:
                     turn_key=turn_key,
                     text=text,
                     action=action,
+                    retrieval=self.retrieval,
                 )
                 await self._invoke(turn)
             if turn.erasure is not None and not turn.replayed:

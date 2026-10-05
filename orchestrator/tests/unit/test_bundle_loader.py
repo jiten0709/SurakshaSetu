@@ -23,7 +23,7 @@ from surakshasetu.config import Settings
 from surakshasetu.rails.normalise import normalise
 from surakshasetu.rails.output import load_pack
 
-VERSION = "pb-2026.10.4"
+VERSION = "pb-2026.10.5"
 DMN = PROMPT_BUNDLES.parents[1] / "domain-services" / "src" / "main" / "resources" / "dmn"
 
 # TDD §3.4's L0, copied here byte for byte: tests never read docs/.
@@ -182,15 +182,15 @@ def test_a_kill_switch_re_pins_to_the_active_bundle_and_nothing_else_does(copy: 
 
 
 @pytest.mark.parametrize(
-    "retired", ["pb-2026.09.1", "pb-2026.10.1", "pb-2026.10.2", "pb-2026.10.3"]
+    "retired", ["pb-2026.09.1", "pb-2026.10.1", "pb-2026.10.2", "pb-2026.10.3", "pb-2026.10.4"]
 )
 def test_a_retired_bundle_no_longer_loads_and_a_kill_switch_moves_its_sessions_on(
     retired: str,
 ) -> None:
-    """None has Step 20's required needs lexicon (all but 10.3 also lack Step 19's screening
-    lexicon, 09.1 and 10.1 Step 18's lexicons, and 09.1 the Step 17 handler scripts). All stay in
-    Git, released and immutable, but the only way off them is I7's exception: a kill switch re-pins
-    their sessions."""
+    """None has Step 21's required S3 lexicon (all but 10.4 also lack Step 20's needs lexicon, all
+    but 10.3 and 10.4 Step 19's screening lexicon, 09.1 and 10.1 Step 18's lexicons, and 09.1 the
+    Step 17 handler scripts). All stay in Git, released and immutable, but the only way off them is
+    I7's exception: a kill switch re-pins their sessions."""
     with pytest.raises(BundleError, match="FILE_MISSING"):
         load_bundle(retired, env="dev")
     with pytest.raises(BundleError, match="FILE_MISSING"):

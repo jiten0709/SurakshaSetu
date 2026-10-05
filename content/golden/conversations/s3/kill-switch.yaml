@@ -1,0 +1,19 @@
+id: s3-kill-switch
+description: >-
+  A product kill switch while the customer is in S3 (the fixture product, through the ops
+  endpoint): the next turn finds the recommendation out of date and ranks again without it, every
+  remaining option with its disclosure set (I4).
+given: {fixture_product: true}
+prelude: to-s3
+turns:
+  - text: "yes"
+    expect: {state: S3, disclosures: ["999N001V02", "999N002V01", "999N097V01"]}
+  - action: {type: CONTINUE}
+    kill_switch: {kind: product, target: "999N097V01"}
+    expect:
+      state: S3
+      row: S3.STAY
+      templates: [rerank_note]
+      engine: {service: ranking}
+      disclosures: ["999N001V02", "999N002V01"]
+      lacks: ["999N097V01"]

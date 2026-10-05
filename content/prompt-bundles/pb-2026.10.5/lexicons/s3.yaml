@@ -1,0 +1,61 @@
+# Step 21 (TDD §3.8 edge cases): phrases matched as whole words anywhere in the turn, after NFKC,
+# case-folding and collapsing spaces (as needs.yaml). They back up nlu-extract's intents where one
+# exists (NEED_TIME, OBJECTION_PRICE); "which one should I buy" and an exclusion dispute have none.
+# Customer words only: nothing here is ever shown. Owner: compliance; every list awaits its review.
+
+# "Which one should I buy?": the top option and its reasons; the decision stays with the customer.
+which_one:
+  - which one should i buy
+  - which one should i take
+  - which one should i choose
+  - which plan should i buy
+  - which plan should i take
+  - which plan should i choose
+  - which is better for me
+  - what would you choose
+  - kaunsa lena chahiye
+  - kaunsa plan lu
+  - kaun sa plan lu
+  - कौन सा लूं
+  - कौनसा प्लान लूं
+
+# Disputing an exclusion: the wording decides; an advisor or the grievance channel.
+exclusion_dispute:
+  - remove the exclusion
+  - remove the suicide clause
+  - don't accept the exclusion
+  - don't accept the suicide exclusion
+  - do not accept the exclusion
+  - waive the exclusion
+  - exclusion is unfair
+  - exclusion hatao
+  - exclusion hata do
+  - अपवाद हटाओ
+
+# "Make it cheaper": the engine's alternatives, each with its protection gap.
+cheaper:
+  - make it cheaper
+  - cheaper option
+  - something cheaper
+  - too expensive
+  - lower the premium
+  - reduce the premium
+  - sasta karo
+  - premium kam karo
+  - प्रीमियम कम करो
+
+# "Need time" or "discuss with my spouse": pause, with a summary.
+need_time:
+  - need time
+  - need some time
+  - think about it
+  - discuss with my wife
+  - discuss with my husband
+  - discuss with my spouse
+  - talk to my wife
+  - talk to my husband
+  - talk to my family
+  - sochna hai
+  - soch ke batata
+  - soch ke bataungi
+  - सोचना है

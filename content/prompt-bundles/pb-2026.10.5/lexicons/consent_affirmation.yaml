@@ -1,0 +1,51 @@
+# Typed consent in S0 (TDD §3.5: "a strict parser match"). Closed lists, matched against the whole
+# message after NFKC, case-folding, collapsing spaces and dropping final . ! ? । characters: anything
+# that is not exactly one entry is not consent. Owner: compliance; these lists await its review.
+# The consent prompt: an `affirm` entry grants P1 only, after the separate typed 18+ question; a
+# `decline` entry refuses P1 (Exit).
+affirm:
+  - i agree
+  - i accept
+  - agree
+  - "yes"
+  - yes i agree
+  - haan
+  - ha
+  - han
+  - haan ji
+  - ji haan
+  - main sahmat hoon
+  - main sahmat hun
+  - हाँ
+  - हां
+  - जी हाँ
+  - मैं सहमत हूँ
+  - मैं सहमत हूं
+decline:
+  - "no"
+  - i do not agree
+  - i don't agree
+  - i disagree
+  - nahi
+  - nahin
+  - main sahmat nahi hoon
+  - नहीं
+  - मैं सहमत नहीं हूँ
+  - मैं सहमत नहीं हूं
+# The typed 18+ question: `adult` confirms it; `minor` declares under 18 (Data Erasure, V2).
+adult:
+  - "yes"
+  - haan
+  - ha
+  - han
+  - i am 18 or older
+  - i am over 18
+  - हाँ
+  - हां
+minor:
+  - "no"
+  - nahi
+  - nahin
+  - i am under 18
+  - i am not 18
+  - नहीं

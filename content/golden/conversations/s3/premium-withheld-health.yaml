@@ -1,0 +1,46 @@
+id: s3-premium-withheld-health
+description: >-
+  The health question declined in S1: the engine's PREMIUM_WITHHELD flag reaches the ranker, so no
+  option shows a premium (TDD §3.8: health or tobacco answers declined).
+turns:
+  - action: {type: START}
+    expect: {state: S0, templates: [greeting]}
+  - action: {type: CONSENT_SUBMIT, payload: {purposes: {P1: true, P2: false, P3: false}, age_18_plus: true}}
+    expect: {state: S0, templates: [intent_ask]}
+  - action: {type: INTENT, payload: {intent: new_purchase}}
+    expect: {state: S1, templates: [RL-S1-AGE]}
+  - text: "34"
+    expect: {templates: [RL-S1-RESIDENCY]}
+  - action: {type: SLOT, payload: {slot: residency, value: resident}}
+    expect: {templates: [RL-S1-PINCODE]}
+  - text: "411001"
+    expect: {templates: [RL-S1-TOBACCO]}
+  - text: "no"
+    expect: {templates: [RL-S1-OCCUPATION]}
+  - text: salaried
+    expect: {templates: [RL-S1-HEALTH]}
+  - action: {type: SLOT, payload: {slot: health_flags, value: declined}}
+    expect: {templates: [RL-S1-PROPOSER], slots: {health_flags: declined}}
+  - text: "yes"
+    expect: {templates: [readback]}
+  - text: "yes"
+    expect: {state: S2, engine: {service: eligibility, outcome: ELIGIBLE, flags: [PREMIUM_WITHHELD]}}
+  - text: just tell me the best plan
+    expect: {templates: [short_path_offer]}
+  - text: "yes"
+    expect: {templates: [RL-S2-INCOME]}
+  - text: 12 lpa
+    expect: {templates: [readback]}
+  - text: "yes"
+    expect: {templates: [RL-S2-DEPENDANTS]}
+  - text: my daughter is 2
+    expect: {templates: [RL-S2-LIABILITIES]}
+  - text: no loans
+    expect: {templates: [needs_summary, summary_assumed, summary_question]}
+  - text: "yes"
+    expect:
+      state: S3
+      row: S2.2
+      disclosures: ["999N001V02", "999N002V01"]
+      contains: ["Premium not shown: it is worked out during application and underwriting."]
+      lacks: ["Indicative premium:"]

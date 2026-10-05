@@ -1,0 +1,59 @@
+# Step 21: the opening turns of every S3 conversation (a conversation's `prelude: to-s3`), up to the
+# needs summary; the conversation's own first turn ("yes") enters S3. The scripted customer of TDD
+# §7.4: full consent (P1, P2, P3), 34, resident, Pune, no tobacco, salaried, no to the health
+# question, own life; income protection and loan cover, 24 lakh a year, spouse and two children, a
+# home loan of 35 lakh. With the DUMMY data the engines answer FIT at 0.975, green, a recommended
+# cover of ₹3.75 crore over 26 years.
+- action: {type: START}
+  expect: {state: S0, templates: [greeting]}
+- action: {type: CONSENT_SUBMIT, payload: {purposes: {P1: true, P2: true, P3: true}, age_18_plus: true}}
+  expect: {state: S0, templates: [intent_ask], consent: {purposes: [P1, P2, P3]}}
+- action: {type: INTENT, payload: {intent: new_purchase}}
+  expect: {state: S1, row: S0.4, templates: [RL-S1-AGE]}
+- text: "34"
+  expect: {templates: [RL-S1-RESIDENCY]}
+- action: {type: SLOT, payload: {slot: residency, value: resident}}
+  expect: {templates: [RL-S1-PINCODE]}
+- text: "411001"
+  expect: {templates: [RL-S1-TOBACCO]}
+- text: "no"
+  expect: {templates: [RL-S1-OCCUPATION]}
+- text: salaried
+  expect: {templates: [RL-S1-HEALTH]}
+- text: "no"
+  expect: {templates: [RL-S1-PROPOSER]}
+- text: "yes"
+  expect: {templates: [readback]}
+- text: "yes"
+  expect: {state: S2, row: S1.4, templates: [screening_done, RL-S2-GOALS], engine: {service: eligibility, outcome: ELIGIBLE}}
+- text: income protection and loan cover
+  expect: {templates: [RL-S2-INCOME]}
+- text: 24 lakh
+  expect: {templates: [readback]}
+- text: "yes"
+  expect: {templates: [RL-S2-INCOME-TYPE]}
+- action: {type: SLOT, payload: {slot: income_type, value: salaried}}
+  expect: {templates: [RL-S2-DEPENDANTS]}
+- text: my wife is 32, my son is 7 and my daughter is 4
+  expect: {templates: [RL-S2-LIABILITIES], slots: {dependants: proposed}}
+- text: home loan of 35 lakh, 18 years left
+  expect: {templates: [readback]}
+- text: "yes"
+  expect: {templates: [RL-S2-EXISTING-COVER]}
+- text: none
+  expect: {templates: [RL-S2-EMPLOYER-COVER]}
+- text: 15 lakh
+  expect: {templates: [readback]}
+- text: "yes"
+  expect: {templates: [RL-S2-EXISTING-PREMIUM]}
+- text: none
+  expect: {templates: [RL-S2-ASSETS]}
+- action: {type: SLOT, payload: {slot: earmarked_assets_inr, value: declined}}
+  expect: {templates: [RL-S2-BUDGET]}
+- text: 30,000 a year
+  expect: {templates: [readback]}
+- text: "yes"
+  expect:
+    state: S2
+    templates: [needs_summary, summary_question]
+    engine: {service: suitability, outcome: FIT, result: {affordability: green, profile_sufficiency: 0.975, recommended_cover_inr: "37500000", term_years: 26}}

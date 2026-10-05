@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Deterministic local stand-ins: stub model, application journey and TSA."
 requires-python = ">=3.12,<3.13"
 dependencies = [
+    "cryptography>=50.0.1",
     "fastapi>=0.141.1",
     "uvicorn>=0.53.0",
 ]
