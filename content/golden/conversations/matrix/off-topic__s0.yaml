@@ -1,0 +1,13 @@
+id: matrix-off-topic-s0
+description: >-
+  TDD §3.9, S0: off-topic re-presents the options once (with the redirect); a second time it is
+  read like any other answer to the consent prompt (the options again).
+turns:
+  - action: {type: START}
+    expect: {state: S0, templates: [greeting]}
+  - text: who won the cricket match yesterday
+    script: {nlu-extract: [{intents: [OFF_TOPIC]}]}
+    expect: {state: S0, templates: [redirect], form: true, counters: {off_topic: 1}}
+  - text: what about the football then
+    script: {nlu-extract: [{intents: [OFF_TOPIC]}]}
+    expect: {state: S0, templates: [consent_reprompt], form: true, counters: {off_topic: 1}}

@@ -1,7 +1,12 @@
 """One customer turn as one LangGraph run (TDD §1.4):
 
-load -> input -> route -> <state node | handler> -> decide -> [handler] -> compose -> validate
--> commit -> release
+load -> input -> route -> <state node | handler | side_query | objection | timer> -> decide
+-> [handler] -> compose -> validate -> commit -> release
+
+Step 22: a side question runs the side-query subgraph (graph/side_query.py) and an objection the
+objection handler (graph/handlers/objection.py); each runs the origin state's node first (it takes
+what the turn answered and puts its prompt again), then answers ahead of that prompt. A timer turn
+(jobs/timers.py) carries no customer input: it only reports the inactivity to decide (CC3).
 
 The runtime (graph/runtime.py) takes the single-writer lock and the rate limit before invoking the
 graph, because a run reads and writes the session's checkpoint even when its first node refuses.
@@ -32,6 +37,7 @@ from langgraph.runtime import Runtime
 from langgraph.types import Command
 from redis.exceptions import RedisError
 
+from surakshasetu.analysis.models import Intent
 from surakshasetu.analysis.nlu import PendingSlotSpec
 from surakshasetu.analysis.pipeline import PipelineResult, TurnContext, analyse_turn
 from surakshasetu.audit import chain as audit_chain
@@ -41,7 +47,7 @@ from surakshasetu.audit.events import (
     StateTransitionHeader,
     TurnInputHeader,
 )
-from surakshasetu.compose.bundle import L1Name, PromptBundle, load_pinned
+from surakshasetu.compose.bundle import L1Name, PromptBundle, load_pinned, mentions
 from surakshasetu.compose.citations import TurnHandles, issue
 from surakshasetu.compose.composer import Rendered
 from surakshasetu.compose.envelope import EnvelopeError, SessionFacts, model_call_event
@@ -55,6 +61,8 @@ from surakshasetu.fsm.facts import Facts
 from surakshasetu.fsm.states import TERMINAL, FsmState
 from surakshasetu.fsm.transition import Transition, transition
 from surakshasetu.gateway import Gateway, GatewayUnavailable, Route
+from surakshasetu.graph import handlers as handler_tools
+from surakshasetu.graph import side_query as side_query_subgraph
 from surakshasetu.graph import states
 from surakshasetu.graph.facts import build_facts
 from surakshasetu.graph.gate import RedisGate
@@ -63,6 +71,7 @@ from surakshasetu.graph.handlers import (
     data_erasure,
     human_escalation,
     identity,
+    objection,
     pause,
     product_names,
     safety,
@@ -106,7 +115,8 @@ ENTER = {
     FsmState.S2: "s2_enter",
     FsmState.S3: "s3_enter",
 }
-LANGUAGE = {"en-IN": "en", "hi-IN": "hi"}
+LANGUAGE: dict[str, Literal["en", "hi"]] = {"en-IN": "en", "hi-IN": "hi"}
+TIMER = "INACTIVITY"  # a timer turn's input (Step 22): no customer text, no action
 
 
 @dataclasses.dataclass
@@ -170,6 +180,22 @@ class Turn:
     numbers: Numbers | None = None
     disclosure_sets: dict[str, DisclosureSet] = dataclasses.field(default_factory=dict)
     recommendation: RecommendationPayload | None = None
+    # Step 22. The side-query subgraph: the frame the router pushed (None with a full stack), the
+    # question, a full stack, its outcome for the RESPONSE_RELEASED header, a state that answered
+    # the question itself, and a cited answer every claim of which is verified (gen-recommend).
+    # The objection handler's type and response. A timer turn (no customer input). A language
+    # switch this turn. The request not to share never-store data.
+    frame: Frame | None = None
+    side_question: str | None = None
+    side_full: bool = False
+    side_outcome: str | None = None
+    answered: bool = False
+    verify_all: bool = False
+    objection: str | None = None
+    objection_response: str | None = None
+    timer: bool = False
+    language_switched: bool = False
+    reminder: bool = False
     # decide, compose, validate
     transition: Transition | None = None
     draft: str | None = None
@@ -285,7 +311,7 @@ async def input_node(state: GraphState, runtime: Runtime[Turn]) -> None:
     session, row = _session(turn), cast(SessionRow, turn.row)
     await _status(turn, "analysing")
     pins = session.pins.model_dump(mode="json")
-    if turn.text is None:  # a structured action: no free text, so no input rails
+    if turn.text is None:  # a structured action or a timer: no free text, so no input rails
         audit_chain.append(
             turn.conn,
             turn.keys,
@@ -300,7 +326,7 @@ async def input_node(state: GraphState, runtime: Runtime[Turn]) -> None:
                 channel=cast(Literal["web", "app"], row.channel),
                 turn_key=turn.turn_key,
             ),
-            payload={"action": turn.action},
+            payload={"timer": TIMER} if turn.timer else {"action": turn.action},
             key_ref=row.key_ref,
         )
         return
@@ -338,16 +364,25 @@ def turn_router(
     pipeline: PipelineResult | None,
     max_stack: int,
     action: dict[str, Any] | None = None,
+    *,
+    question: str | None = None,
+    objecting: bool = False,
 ) -> tuple[str, Frame | None]:
-    """TDD §2.6: a withdrawal first (I5; free text, or the ERASE action), then safety, then a side
-    query pushes a frame."""
+    """TDD §2.6: a withdrawal first (I5; free text, or the ERASE action), then safety, then (Step
+    22) an objection, then a side query, which pushes a frame while the stack has room. With the
+    stack full the subgraph still answers, briefly (the abstain line), and returns to the pending
+    prompt. `question` is the side question the router found beyond analysis.side_query."""
     analysis = pipeline.analysis if pipeline else None
     intents = analysis.intents if analysis else []
     if "META_WITHDRAW" in intents or (action or {}).get("type") == data_erasure.ERASE:
         return "withdraw_consent", None
     if safety.signal(pipeline):
         return "safety", None
-    if analysis is not None and analysis.side_query and len(session.stack) < max_stack:
+    if objecting:
+        return "objection", None
+    if question is not None or (analysis is not None and analysis.side_query):
+        if len(session.stack) >= max_stack:
+            return "side_query", None
         frame = Frame(
             state=session.fsm_state,
             pending_slot=session.pending_slot,
@@ -358,29 +393,132 @@ def turn_router(
     return session.fsm_state.value, None
 
 
+def side_question(turn: Turn, session: SessionState) -> str | None:
+    """A question for the side-query subgraph (Step 22): nlu-extract's side_query; or, read from the
+    turn, a FAQ intent anywhere, a question after the conversation has ended or in S3 (where S3's
+    own questions are answered from the evidence), an exclusion dispute in S3, regulatory pushback
+    in S0, S3 and a closed session (S1 and S2 explain their own question's reason); the FACT
+    action answers a proposed fact."""
+    if (turn.action or {}).get("type") == "FACT":
+        return ""
+    pipeline = turn.pipeline
+    if pipeline is None or pipeline.blocked:
+        return None
+    analysis = pipeline.analysis
+    if analysis is not None and analysis.side_query:
+        return str(analysis.side_query)
+    text = pipeline.stored_raw
+    state = session.fsm_state
+    lexicons = cast(PromptBundle, turn.bundle)
+    asked = (
+        (analysis is not None and Intent.GENERAL_FAQ in analysis.intents)
+        or (state in (FsmState.S3, *TERMINAL) and "?" in text)
+        or (state is FsmState.S3 and mentions(lexicons.s3_lexicon.exclusion_dispute, text))
+        or (
+            state in (FsmState.S0, FsmState.S3, *TERMINAL)
+            and mentions(lexicons.side_query_lexicon.pushback, text)
+        )
+    )
+    return text if asked else None
+
+
 async def route(state: GraphState, runtime: Runtime[Turn]) -> Command[str]:
     turn = _turn(runtime)
     session = _session(turn)
+    if turn.timer:  # Step 22: no customer input, only the inactivity (CC3)
+        turn.routed = "timer"
+        return Command(goto="timer")
     if turn.pipeline is not None and turn.pipeline.analysis is not None:
         turn.slots_pending = list(turn.pipeline.analysis.slots)
     turn.safety = safety.signal(turn.pipeline)
     turn.identity = identity.asks(cast(PromptBundle, turn.bundle), turn.pipeline)
+    _switch_language(turn, session)
+    turn.reminder = _reminder(turn, session)
+    kind = objection.detect(turn)
+    question = side_question(turn, session)
     goto, frame = turn_router(
-        session, turn.pipeline, turn.settings.side_query_max_stack, turn.action
+        session,
+        turn.pipeline,
+        turn.settings.side_query_max_stack,
+        turn.action,
+        question=question,
+        objecting=kind is not None,
     )
+    if goto == "objection":
+        turn.objection = kind
+    if goto == "side_query":
+        turn.side_question, turn.side_full = question or "", frame is None
+    elif session.counters.get(side_query_subgraph.COUNTER):  # side queries in a row, no more
+        session.counters = {**session.counters, side_query_subgraph.COUNTER: 0}
     if frame is not None:
         session.stack = [*session.stack, frame]
+        turn.frame = frame
     turn.routed = goto
     return Command(goto=goto)
 
 
-async def side_query(state: GraphState, runtime: Runtime[Turn]) -> Command[str]:
-    """Step 22: the FAQ subgraph answers, pops its frame and re-asks the pending question. The
-    stub pops at once and lets the state node apply any slot in the same turn."""
-    session = _session(_turn(runtime))
-    frame = session.stack[-1]
-    session.stack = session.stack[:-1]
-    return Command(goto=frame.state.value)
+def _switch_language(turn: Turn, session: SessionState) -> None:
+    """TDD §3.9: continue in the new language. Set before the state speaks, so its reply comes in
+    it; disclosures and the notice come from the approved translations for the new locale. The
+    consent notice pin does not move (I7): only a consent captured on another notice moves it, so S0
+    switches its own notice (NOTICE_LANGUAGE)."""
+    if session.fsm_state is FsmState.S0 or session.fsm_state in TERMINAL:
+        return
+    target = handler_tools.language_request(turn, session)
+    if target is not None and target != session.locale:
+        session.locale = target
+        turn.language_switched = True
+        logger.info("language switched to %s in %s", target, session.fsm_state)
+
+
+def _reminder(turn: Turn, session: SessionState) -> bool:
+    """TDD §3.9: Aadhaar, card or account numbers (masked at ingress, never stored) or a medical
+    report shared after S0: the reply asks the customer not to share them."""
+    pipeline = turn.pipeline
+    if pipeline is None or pipeline.blocked:
+        return False
+    if session.fsm_state is FsmState.S0 or session.fsm_state in TERMINAL:
+        return False
+    lexicon = cast(PromptBundle, turn.bundle).side_query_lexicon
+    return pipeline.reminder or mentions(lexicon.medical_report, pipeline.stored_raw)
+
+
+async def _origin(state: GraphState, runtime: Runtime[Turn]) -> None:
+    """The state's own node, guarded as in the graph: it applies what the turn answered and puts
+    its pending prompt again."""
+    origin = _session(_turn(runtime)).fsm_state
+    await states.wrapped(origin, states.NODES[origin])(state, runtime=runtime)
+
+
+async def side_query(state: GraphState, runtime: Runtime[Turn]) -> None:
+    """TDD §2.6, in its order: apply the slot (the origin state's node), answer from a frozen view
+    of the session, then resume (the frame popped, the bridge, the state's prompt)."""
+    turn = _turn(runtime)
+    if (turn.action or {}).get("type") == "FACT":
+        lead = side_query_subgraph.fact_action(turn)  # the normal confirmation path
+        await _origin(state, runtime)
+        turn.parts = [*lead, *turn.parts]
+        if lead:
+            turn.phrase = None  # a template leads: no generated sentence before the question
+        turn.side_outcome = "fact"
+        return
+    await _origin(state, runtime)
+    await side_query_subgraph.respond(turn, turn.side_question or "")
+
+
+async def objection_node(state: GraphState, runtime: Runtime[Turn]) -> None:
+    """CC5 (Step 22): the origin state's node first, then the answer to the objection ahead of its
+    prompt; a deferral or the END action skips it (the pause handler or the exit line speaks)."""
+    turn = _turn(runtime)
+    kind = cast(objection.Kind, turn.objection)
+    if kind not in ("deferral", "end"):
+        await _origin(state, runtime)
+    await objection.respond(turn, kind)
+
+
+async def timer(state: GraphState, runtime: Runtime[Turn]) -> None:
+    """A timer turn (jobs/timers.py): the inactivity, for CC3 (after consent only, V3)."""
+    _turn(runtime).signals["inactivity_timeout"] = True
 
 
 # --- decide ---------------------------------------------------------------------------------------
@@ -399,6 +537,15 @@ async def decide(state: GraphState, runtime: Runtime[Turn]) -> Command[str]:
         facts = Facts.model_validate(facts.model_dump() | turn.signals)
     before = session.fsm_state
     result = transition(facts, before, turn.settings)
+    if result.row_id in ("CC4", "CC5"):
+        # Step 22 (TDD §2.6): a side question or an objection is answered, then the customer
+        # resumes where the turn's own answer put them. A move that answer earned (the read-back
+        # confirmed, an election, a choice) is not held back by the FAQ or objection row.
+        earned = transition(
+            facts.model_copy(update={"faq": False, "objection": False}), before, turn.settings
+        )
+        if earned.to is not before:
+            result = earned
     logger.info(
         "transition %s -> %s by %s (%s)", before, result.to, result.row_id, result.reason_code
     )
@@ -430,6 +577,9 @@ async def decide(state: GraphState, runtime: Runtime[Turn]) -> Command[str]:
         session.stack = session.stack[:-1]
     session.fsm_state = result.to
     turn.transition = result
+    if result.to is FsmState.DATA_ERASURE and turn.routed in ("side_query", "objection"):
+        # Step 22: an erasure (an under-18 age in a compound turn) speaks alone: no answer.
+        turn.render, turn.draft, turn.regenerate, turn.handles = None, None, None, None
     if result.to is not before:  # a state's form and quick replies stay in that state
         turn.form, turn.quick_replies = None, []
     return Command(goto=after_decide(turn, before))
@@ -471,10 +621,16 @@ async def compose(state: GraphState, runtime: Runtime[Turn]) -> None:
     session = _session(turn)
     await _status(turn, "composing")
     overlong = turn.pipeline is not None and turn.pipeline.overlong
-    if turn.render is not None and not (overlong or turn.degraded or turn.identity or turn.safety):
-        return  # Step 21: the state composed its own reply (S3); the rails check it next
-    turn.handles, turn.numbers, turn.disclosure_sets, turn.recommendation = None, None, {}, None
     scripts = cast(PromptBundle, turn.bundle).templates[session.locale].scripts
+    if turn.render is not None and not (overlong or turn.degraded or turn.identity or turn.safety):
+        # Step 21: the state composed its own reply (S3; Step 22, a side answer); the rails check
+        # it next. The never-store reminder leads it.
+        if turn.reminder:
+            own = turn.render
+            turn.render = lambda n: s3.with_lead([("pii_reminder", scripts.pii_reminder)], own(n))
+        return
+    turn.handles, turn.numbers, turn.disclosure_sets, turn.recommendation = None, None, {}, None
+    turn.verify_all = False
     chosen: list[tuple[str, str]]
     if turn.parts:
         chosen = list(turn.parts)
@@ -486,6 +642,8 @@ async def compose(state: GraphState, runtime: Runtime[Turn]) -> None:
         chosen = []
     else:
         chosen = [("advisor_offer", scripts.advisor_offer)]
+    if turn.reminder and not (turn.identity or turn.safety):
+        chosen = [("pii_reminder", scripts.pii_reminder), *chosen]
     if turn.identity:
         chosen = [await identity.part(turn), *chosen]
     if turn.safety:
@@ -564,7 +722,11 @@ async def validate(state: GraphState, runtime: Runtime[Turn]) -> None:
         pins=session.pins.model_dump(mode="json"),
         key_ref=row.key_ref,
         locale=session.locale,
-        route=Route.GEN_RECOMMEND if session.fsm_state is FsmState.S3 else Route.GEN_CONVERSE,
+        route=(
+            Route.GEN_RECOMMEND
+            if session.fsm_state is FsmState.S3 or turn.verify_all
+            else Route.GEN_CONVERSE
+        ),
         handles=turn.handles or issue([], []),
         customer_text=turn.pipeline.stored_raw if turn.pipeline else "",
         products=turn.products,
@@ -633,6 +795,11 @@ def response_body(turn: Turn) -> dict[str, Any]:
     }
 
 
+def _input(turn: Turn) -> dict[str, Any]:
+    """An in-turn without text: the structured action, or the timer."""
+    return {"timer": TIMER} if turn.timer else cast(dict[str, Any], turn.action)
+
+
 def session_status(state: FsmState) -> str:
     if state is FsmState.PAUSE:
         return "paused"
@@ -655,8 +822,12 @@ async def commit(state: GraphState, runtime: Runtime[Turn]) -> dict[str, Any]:
         session_id=turn.session_id,
         seq=turn.in_seq,
         direction="in",
-        text=pipeline.stored_raw if pipeline else canonical_json(turn.action).decode(),
-        redacted=pipeline.redacted if pipeline else f"[action:{(turn.action or {}).get('type')}]",
+        text=pipeline.stored_raw if pipeline else canonical_json(_input(turn)).decode(),
+        redacted=pipeline.redacted
+        if pipeline
+        else f"[timer:{TIMER}]"
+        if turn.timer
+        else f"[action:{(turn.action or {}).get('type')}]",
         language=pipeline.language if pipeline else language,
         analysis=store.analysis_projection(pipeline.analysis if pipeline else None),
         turn_key=turn.turn_key,
@@ -737,6 +908,10 @@ async def commit(state: GraphState, runtime: Runtime[Turn]) -> dict[str, Any]:
             citations=list(rendered.citations) if rendered else [],
             verdicts=released.verdicts,
             disclosure_set_sha256s=sorted(rendered.disclosure_hashes.values()) if rendered else [],
+            language=language,
+            faq=turn.side_outcome if turn.routed == "side_query" else None,
+            objection=turn.objection if turn.routed == "objection" else None,
+            objection_response=turn.objection_response if turn.routed == "objection" else None,
         ),
         payload={"response": body},
         key_ref=row.key_ref,
@@ -764,8 +939,14 @@ def build_graph(checkpointer: BaseCheckpointSaver[Any] | None) -> CompiledStateG
     state_names = tuple(s.value for s in FsmState)
     graph.add_node("load", load, destinations=("input", END))
     graph.add_node("input", input_node)
-    graph.add_node("route", route, destinations=(*ROUTED, "side_query", *state_names))
-    graph.add_node("side_query", side_query, destinations=state_names)
+    graph.add_node(
+        "route",
+        route,
+        destinations=(*ROUTED, "side_query", "objection", "timer", *state_names),
+    )
+    for name, step in (("side_query", side_query), ("objection", objection_node), ("timer", timer)):
+        graph.add_node(name, step)
+        graph.add_edge(name, "decide")
     for fsm_state, node in states.NODES.items():
         graph.add_node(fsm_state.value, states.wrapped(fsm_state, node))
         graph.add_edge(fsm_state.value, "decide")

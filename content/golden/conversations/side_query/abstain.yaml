@@ -1,0 +1,9 @@
+id: sq-abstain
+description: >-
+  Insufficient evidence: "I can't confirm that" with an advisor offer; the state is untouched and
+  the pending question comes back.
+prelude: to-s2
+turns:
+  - text: what is the capital of France?
+    script: {nlu-extract: [{intents: [SIDE_QUERY], side_query: "what is the capital of France?"}]}
+    expect: {state: S2, row: S2.STAY, templates: [abstain, side_query_caveat, side_query_bridge, RL-S2-GOALS], abstained: true, faq: abstained, absent: [MODEL_CALL]}

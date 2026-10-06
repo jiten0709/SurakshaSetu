@@ -1,0 +1,10 @@
+id: matrix-asks-for-human-s3
+description: >-
+  TDD §3.9, S3: the hand-off with the recommendation record (P2 was granted at consent): the
+  advisor quick reply on the recommendation.
+prelude: to-s3
+turns:
+  - text: "yes"
+    expect: {state: S3, row: S2.2}
+  - action: {type: HUMAN_REQUEST}
+    expect: {state: HUMAN_ESCALATION, row: CC2, reason: HE_REQUEST, templates: [handoff], events: [HANDOFF], handoff: HE_REQUEST}

@@ -1,0 +1,9 @@
+id: matrix-distress-s0
+description: >-
+  TDD §3.9, S0: the safety script and helpline lead; sales stop (HE_SAFETY), contact options only
+  before consent.
+turns:
+  - action: {type: START}
+    expect: {state: S0, templates: [greeting]}
+  - text: I don't see the point anymore, I want to end my life
+    expect: {state: HUMAN_ESCALATION, reason: HE_SAFETY, templates: [safety, contact_options]}

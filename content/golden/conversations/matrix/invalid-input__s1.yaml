@@ -1,0 +1,15 @@
+id: matrix-invalid-input-s1
+description: >-
+  TDD §3.9, S1: the format hint, twice; at the third the advisor offer (SS_INVALID_INPUT_LIMIT).
+prelude: to-s1
+turns:
+  - text: "34"
+    expect: {templates: [RL-S1-RESIDENCY]}
+  - action: {type: SLOT, payload: {slot: residency, value: resident}}
+    expect: {templates: [RL-S1-PINCODE]}
+  - text: somewhere near the station
+    expect: {templates: [format_hint, RL-S1-PINCODE], counters: {invalid_input: 1}}
+  - text: the one by the market
+    expect: {templates: [format_hint, RL-S1-PINCODE], counters: {invalid_input: 2}}
+  - text: I don't know it
+    expect: {templates: [advisor_offer], counters: {invalid_input: 0}, actions: [HUMAN_REQUEST, CONTINUE]}

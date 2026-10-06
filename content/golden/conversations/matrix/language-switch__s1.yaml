@@ -1,0 +1,10 @@
+id: matrix-language-switch-s1
+description: >-
+  TDD §3.9, S1: the conversation continues in the new language; the language of each release is
+  in its RESPONSE_RELEASED header.
+prelude: to-s1
+turns:
+  - action: {type: LANGUAGE, payload: {locale: hi-IN}}
+    expect: {state: S1, templates: [RL-S1-AGE], language: hi, contains: ["[hi translation pending approval]"]}
+  - text: "34"
+    expect: {state: S1, templates: [RL-S1-RESIDENCY], language: hi}

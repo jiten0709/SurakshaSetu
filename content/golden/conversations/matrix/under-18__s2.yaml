@@ -1,0 +1,9 @@
+id: matrix-under-18-s2
+description: >-
+  TDD §3.9, S2 (same as S1): an age corrected to under 18 in S2 (V4's hook) -> Data Erasure and
+  the polite exit; the key destroyed.
+prelude: to-s2
+turns:
+  - text: sorry, I'm actually 17
+    script: {nlu-extract: [{slots: [{slot: age_years, value: 17, confidence: 0.95, evidence_span: "17"}]}]}
+    expect: {state: DATA_ERASURE, row: CC1b, templates: [minor_exit], erased: destroyed}

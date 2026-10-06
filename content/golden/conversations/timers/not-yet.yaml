@@ -1,0 +1,12 @@
+id: timer-not-yet
+description: >-
+  A session idle for less than its state's timeout is left alone; a paused session is never
+  selected again.
+prelude: to-s1
+turns:
+  - timer: 5
+    expect: {timer_fired: false, state: S1}
+  - timer: 15
+    expect: {timer_fired: true, state: PAUSE}
+  - timer: 45
+    expect: {timer_fired: false, state: PAUSE}

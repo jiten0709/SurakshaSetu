@@ -726,13 +726,19 @@ async def test_a_tax_question_is_answered_with_citations_the_condition_and_tax_0
 
     t = await follow(held, "How much tax will I save?", models=models, retrieval=evidence)
 
+    # Step 22: the side-query subgraph answers it; the regime is not known, so it is asked, and
+    # the bridge leads back to the choices.
     assert ids(t) == [
         "generated:answer",
         "template:side_query_caveat",
         "template:tax_condition",
+        "template:regime_ask",
         "registry:DISC-GLOBAL-TAX-05",
         "template:sources",
+        "template:side_query_bridge",
+        "template:s3_choices",
     ]
+    assert [q["action"]["type"] for q in t.quick_replies][:2] == ["FACT", "FACT"]
     assert t.released is not None and t.released.rendered is not None
     assert t.released.rendered.citations == {"E1": "tax:doc:e1:abc123"}
     assert evidence.asked[0][1].focus_uins == [TERM, ROP]
@@ -761,6 +767,8 @@ async def test_an_exclusion_dispute_cites_the_wording_and_offers_the_grievance_r
         "template:side_query_caveat",
         "template:exclusion_note",
         "template:sources",
+        "template:side_query_bridge",
+        "template:s3_choices",
     ]
 
 
@@ -793,7 +801,12 @@ async def test_a_question_without_sufficient_evidence_abstains(
 
     t = await follow(held, "Is the death benefit paid in instalments?", retrieval=Evidence(nothing))
 
-    assert ids(t) == ["template:abstain", "template:side_query_caveat"]
+    assert ids(t) == [
+        "template:abstain",
+        "template:side_query_caveat",
+        "template:side_query_bridge",
+        "template:s3_choices",
+    ]
 
 
 @pytest.mark.asyncio

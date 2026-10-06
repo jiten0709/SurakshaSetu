@@ -12,6 +12,7 @@ turns:
       gen-recommend: ["Premiums can qualify for a deduction only under the old tax regime, subject to conditions [E2]."]
     expect:
       state: S3
-      parts: [generated:answer, template:side_query_caveat, template:tax_condition, "registry:DISC-GLOBAL-TAX-05", template:sources]
+      parts: [generated:answer, template:side_query_caveat, template:tax_condition, template:regime_ask, "registry:DISC-GLOBAL-TAX-05", template:sources, template:side_query_bridge, template:s3_choices]
+      faq: answered
       citations: true
       abstained: false

@@ -8,7 +8,8 @@ may have moved while the customer was away:
 - the consent record, fetched fresh. A lapsed TTL or a superseded notice makes P1 invalid, so the
   G1 guard re-enters S0 once PAUSE.R resumes;
 - the products and quotes of a recommendation (a kill switch, a withdrawal, a quote past its IST
-  validity). A stale recommendation is dropped, so S3 ranks and quotes again (Step 21);
+  validity). A stale recommendation is dropped, so S3 ranks and quotes again (Step 21); and
+  Quote-Only's indicative quote past its validity (Step 22);
 - the pins change only by kill switch, and load has already re-pinned a kill-switched bundle.
 It is not wrapped by `guarded`: if the Consent Service cannot answer, the turn fails (503, nothing
 released) and does not resume on stale consent.
@@ -51,6 +52,10 @@ async def resume(state: GraphState, *, runtime: Runtime[Any]) -> None:
         if stale is not None:
             current.recommendation = None
             logger.info("recommendation dropped on resume: %s", stale)
+    today = handlers.now().astimezone(IST).date()
+    if current.quote is not None and current.quote.valid_until < today:
+        current.quote = None  # Step 22: Quote-Only quotes again rather than show an expired one
+        logger.info("indicative quote dropped on resume: QUOTE_EXPIRED")
     valid = "valid" if _valid(current.consent) else "not valid"
     logger.info("resume revalidated: consent %s", valid)
 

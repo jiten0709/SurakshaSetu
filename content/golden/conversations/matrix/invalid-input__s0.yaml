@@ -1,0 +1,9 @@
+id: matrix-invalid-input-s0
+description: >-
+  TDD §3.9, S0: an answer the consent prompt cannot use re-presents the options (no consent is
+  ever inferred).
+turns:
+  - action: {type: START}
+    expect: {state: S0, templates: [greeting]}
+  - text: maybe later perhaps
+    expect: {state: S0, templates: [consent_reprompt], form: true, absent: [CONSENT_CAPTURED]}

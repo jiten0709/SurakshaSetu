@@ -19,7 +19,7 @@ from datetime import UTC, datetime, timedelta
 from functools import partial
 from http import HTTPStatus
 from typing import Any, Literal, Self, cast
-from uuid import UUID
+from uuid import UUID, uuid5
 
 import psycopg
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
@@ -41,6 +41,7 @@ from surakshasetu.crypto.keys import SYSTEM_KEY_REF, KeyDestroyed, KeyService, L
 from surakshasetu.domain.client import DomainClient, DomainError
 from surakshasetu.domain.models import KillSwitch
 from surakshasetu.gateway import Gateway, GatewayUnavailable
+from surakshasetu.graph import side_query
 from surakshasetu.graph.gate import RedisGate
 from surakshasetu.graph.handlers import data_erasure
 from surakshasetu.graph.nodes import Turn, build_graph
@@ -139,6 +140,8 @@ class Runtime:
             gateway = await stack.enter_async_context(Gateway(settings))
             pack = load_pack(settings.output_lexicon)
             bundle = load_bundle(settings.prompt_bundle, env=settings.env)
+            for locale in ("en-IN", "hi-IN"):  # Step 22: refused at start, never mid-turn
+                side_query.privacy_faq(locale, settings.env)
             with pool.connection() as conn:  # commits on exit
                 activate(conn, keys, bundle)  # CONFIG_RELEASE, once per bundle version
             graph = build_graph(AsyncPostgresSaver(saver_pool))
@@ -231,11 +234,39 @@ class Runtime:
     async def run_turn(
         self, row: SessionRow, turn_key: UUID, text: str | None, action: dict[str, Any] | None
     ) -> bytes:
+        return cast(bytes, await self._run(row, turn_key, text, action))
+
+    async def run_timer(self, row: SessionRow) -> bytes | None:
+        """A timer turn (jobs/timers.py, Step 22): the session's inactivity, for CC3. Never before
+        consent (V3: a session is passive until P1, so nothing transitions and nothing is sent).
+        Not rate-limited (the customer sent nothing). Its key is the inactivity period, so a re-run
+        replays the same pause; a turn since then means the session is not idle (None)."""
+        if row.consent_id is None or row.status != "active":
+            return None
+        key = uuid5(row.session_id, f"timer:{row.last_activity_at.isoformat()}")
+        return await self._run(row, key, None, None, idle_since=row.last_activity_at)
+
+    async def _run(
+        self,
+        row: SessionRow,
+        turn_key: UUID,
+        text: str | None,
+        action: dict[str, Any] | None,
+        *,
+        idle_since: datetime | None = None,
+    ) -> bytes | None:
         lock = await self.gate.acquire(row.session_id)  # a RedisError here is a 503: fail closed
         if lock is None:
             raise ProblemError(409, "SESSION_BUSY")
         try:
-            if await self.gate.over_limit(row.subject_ref):
+            if idle_since is not None:  # a timer: still idle, under the lock?
+                async with self.connection() as conn:
+                    fresh = store.get_session(conn, row.session_id)
+                idle = fresh is not None and fresh.status == "active"
+                if not idle or cast(SessionRow, fresh).last_activity_at != idle_since:
+                    logger.info("timer turn skipped: the session moved since it was selected")
+                    return None
+            elif await self.gate.over_limit(row.subject_ref):
                 raise ProblemError(429, "RATE_LIMITED")
             async with self.connection() as conn:
                 turn = Turn(
@@ -251,6 +282,7 @@ class Runtime:
                     text=text,
                     action=action,
                     retrieval=self.retrieval,
+                    timer=idle_since is not None,
                 )
                 await self._invoke(turn)
             if turn.erasure is not None and not turn.replayed:

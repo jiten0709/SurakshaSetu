@@ -1,0 +1,8 @@
+id: matrix-off-topic-s2
+description: >-
+  TDD §3.9, S2 (same as S1): a one-line redirect to the pending question.
+prelude: to-s2
+turns:
+  - text: the traffic was terrible this morning
+    script: {nlu-extract: [{intents: [OFF_TOPIC]}]}
+    expect: {state: S2, templates: [redirect, RL-S2-GOALS]}

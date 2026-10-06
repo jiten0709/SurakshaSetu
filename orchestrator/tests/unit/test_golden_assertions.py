@@ -25,7 +25,7 @@ from harness import (  # noqa: E402
 
 from surakshasetu.crypto.jcs import sha256_hex  # noqa: E402
 
-PINS = {"prompt_bundle": "pb-2026.10.5", "rules": "2026.09.1"}
+PINS = {"prompt_bundle": "pb-2026.10.6", "rules": "2026.09.1"}
 
 
 def body(text: str = "Hi", state: str = "S0", turn_id: str = "t1", **message: Any) -> bytes:
@@ -84,7 +84,7 @@ def transcript(*turns: dict[str, Any], **update: Any) -> Transcript:
     raw = body()
     t = Transcript(
         conversation=conversation,
-        active_bundle="pb-2026.10.5",
+        active_bundle="pb-2026.10.6",
         consent_valid_from_start=False,
         initial_pins=PINS,
         sent=[Sent(0, 200, raw, customer_text="hello")],
@@ -596,3 +596,83 @@ def test_scripted_analysis_is_completed_and_failures_pass_through() -> None:
                                "language": "en"}}  # fmt: skip
     assert turn.replies("guard-input") == [{"content": "", "status": 503}]
     assert copy.deepcopy(turn).withdraws is False
+
+
+# --- Step 22 --------------------------------------------------------------------------------------
+def side_answer(*part_ids: str, form: bool = False, quick: bool = False) -> Transcript:
+    parts = [{"id": i, "text": "x"} for i in part_ids]
+    extra: dict[str, Any] = {"parts": parts}
+    if form:
+        extra["form"] = {"type": "CONSENT_SUBMIT", "notice_version": "v1", "notice_sha256": "0"}
+    if quick:
+        extra["quick_replies"] = [{"label": "Yes", "action": {"type": "CONTINUE"}}]
+    raw = body("x", **extra)
+    found = events(raw)
+    found[2].header["faq"] = "answered"
+    sent = Sent(0, 200, raw, customer_text="hello")
+    sent.frames = []
+    return transcript(sent=[sent], events=found)
+
+
+def resumes(t: Transcript) -> bool:
+    return not any(f.startswith("side query") for f in check(t))
+
+
+def test_a_side_question_resumes_at_the_prompt_with_the_stack_as_it_was() -> None:
+    assert resumes(side_answer("generated:answer", "template:side_query_bridge", "template:RL-X"))
+    assert resumes(side_answer("generated:answer", "template:side_query_offer"))
+    assert resumes(side_answer("faq:2026.10.1:PF-PURPOSES", form=True))  # S0: the form again
+    assert not resumes(side_answer("generated:answer", "template:side_query_bridge"))
+    assert not resumes(side_answer("generated:answer"))  # no prompt, no form, no quick reply
+    changed = side_answer("generated:answer", "template:side_query_bridge", "template:RL-X")
+    changed.sent[0].frames = [{"state": "S1"}]
+    assert not resumes(changed)
+    moved = side_answer("generated:answer")
+    moved.events[1].header["to_state"] = "S2"  # the turn's own answer moved the state on
+    assert resumes(moved)
+
+
+def test_a_faq_part_must_be_the_approved_answer_verbatim() -> None:
+    raw = body("Our data", parts=[{"id": "faq:2026.10.1:PF-PURPOSES", "text": "Our data"}])
+    t = transcript(sent=[Sent(0, 200, raw, customer_text="hello")], events=events(raw))
+    assert any(f.startswith("faq:") for f in check(t))
+    t.faq_answers = {"Our data"}
+    assert not any(f.startswith("faq:") for f in check(t))
+
+
+def test_a_timer_step_sends_nothing_and_is_one_kind_of_turn() -> None:
+    assert Turn.model_validate({"timer": 15}).timer == 15
+    with pytest.raises(ValidationError):
+        Turn.model_validate({"timer": 15, "text": "hi"})
+
+
+MATRIX_ROWS = (
+    "declines-consent",
+    "under-18",
+    "off-topic",
+    "invalid-input",
+    "prompt-injection",
+    "regulatory-pushback",
+    "asks-for-human",
+    "distress",
+    "shares-pii",
+    "language-switch",
+    "dependency-down",
+)
+
+
+def test_the_step_22_suites_cover_side_queries_objections_timers_and_every_matrix_cell() -> None:
+    every = load_conversations()
+    side = [c for c in every if c.id.startswith("sq-")]
+    objections = [c for c in every if c.id.startswith("obj-")]
+    timed = [c for c in every if c.id.startswith("timer-")]
+    assert len(side) >= 10 and len(objections) >= 8 and len(timed) >= 4
+    assert {"sq-80c-worked-example", "sq-80c-hinglish"} <= {c.id for c in side}
+    assert any(
+        t.timer is not None and t.expect.timer_fired is False for c in timed for t in c.turns
+    )
+    rows = {t.expect.row for c in objections for t in c.turns}
+    assert {"CC5", "CC3b", "CC5b", "S3.2"} <= rows
+    root = Path(__file__).resolve().parents[3] / "content" / "golden" / "conversations" / "matrix"
+    cells = {p.stem for p in root.glob("*.yaml")}
+    assert cells == {f"{r}__{s}" for r in MATRIX_ROWS for s in ("s0", "s1", "s2", "s3")}

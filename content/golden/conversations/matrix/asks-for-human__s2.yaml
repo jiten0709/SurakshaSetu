@@ -1,0 +1,11 @@
+id: matrix-asks-for-human-s2
+description: >-
+  TDD §3.9, S2: the hand-off, asking for P2; granted, the redacted briefing goes to the advisor
+  queue once.
+prelude: to-s2
+turns:
+  - text: can a human advisor help me with this
+    script: {nlu-extract: [{intents: [META_HUMAN]}]}
+    expect: {state: HUMAN_ESCALATION, row: CC2, templates: [advisor_consent_ask]}
+  - action: {type: ADVISOR_CONTACT, payload: {granted: true}}
+    expect: {state: HUMAN_ESCALATION, templates: [handoff], events: [CONSENT_CAPTURED, HANDOFF], handoff: HE_REQUEST}

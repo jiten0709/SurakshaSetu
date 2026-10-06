@@ -1,0 +1,11 @@
+id: matrix-dependency-down-s2
+description: >-
+  TDD §3.9, S2: the Suitability Service down -> Pause (CC3, DEPENDENCY_DOWN), progress saved;
+  the customer comes back and resumes (PAUSE.R).
+prelude: to-s2
+turns:
+  - action: {type: SLOT, payload: {slot: goals, value: income_protection}}
+    domain_down: [getRequiredSlots]
+    expect: {state: PAUSE, row: CC3, reason: DEPENDENCY_DOWN, templates: [dependency_down, paused]}
+  - text: I'm back, let's continue
+    expect: {state: S2, row: PAUSE.R}

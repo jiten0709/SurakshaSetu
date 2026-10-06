@@ -274,3 +274,29 @@ def test_recommendation_ack_handoff_and_kill_switch_rows(db: Conn, keys: LocalKe
         "SELECT options FROM conv.recommendation WHERE rec_id = %s", (rec_id,)
     ).fetchone()
     assert options is not None and options[0][0]["uin"] == "999N001V02"
+
+
+def test_inactive_sessions_are_the_active_ones_idle_since_before_oldest_first(
+    db: Conn, keys: LocalKeyService
+) -> None:
+    """The timer job's candidates (Step 22): active, no turn since `before`; paused or ended ones
+    never, and the session ids it is limited to (the golden harness's)."""
+    consent_id = consent_record(db)
+    db.execute("SET ROLE app_rw")
+    made = [new_session(db, keys)[0] for _ in range(4)]
+    ages = {made[0]: 40, made[1]: 20, made[2]: 5, made[3]: 30}
+    for session_id, minutes in ages.items():
+        db.execute(
+            "UPDATE conv.session SET last_activity_at = now() - %s, consent_id = %s"
+            " WHERE session_id = %s",
+            (timedelta(minutes=minutes), consent_id, session_id),
+        )
+    db.execute("UPDATE conv.session SET status = 'paused' WHERE session_id = %s", (made[3],))
+    before = datetime.now(UTC) - timedelta(minutes=10)
+
+    found = [r.session_id for r in store.inactive_sessions(db, before) if r.session_id in made]
+    limited = store.inactive_sessions(db, before, [made[1]])
+
+    assert found == [made[0], made[1]]
+    assert [r.session_id for r in limited] == [made[1]]
+    assert limited[0].consent_id == consent_id and isinstance(limited[0].token_sha256, bytes)

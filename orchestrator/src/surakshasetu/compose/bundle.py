@@ -62,6 +62,7 @@ IDENTITY_LEXICON = "lexicons/identity_question.yaml"
 SCREENING_LEXICON = "lexicons/screening.yaml"  # Step 19
 NEEDS_LEXICON = "lexicons/needs.yaml"  # Step 20
 S3_LEXICON = "lexicons/s3.yaml"  # Step 21
+SIDE_QUERY_LEXICON = "lexicons/side_query.yaml"  # Step 22
 # Word edges that also hold inside Devanagari (as rails/output.py's lexicon matching).
 _START, _END = r"(?<![\wऀ-ॿ])", r"(?![\wऀ-ॿ])"
 
@@ -204,6 +205,18 @@ class NeedsLabels(_Strict):
         return self
 
 
+class SideQueryLabels(_Strict):
+    """Step 22's quick-reply labels: the tax regimes (also how a regime reads in a sentence), a
+    yes and a no to a proposed fact, and the second-objection offer's save and end."""
+
+    regimes: dict[Literal["old", "new"], str]
+    confirm: str
+    decline: str
+    save: str
+    end: str
+    keep_going: str
+
+
 class S3Labels(_Strict):
     """State-3 labels (Step 21): the quick replies, the ranker's reason codes and the alternatives'
     changes as a customer reads them, why a named plan is not an option, and the citation labels
@@ -342,6 +355,24 @@ class Scripts(_Strict):
     decline_first: str  # a decline before any re-discovery: revisit, save or an advisor
     declined_exit: str  # a decline after re-discovery: a graceful exit
     s3: S3Labels
+    # Cross-cutting completion (Step 22, pb-2026.10.6 on; required, so pb-2026.10.5 no longer
+    # loads). The side-query subgraph's bridge back to the pending question and its offer after
+    # five in a row; the tax regime asked, a regime the customer revealed read back, and noted;
+    # regulatory pushback (S1's material-fact reason, S2's suitability purpose); the objection
+    # handler's early price line, other objections, and the second-time offer of Pause or Exit;
+    # the request not to share never-store data. Legally significant ones stay DUMMY.
+    side_query_bridge: str
+    side_query_offer: str
+    regime_ask: str
+    regime_confirm: str  # "{regime}"
+    regime_noted: str  # "{regime}"
+    material_fact_note: str
+    suitability_purpose: str
+    objection_price_early: str
+    objection_other: str
+    objection_repeat: str
+    pii_reminder: str
+    side: SideQueryLabels
 
 
 Attribute = Literal[
@@ -495,6 +526,32 @@ class S3Lexicon(_Strict):
         return _phrases(entries)
 
 
+class SideQueryLexicon(_Strict):
+    """lexicons/side_query.yaml (Step 22): whole-word phrases anywhere in the turn. Regulatory
+    pushback ("why do you need this?"), a tax regime the customer states, a medical report shared,
+    and a request to switch language."""
+
+    pushback: frozenset[str]
+    regime_old: frozenset[str]
+    regime_new: frozenset[str]
+    medical_report: frozenset[str]
+    language_hi: frozenset[str]
+    language_en: frozenset[str]
+
+    @field_validator(
+        "pushback",
+        "regime_old",
+        "regime_new",
+        "medical_report",
+        "language_hi",
+        "language_en",
+        mode="before",
+    )
+    @classmethod
+    def _normalised(cls, entries: list[str]) -> frozenset[str]:
+        return _phrases(entries)
+
+
 @dataclass(frozen=True)
 class PromptBundle:
     manifest: Manifest
@@ -507,6 +564,7 @@ class PromptBundle:
     screening_lexicon: ScreeningLexicon
     needs_lexicon: NeedsLexicon
     s3_lexicon: S3Lexicon
+    side_query_lexicon: SideQueryLexicon
 
     @property
     def version(self) -> str:
@@ -538,6 +596,7 @@ def load_bundle(version: str, *, env: str, root: Path = PROMPT_BUNDLES) -> Promp
         SCREENING_LEXICON,
         NEEDS_LEXICON,
         S3_LEXICON,
+        SIDE_QUERY_LEXICON,
     }
     if missing := sorted((set(manifest.files) | required) - present):
         raise _refuse(version, "FILE_MISSING", missing[0])
@@ -566,6 +625,9 @@ def load_bundle(version: str, *, env: str, root: Path = PROMPT_BUNDLES) -> Promp
         )
         needs_lexicon = NeedsLexicon.model_validate(yaml.safe_load(files[NEEDS_LEXICON]))
         s3_lexicon = S3Lexicon.model_validate(yaml.safe_load(files[S3_LEXICON]))
+        side_query_lexicon = SideQueryLexicon.model_validate(
+            yaml.safe_load(files[SIDE_QUERY_LEXICON])
+        )
     except (ValidationError, yaml.YAMLError) as exc:
         raise _refuse(version, "LEXICON_INVALID") from exc
     l0 = files[L0_PATH].decode("utf-8")
@@ -586,6 +648,7 @@ def load_bundle(version: str, *, env: str, root: Path = PROMPT_BUNDLES) -> Promp
         screening_lexicon=screening_lexicon,
         needs_lexicon=needs_lexicon,
         s3_lexicon=s3_lexicon,
+        side_query_lexicon=side_query_lexicon,
     )
     logger.info("prompt bundle %s loaded: %d files", version, len(files))
     return bundle

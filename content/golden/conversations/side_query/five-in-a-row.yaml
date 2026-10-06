@@ -1,0 +1,23 @@
+id: sq-five-in-a-row
+description: >-
+  After five side questions in a row the assistant offers to carry on or hand off (TDD §2.6); the
+  run is counted, the offer resets it, and "carry on" goes back to the pending question.
+prelude: to-s2
+turns:
+  - text: "what is the capital of France?"
+    script: {nlu-extract: [{intents: [SIDE_QUERY], side_query: "what is the capital of France?"}]}
+    expect: {state: S2, counters: {side_queries: 1}, templates: [abstain, side_query_caveat, side_query_bridge, RL-S2-GOALS]}
+  - text: "what is the capital of France?"
+    script: {nlu-extract: [{intents: [SIDE_QUERY], side_query: "what is the capital of France?"}]}
+    expect: {state: S2, counters: {side_queries: 2}, templates: [abstain, side_query_caveat, side_query_bridge, RL-S2-GOALS]}
+  - text: "what is the capital of France?"
+    script: {nlu-extract: [{intents: [SIDE_QUERY], side_query: "what is the capital of France?"}]}
+    expect: {state: S2, counters: {side_queries: 3}, templates: [abstain, side_query_caveat, side_query_bridge, RL-S2-GOALS]}
+  - text: "what is the capital of France?"
+    script: {nlu-extract: [{intents: [SIDE_QUERY], side_query: "what is the capital of France?"}]}
+    expect: {state: S2, counters: {side_queries: 4}, templates: [abstain, side_query_caveat, side_query_bridge, RL-S2-GOALS]}
+  - text: "what is the capital of France?"
+    script: {nlu-extract: [{intents: [SIDE_QUERY], side_query: "what is the capital of France?"}]}
+    expect: {state: S2, counters: {side_queries: 0}, templates: [abstain, side_query_caveat, side_query_offer], actions: [CONTINUE, HUMAN_REQUEST]}
+  - action: {type: CONTINUE}
+    expect: {state: S2, templates: [RL-S2-GOALS]}

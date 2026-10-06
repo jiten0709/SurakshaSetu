@@ -1,0 +1,9 @@
+id: matrix-invalid-input-s3
+description: >-
+  TDD §3.9, S3: anything the recommendation cannot use gets structured choices only.
+prelude: to-s3
+turns:
+  - text: "yes"
+    expect: {state: S3, row: S2.2}
+  - text: hmm okay whatever
+    expect: {state: S3, templates: [s3_choices], actions: [APPLY, HUMAN_REQUEST, REVISE, SAVE]}

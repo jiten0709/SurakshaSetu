@@ -1,0 +1,7 @@
+id: matrix-language-switch-s2
+description: >-
+  TDD §3.9, S2 (same as S1): asked in words, the conversation continues in Hindi.
+prelude: to-s2
+turns:
+  - text: can we talk in hindi please
+    expect: {state: S2, templates: [RL-S2-GOALS], language: hi, contains: ["[hi translation pending approval]"]}

@@ -1,0 +1,9 @@
+id: matrix-asks-for-human-s0
+description: >-
+  TDD §3.9, S0: contact options, and no data shared (nothing to share before consent).
+turns:
+  - action: {type: START}
+    expect: {state: S0, templates: [greeting]}
+  - text: can I speak to a real advisor?
+    script: {nlu-extract: [{intents: [META_HUMAN]}]}
+    expect: {state: HUMAN_ESCALATION, row: CC2, templates: [contact_options], absent: [HANDOFF]}

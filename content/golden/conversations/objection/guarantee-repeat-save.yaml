@@ -1,0 +1,14 @@
+id: obj-guarantee-repeat-save
+description: >-
+  A guarantee asked for in S2 (the phrase, no intent needed): no promise, the question again; asked
+  again, the offer of Pause or Exit; "save" pauses (CC3b) and the customer resumes later.
+prelude: to-s2
+turns:
+  - text: I want guaranteed high returns
+    expect: {state: S2, row: S2.STAY, templates: [guarantee_note, RL-S2-GOALS], lacks: ["guaranteed return"], objection: guarantee, objection_response: no_promise}
+  - text: but I only want guaranteed returns
+    expect: {state: S2, templates: [objection_repeat], actions: [SAVE, END, CONTINUE]}
+  - action: {type: SAVE}
+    expect: {state: PAUSE, row: CC3b, reason: NEED_TIME, templates: [paused], objection: deferral}
+  - text: I'm back
+    expect: {state: S2, row: PAUSE.R, templates: [RL-S2-GOALS]}

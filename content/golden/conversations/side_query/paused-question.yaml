@@ -1,0 +1,9 @@
+id: sq-paused-question
+description: >-
+  A side question from a paused session: the frame for it sits on top of the pause frame and is
+  popped; the customer resumes where the session paused (PAUSE.R), with the answer first.
+given: {consent: {purposes: [P1]}, state: PAUSE, paused_from: S2}
+turns:
+  - text: what is the capital of France?
+    script: {nlu-extract: [{intents: [SIDE_QUERY], side_query: "what is the capital of France?"}]}
+    expect: {state: S2, row: PAUSE.R, templates: [abstain, side_query_caveat, side_query_bridge, RL-S2-GOALS]}

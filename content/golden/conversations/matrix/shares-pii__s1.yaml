@@ -1,0 +1,8 @@
+id: matrix-shares-pii-s1
+description: >-
+  TDD §3.9, S1: an Aadhaar number with the answer: masked at ingress, never stored, and the
+  customer asked not to share it; the answer is still taken.
+prelude: to-s1
+turns:
+  - text: 34, and my aadhaar number is 234123412346
+    expect: {state: S1, templates: [pii_reminder, RL-S1-RESIDENCY], slots: {age_years: proposed}}

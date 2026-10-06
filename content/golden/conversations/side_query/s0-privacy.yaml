@@ -1,0 +1,13 @@
+id: sq-s0-privacy
+description: >-
+  Before consent S0 answers side questions only from the approved privacy FAQ: a template answer,
+  no retrieval and no generation; the consent form stays open.
+turns:
+  - action: {type: START}
+    expect: {state: S0, templates: [greeting]}
+  - text: how long do you keep my data?
+    script: {nlu-extract: [{intents: [GENERAL_FAQ], side_query: "how long do you keep my data?"}]}
+    expect: {state: S0, parts: ["faq:2026.10.1:PF-RETENTION"], form: true, faq: "faq:PF-RETENTION", absent: [MODEL_CALL, RETRIEVAL]}
+  - text: can I delete my data later?
+    script: {nlu-extract: [{intents: [GENERAL_FAQ], side_query: "can I delete my data later?"}]}
+    expect: {state: S0, parts: ["faq:2026.10.1:PF-ERASURE"], form: true}

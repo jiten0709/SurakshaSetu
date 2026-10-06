@@ -1,0 +1,16 @@
+id: obj-price-repeat-end
+description: >-
+  The same objection a second time (TDD §3.9): no second rebuttal, the offer to save, end or carry
+  on; "end" exits (CC5b), with the re-engagement line only because P3 was granted.
+prelude: to-s3
+turns:
+  - text: "yes"
+    expect: {state: S3, row: S2.2}
+  - text: this is too expensive for me
+    script: {nlu-extract: [{intents: [OBJECTION_PRICE]}]}
+    expect: {state: S3, row: CC5, templates: [alternatives], counters: {objection_price: 1}}
+  - text: it is still far too expensive
+    script: {nlu-extract: [{intents: [OBJECTION_PRICE]}]}
+    expect: {state: S3, row: CC5, templates: [objection_repeat], actions: [SAVE, END, CONTINUE], counters: {objection_price: 2}, objection_response: offer_pause_exit, absent: [ENGINE_DECISION]}
+  - action: {type: END}
+    expect: {state: EXIT, row: CC5b, reason: OBJECTION_EXIT, templates: [declined_exit, reengage], objection: end}

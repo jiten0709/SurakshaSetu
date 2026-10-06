@@ -105,6 +105,8 @@ CASES: dict[str, Case] = {
     "G4": Case(S.S3, in_s3(needs_slots_sha256=H2), S.S2, in_s3()),
     "CC4": Case(S.S1, consented(faq=True), S.S1, consented()),
     "CC5": Case(S.S3, in_s3(objection=True), S.S3, in_s3()),
+    "CC3b": Case(S.S2, consented(need_time=True), S.PAUSE, Facts(need_time=True)),
+    "CC5b": Case(S.S1, consented(end_requested=True), S.EXIT, consented()),
     # S0 (TDD §3.5).
     "S0.1": Case(
         S.S0, Facts(intent="existing_policy"), S.HUMAN_ESCALATION, Facts(intent="general_faq")
@@ -271,7 +273,7 @@ DOMAINS: dict[str, list[Any]] = {
             "apply_request", "sufficiency_elected", "amber_confirmed", "acks_valid_for_selected",
             "no_options", "all_rejected", "need_time", "explicit_decline", "withdraw",
             "human_request", "frustration", "inactivity_timeout", "dependency_down", "faq",
-            "objection",
+            "objection", "end_requested",
         ],
         BOOL,
     ),

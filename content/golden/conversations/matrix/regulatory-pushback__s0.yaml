@@ -1,0 +1,9 @@
+id: matrix-regulatory-pushback-s0
+description: >-
+  TDD §3.9, S0: pushback on sharing data before consent gets the approved privacy FAQ answer with
+  the grievance route; the consent prompt stays open.
+turns:
+  - action: {type: START}
+    expect: {state: S0, templates: [greeting]}
+  - text: why do you need all this data, I'm not comfortable sharing it
+    expect: {state: S0, parts: ["faq:2026.10.1:PF-COMPLAINT"], form: true, faq: "faq:PF-COMPLAINT", absent: [MODEL_CALL, RETRIEVAL]}

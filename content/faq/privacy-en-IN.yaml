@@ -1,0 +1,42 @@
+# The approved privacy FAQ (TDD §2.6, §3.5): the only answers a side question gets in S0, before
+# consent, and after the conversation has ended. Template answers, never generated, released
+# verbatim. An entry answers when one of its terms appears in the question as whole words (after
+# NFKC, case-folding and collapsing spaces); entries are tried in order, so the specific ones come
+# first. Not a session pin (like the output lexicon pack): the file's version and the entry id are
+# recorded in each RESPONSE_RELEASED header. DUMMY content: compliance replaces it before pilot,
+# and a DUMMY FAQ is refused in pilot or prod. Owner: compliance (with the DPO).
+version: 2026.10.1
+locale: en-IN
+is_dummy: true
+approved_by:
+  - {role: compliance, by: DUMMY-compliance, at: 2026-10-05}
+  - {role: dpo, by: DUMMY-dpo, at: 2026-10-05}
+entries:
+  - id: PF-COMPLAINT
+    topic: grievance
+    terms: ["complain", "complaint", "grievance", "ombudsman", "not comfortable sharing", "don't want to share", "shikayat", "शिकायत"]
+    answer: "DUMMY: Approved text pending. You don't have to share anything you're not comfortable with. To raise a concern or a complaint about how your information is used, tell me you want to complain, or write to the grievance officer named in our grievance redressal policy; every complaint is acknowledged within three days. If you're not satisfied with the reply, you can approach the Insurance Ombudsman or the Data Protection Board of India."
+  - id: PF-ERASURE
+    topic: erasure
+    terms: ["erase", "erasure", "delete my data", "delete my information", "remove my data", "forget me", "data hatao", "डेटा हटाओ", "मिटा दो"]
+    answer: "DUMMY: Approved text pending. You can ask us to erase your data at any time, by telling me or using the erase option on the screen. Your answers are encrypted under a key unique to you, and erasure destroys that key, so they can no longer be read by anyone. Records the law requires us to keep, such as the audit record of what was shown to you, are kept for the period the law sets."
+  - id: PF-WITHDRAW
+    topic: withdrawal
+    terms: ["withdraw", "withdrawal", "revoke", "take back my consent", "consent wapas", "सहमति वापस"]
+    answer: "DUMMY: Approved text pending. You can withdraw your consent for any purpose at any time, as easily as you gave it: tell me, use the withdraw option on the screen, or write to our grievance officer. When you withdraw, I stop asking questions and stop using your answers in the same turn."
+  - id: PF-RETENTION
+    topic: retention
+    terms: ["how long", "retention", "retain", "keep my data", "store my data", "kitne din", "कितने दिन"]
+    answer: "DUMMY: Approved text pending. We keep your answers only as long as the purposes you agreed to need them, and in any case not longer than thirty days after your last activity, unless you buy a policy or the law requires longer retention."
+  - id: PF-SHARING
+    topic: sharing
+    terms: ["share my data", "sell my data", "third party", "third parties", "who can see", "who sees", "kisko dikhega", "किसको दिखेगा"]
+    answer: "DUMMY: Approved text pending. We don't share your data with any other company for its marketing. A licensed advisor sees a summary of your answers only if you agree to purpose P2, or ask for one during the conversation."
+  - id: PF-RECORDED
+    topic: recording
+    terms: ["recorded", "recording", "is this chat saved", "automated", "record ho raha", "रिकॉर्ड"]
+    answer: "DUMMY: Approved text pending. This chat is recorded, and the assistant is an automated system, not a person. The record lets us show what you were told and when; it is protected and kept only as described in the notice."
+  - id: PF-PURPOSES
+    topic: purposes
+    terms: ["why do you need", "why are you asking", "what do you use", "my data", "my information", "personal data", "privacy", "consent", "purpose", "purposes", "dpdp", "kyun chahiye", "kyon chahiye", "gopniyata", "गोपनीयता", "निजता", "क्यों चाहिए"]
+    answer: "DUMMY: Approved text pending. We ask your consent for each purpose separately. P1, which the assistant needs, lets us use your answers, including basic health and lifestyle details, to assess your needs and suggest plans. P2, optional, lets a licensed advisor contact you. P3, optional, lets us send you product updates. You can choose each one, and change your mind at any time. If you have a concern, the grievance officer named in our grievance redressal policy can help."

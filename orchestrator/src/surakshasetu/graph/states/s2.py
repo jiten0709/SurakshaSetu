@@ -433,15 +433,19 @@ class Needs(Screen):
         if pipeline.blocked or turn.identity:
             self.noted = True  # slots discarded (injection) or compose answers (I6): nothing else
             return
+        # Step 22: a side question or an objection ("guaranteed returns?", another insurer's plan)
+        # is answered by the side-query subgraph or the objection handler ahead of this prompt; a
+        # language switch asks the open question again in the new language.
+        handled = turn.routed in ("side_query", "objection") or turn.language_switched
+        if handled:
+            self.noted = True
+        if s1.pushback(turn, text):  # TDD §3.9: the suitability purpose, then the question again
+            self.note("suitability_purpose", texts.suitability_purpose)
+            turn.answered = True
         if Intent.FINANCIAL_DISTRESS in intents or mentions(lexicon.distress, text):
             self.distressed()
         if Intent.COMPREHENSION_DIFFICULTY in intents or mentions(lexicon.comprehension, text):
             self.confused()
-        if Intent.OBJECTION_GUARANTEE in intents or mentions(lexicon.guarantee, text):
-            self.note("guarantee_note", texts.guarantee_note)
-        if Intent.OBJECTION_COMPETITOR in intents or mentions(lexicon.competitor, text):
-            insurer = bundle(turn).manifest.insurer
-            self.note("competitor_note", texts.competitor_note.format(insurer=insurer))
         if (
             (Intent.EXPRESS_PATH in intents or mentions(lexicon.short_path, text))
             and not self.short
@@ -450,7 +454,9 @@ class Needs(Screen):
             self.offer_short, self.noted = True, True
         if Intent.OFF_TOPIC in intents:
             self.note("redirect", texts.redirect)
-        if question and not (self.lead or self.filled or self.offer_short or self.rephrased):
+        if question and not (
+            self.lead or self.filled or self.offer_short or self.rephrased or handled
+        ):
             self.note("side_query_caveat", texts.side_query_caveat[self.session.fsm_state.value])
 
     def distressed(self) -> None:

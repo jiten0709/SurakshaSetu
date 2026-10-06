@@ -113,6 +113,14 @@ class ResponseReleasedHeader(Header):
     citations: list[str]
     verdicts: dict[str, str]
     disclosure_set_sha256s: list[Sha256Hex]
+    # Step 22: the language of each released response (the ledger of TDD §3.9's language switch);
+    # the FAQ Engine's outcome on a side question (answered, abstained, unavailable, stack_full,
+    # faq:<entry id>, faq:none, fact, state); the objection type and how it was answered
+    # (alternatives, cited:..., declined, no_figure, offer_pause_exit, pause, exit, ...).
+    language: Literal["en", "hi"] | None = None
+    faq: str | None = None
+    objection: str | None = None
+    objection_response: str | None = None
 
 
 class DisclosureAckHeader(Header):

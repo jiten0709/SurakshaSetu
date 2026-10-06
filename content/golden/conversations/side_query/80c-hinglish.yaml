@@ -1,0 +1,17 @@
+id: sq-80c-hinglish
+description: >-
+  The worked example in Hinglish (S2): the general rule from the Income-tax Act 2025 evidence,
+  cited, the regime condition asked, DISC-GLOBAL-TAX-05 verbatim, then back to the pending question.
+prelude: to-s2
+turns:
+  - text: section 80C ke under life insurance premium ka deduction kitna hai?
+    script:
+      nlu-extract: [{intents: [SIDE_QUERY], side_query: "section 80C ke under life insurance premium ka deduction kitna hai?", language: hi-Latn}]
+      gen-recommend: ["Premium par deduction sirf old tax regime mein milta hai, conditions ke saath [E1]."]
+    expect:
+      state: S2
+      parts: [generated:answer, template:side_query_caveat, template:tax_condition, template:regime_ask, "registry:DISC-GLOBAL-TAX-05", template:sources, template:side_query_bridge, template:RL-S2-GOALS]
+      citations: true
+      abstained: false
+      retrieved: ["tax:ita2025"]
+      not_retrieved: ["tax:ita1961"]

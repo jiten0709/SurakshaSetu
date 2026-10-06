@@ -1,0 +1,15 @@
+id: sq-80c-earlier-year
+description: >-
+  A question about an earlier year (FY 2025-26, before the 2025 Act took effect on 1 April 2026)
+  retrieves the 1961-Act chunks through tax_years (TDD §2.6).
+prelude: to-s2
+turns:
+  - text: how did 80C work in FY 2025-26?
+    script:
+      nlu-extract: [{intents: [SIDE_QUERY], side_query: "how did 80C work in FY 2025-26?"}]
+      gen-recommend: ["For that year the deduction was under the earlier Act and only outside the new regime [E1]."]
+    expect:
+      state: S2
+      faq: answered
+      abstained: false
+      retrieved: ["tax:ita1961-s80c"]

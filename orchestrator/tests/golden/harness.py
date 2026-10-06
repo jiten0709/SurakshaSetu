@@ -27,7 +27,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from surakshasetu.audit.events import EventType
 from surakshasetu.compose.placeholders import format_inr
 from surakshasetu.crypto.jcs import sha256_hex
-from surakshasetu.fsm.states import FsmState
+from surakshasetu.fsm.states import TERMINAL, FsmState
 from surakshasetu.rails import redact
 
 CONVERSATIONS = Path(__file__).resolve().parents[3] / "content" / "golden" / "conversations"
@@ -54,6 +54,7 @@ FIXED_PARTS = (
     "disclosures:",
     "registry:",
     "notice:",
+    "faq:",  # Step 22: the approved privacy FAQ's answers
     "needs_recap",
     "option_card:",
     "comparison",
@@ -163,6 +164,16 @@ class Expect(_Strict):
     # Step 21
     actions: list[str] | None = None  # the quick replies' action types, in order
     intake: bool | None = None  # the stub journey verified this session's signed intake
+    # Step 22: the RESPONSE_RELEASED header's language, FAQ Engine outcome and objection (with how
+    # it was answered); a timer step paused the session (true) or left it alone (false).
+    language: Literal["en", "hi"] | None = None
+    faq: str | None = None
+    objection: str | None = None
+    objection_response: str | None = None
+    timer_fired: bool | None = None
+    # chunk-id prefixes the turn's RETRIEVAL did, and did not, hand out (the tax year's filter)
+    retrieved: list[str] = []
+    not_retrieved: list[str] = []
 
 
 class Turn(_Strict):
@@ -183,14 +194,26 @@ class Turn(_Strict):
     # A newer consent notice for the session's language takes effect before this turn (Step 18);
     # the harness removes it afterwards.
     notice_bump: bool = False
+    # Step 22: these domain operations (contract operationIds) are down for this turn; retrieval is
+    # down for this turn; or, instead of a request, the timer job looks this many minutes from now
+    # (jobs/timers.run_once, this session only).
+    domain_down: list[str] = []
+    retrieval_down: bool = False
+    timer: int | None = Field(default=None, ge=1)
     script: dict[str, list[str | dict[str, Any]]] = {}  # route -> stub replies for this turn
     expect: Expect = Expect()
 
     @model_validator(mode="after")
     def _one_request(self) -> Self:
-        kinds = [self.text is not None, self.action is not None, self.delete, self.retry]
+        kinds = [
+            self.text is not None,
+            self.action is not None,
+            self.delete,
+            self.retry,
+            self.timer is not None,
+        ]
         if sum(kinds) != 1:
-            raise ValueError("a turn is exactly one of text, action, delete and retry")
+            raise ValueError("a turn is exactly one of text, action, delete, retry and timer")
         if self.concurrent and self.text is None:
             raise ValueError("concurrent sends text")
         if unknown := set(self.script) - set(ROUTES):
@@ -286,6 +309,7 @@ class Sent:
     slots: dict[str, str] = field(
         default_factory=dict
     )  # the newest row's status per slot (Step 19)
+    frames: list[dict[str, Any]] | None = None  # conv.session.frame_stack after it (Step 22)
 
     @property
     def released(self) -> dict[str, Any] | None:
@@ -322,6 +346,10 @@ class Transcript:
     notices: dict[str, tuple[str, str]] = field(default_factory=dict)
     registry_bodies: set[str] = field(default_factory=set)
     intakes: list[dict[str, Any]] = field(default_factory=list)  # Step 21: the journey's, verified
+    faq_answers: set[str] = field(default_factory=set)  # Step 22: the approved privacy FAQ's
+    # Step 22: the registry's set per (uin, locale) for each S3 release's own language (a language
+    # switch re-presents the options with the other language's sets).
+    registry_sets: dict[tuple[str, str], str] = field(default_factory=dict)
 
     def turn_events(self, released: dict[str, Any]) -> list[Event]:
         """One committed turn's events: from its TURN_INPUT to the next TURN_INPUT."""
@@ -371,6 +399,7 @@ def check(t: Transcript) -> list[str]:
         *check_s0_no_generation(t),
         *check_consent_prompt(t),
         *check_handoff(t),
+        *check_side_query_resume(t),
     ]
 
 
@@ -470,16 +499,25 @@ def check_i4(t: Transcript) -> list[str]:
         if released is None or released["state"] != "S3":
             continue
         shown = released["message"]["disclosures"]
-        for d in shown:
-            if t.registry.get(d["uin"]) != d["set_sha256"]:
-                failures.append(f"I4: turn {s.turn} {d['uin']} set hash is not the registry's")
         release = next(
             (e for e in t.turn_events(released) if e.event_type == "RESPONSE_RELEASED"), None
         )
+        locale = release_locale(t, release)
+        for d in shown:
+            held = t.registry_sets.get((d["uin"], locale), t.registry.get(d["uin"]))
+            if held != d["set_sha256"]:
+                failures.append(f"I4: turn {s.turn} {d['uin']} set hash is not the registry's")
         audited = release.header["disclosure_set_sha256s"] if release else None
         if audited != sorted(d["set_sha256"] for d in shown):
             failures.append(f"I4: turn {s.turn} RESPONSE_RELEASED disclosure hashes differ")
     return failures
+
+
+def release_locale(t: Transcript, release: Event | None) -> str:
+    """The locale a release was made in: its RESPONSE_RELEASED language (Step 22), else the
+    conversation's."""
+    language = release.header.get("language") if release else None
+    return {"en": "en-IN", "hi": "hi-IN"}.get(language or "", t.conversation.locale)
 
 
 def check_i5(t: Transcript) -> list[str]:
@@ -596,7 +634,13 @@ def check_pii(t: Transcript) -> list[str]:
 
 def check_numbers(t: Transcript) -> list[str]:
     """Numbers in model-written parts come from engine values or the cited evidence only. An
-    engine amount may read as the composer fills a placeholder with it (₹1,06,875; Step 21)."""
+    engine amount may read as the composer fills a placeholder with it (₹1,06,875; Step 21). Once
+    the subject key is destroyed (a minor's erasure, Step 22) the engine and retrieval payloads are
+    unreadable, and the check cannot run: the sources it compares with are gone."""
+    if any(
+        e.event_type in ("ENGINE_DECISION", "RETRIEVAL") and e.payload is None for e in t.events
+    ):
+        return []
     engine = " ".join(
         json.dumps(e.payload) for e in t.events if e.event_type == "ENGINE_DECISION" and e.payload
     )
@@ -643,6 +687,8 @@ def check_consent_prompt(t: Transcript) -> list[str]:
                 failures.append(f"consent: turn {s.turn} {pid} is not the notice verbatim")
             if pid.startswith("registry:") and text not in t.registry_bodies:
                 failures.append(f"consent: turn {s.turn} {pid} is not the registry's body")
+            if pid.startswith("faq:") and text not in t.faq_answers:  # Step 22
+                failures.append(f"faq: turn {s.turn} {pid} is not the approved FAQ's answer")
         form = released["message"].get("form")
         if form is not None:
             held = t.notices.get(form["notice_version"])
@@ -701,3 +747,38 @@ def _quoted(events: list[Event], quote_id: str) -> date | None:
             if q.get("quote_id") == quote_id:
                 return date.fromisoformat(q["valid_until"])
     return None
+
+
+def check_side_query_resume(t: Transcript) -> list[str]:
+    """Step 22 (TDD §2.6): a side question answered where the customer was resumes there exactly.
+    The frame stack is as it was before the turn, and the state's prompt follows the answer: the
+    bridge and at least one part after it, the offer after five side questions in a row, or (no
+    prompt part, as S0's consent form) the form or quick replies. A turn whose own answer moved the
+    state on, or that the state answered itself, is not a side question here."""
+    failures: list[str] = []
+    frames: list[dict[str, Any]] = []
+    for s in t.sent:
+        released = s.released
+        if released is None:
+            continue
+        events = t.turn_events(released)
+        release = next((e for e in events if e.event_type == "RESPONSE_RELEASED"), None)
+        outcome = release.header.get("faq") if release else None
+        moves = [e.header for e in events if e.event_type == "STATE_TRANSITION"]
+        stayed = all(m["from_state"] == m["to_state"] for m in moves)
+        closed = released["state"] in {state.value for state in TERMINAL}  # nothing to resume
+        if outcome and outcome not in ("state", "fact") and stayed and not closed:
+            ids = part_ids(released)
+            message = released["message"]
+            if "template:side_query_offer" in ids:
+                pass
+            elif "template:side_query_bridge" in ids:
+                if ids[-1] == "template:side_query_bridge":
+                    failures.append(f"side query: turn {s.turn} bridges to nothing")
+            elif not (message.get("form") or message["quick_replies"]):
+                failures.append(f"side query: turn {s.turn} does not return to the prompt")
+            if s.frames is not None and s.frames != frames:
+                failures.append(f"side query: turn {s.turn} left the frame stack changed")
+        if s.frames is not None:
+            frames = s.frames
+    return failures

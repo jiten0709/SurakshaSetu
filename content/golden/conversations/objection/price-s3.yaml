@@ -1,0 +1,12 @@
+id: obj-price-s3
+description: >-
+  A price objection on the recommendation (CC5): the engine's lower-cost versions of the top option,
+  each with its protection gap; no figure that the engine did not give; the type and the answer in
+  the RESPONSE_RELEASED header.
+prelude: to-s3
+turns:
+  - text: "yes"
+    expect: {state: S3, row: S2.2}
+  - text: this is too expensive for me
+    script: {nlu-extract: [{intents: [OBJECTION_PRICE]}]}
+    expect: {state: S3, row: CC5, templates: [alternatives], engine: {service: alternatives}, objection: price, objection_response: alternatives}

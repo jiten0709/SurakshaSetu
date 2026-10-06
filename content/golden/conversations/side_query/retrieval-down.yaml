@@ -1,0 +1,12 @@
+id: sq-retrieval-down
+description: >-
+  Retrieval unavailable during a side query: abstain with an advisor offer; nothing about the state
+  changes, and the pending question comes back.
+prelude: to-s2
+turns:
+  - text: is the death benefit paid in instalments?
+    retrieval_down: true
+    script: {nlu-extract: [{intents: [SIDE_QUERY], side_query: "is the death benefit paid in instalments?"}]}
+    expect: {state: S2, row: S2.STAY, templates: [abstain, side_query_caveat, side_query_bridge, RL-S2-GOALS], faq: unavailable, absent: [RETRIEVAL, MODEL_CALL]}
+  - action: {type: SLOT, payload: {slot: goals, value: income_protection}}
+    expect: {state: S2, templates: [RL-S2-INCOME]}

@@ -12,13 +12,14 @@ Needs `make up`, `make gateway-up` and `make seed-catalog`; `make eval` passes t
 """
 
 import asyncio
+import gc
 import hashlib
 import json
 import os
 import unicodedata
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
@@ -37,6 +38,7 @@ from harness import (
     check,
     load_conversations,
     part_ids,
+    release_locale,
 )
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from psycopg.types.json import Jsonb
@@ -49,10 +51,12 @@ from surakshasetu.crypto.jcs import sha256_hex
 from surakshasetu.crypto.keys import KeyDestroyed
 from surakshasetu.domain.client import DomainError
 from surakshasetu.domain.models import ConsentRecordCreate, PurposeGrant
-from surakshasetu.graph import handlers
+from surakshasetu.graph import handlers, side_query
 from surakshasetu.graph.nodes import build_graph
 from surakshasetu.graph.runtime import Runtime
 from surakshasetu.handoff import intake
+from surakshasetu.jobs import timers
+from surakshasetu.retrieval.service import RetrievalUnavailable
 from surakshasetu.uuid7 import uuid7
 
 pytestmark = [pytest.mark.golden, pytest.mark.asyncio]
@@ -71,6 +75,10 @@ FIXTURE_SET = (
     "DISC-GLOBAL-TAX-05",
 )
 CHECKPOINT_TABLES = ("checkpoint_writes", "checkpoint_blobs", "checkpoints")
+# OmniRoute sidelines a failed target for about 3 s (infra/omniroute/HARDENING.md), and every route
+# shares the stub connection: after a turn that scripts a failure, the next conversation's model
+# calls would fail closed. Step 22 waits it out.
+GATEWAY_COOLDOWN_S = 3.5
 IST = ZoneInfo("Asia/Kolkata")
 
 
@@ -353,6 +361,7 @@ class Play:
         if turn.days_later:
             ahead = timedelta(days=turn.days_later)
             handlers.now = lambda: datetime.now(UTC) + ahead  # type: ignore[assignment]
+        restore = self.take_down(turn)
         before = len(t.sent)
         for route in ROUTES:
             if replies := turn.replies(route):
@@ -366,7 +375,9 @@ class Play:
         if turn.checkpoint_lost:
             self.runtime.graph = build_graph(NoCheckpoint(graph.checkpointer.conn))  # type: ignore[union-attr]
         try:
-            if turn.retry:
+            if turn.timer is not None:
+                await self.timer(index, turn, t)
+            elif turn.retry:
                 if self.last is None:
                     raise AssertionError("retry needs an earlier request")
                 previous, request, key = self.last
@@ -391,6 +402,13 @@ class Play:
         finally:
             self.runtime.graph = graph
             handlers.now = clock  # type: ignore[assignment]
+            restore()
+            if any(
+                isinstance(r, dict) and r.get("status", 200) >= 500
+                for route in ROUTES
+                for r in turn.replies(route)
+            ):
+                await asyncio.sleep(GATEWAY_COOLDOWN_S)
             if turn.registry_tamper is not None:
                 self.untamper()
         if turn.expect.intake is not None:
@@ -410,9 +428,58 @@ class Play:
                 (self.session_id,),
             ).fetchall()
         )
+        frames = self.one(
+            "SELECT frame_stack FROM conv.session WHERE session_id = %s", self.session_id
+        )
         for sent in t.sent[before:]:
             sent.counters, sent.slot_rows, sent.slots = counters, slot_rows, slots
+            sent.frames = frames
         self.snapshot(t)
+
+    def take_down(self, turn: Turn) -> Any:
+        """Step 22: the dependencies this turn finds down (the in-process orchestrator's domain
+        client for the named operations, or retrieval). Returns the undo."""
+        domain, retrieval = self.runtime.domain, self.runtime.retrieval
+        call, retrieve = domain._call, retrieval.retrieve if retrieval else None
+        down = set(turn.domain_down)
+        if down:
+
+            async def failing(op: str, *args: Any, **kwargs: Any) -> Any:
+                if op in down:
+                    raise DomainError("UNAVAILABLE", None)
+                return await call(op, *args, **kwargs)
+
+            domain._call = failing  # type: ignore[method-assign]
+        if turn.retrieval_down and retrieval is not None:
+
+            async def unavailable(*args: Any, **kwargs: Any) -> Any:
+                raise RetrievalUnavailable("QDRANT_UNAVAILABLE")
+
+            retrieval.retrieve = unavailable  # type: ignore[method-assign]
+
+        def undo() -> None:
+            domain._call = call  # type: ignore[method-assign]
+            if retrieval is not None and retrieve is not None:
+                retrieval.retrieve = retrieve  # type: ignore[method-assign]
+
+        return undo
+
+    async def timer(self, index: int, turn: Turn, t: Transcript) -> None:
+        """Step 22: the timer job looks `turn.timer` minutes from now, at this session only. Its
+        released pause is recorded like a turn's; nothing released means the session was left
+        alone (before consent it is passive, V3)."""
+        later = datetime.now(UTC) + timedelta(minutes=cast(int, turn.timer))
+        bodies = await timers.run_once(self.runtime, later, [cast(UUID, self.session_id)])
+        t.sent.extend(Sent(index, 200, body) for body in bodies)
+        fired = bool(bodies)
+        want = turn.expect.timer_fired
+        if want is not None and fired != want:
+            self.fail(index, f"timer fired: {fired}, want {want}")
+        state = self.one(
+            "SELECT fsm_state FROM conv.session WHERE session_id = %s", self.session_id
+        )
+        if not fired and turn.expect.state is not None and state != turn.expect.state.value:
+            self.fail(index, f"state {state} after the timer, want {turn.expect.state.value}")
 
     async def check_intake(self, index: int, want: bool, t: Transcript) -> None:
         """The stub journey verified a signed intake for this session (Step 21), and it is the one
@@ -524,11 +591,18 @@ class Play:
         for s in t.sent:
             released = s.released
             if released is not None and released["state"] == "S3":
+                release = next(
+                    (e for e in t.turn_events(released) if e.event_type == "RESPONSE_RELEASED"),
+                    None,
+                )
+                locale = release_locale(t, release)
                 for d in released["message"]["disclosures"]:
                     registered = await self.runtime.domain.get_disclosure_set(
-                        d["uin"], self.conversation.channel, self.conversation.locale
+                        d["uin"], self.conversation.channel, locale
                     )
-                    t.registry[d["uin"]] = registered.set_sha256
+                    t.registry_sets[(d["uin"], locale)] = registered.set_sha256
+                    if locale == self.conversation.locale:
+                        t.registry[d["uin"]] = registered.set_sha256
         t.evidence = await self.evidence(t)
         await self.consent_texts(t)
 
@@ -556,6 +630,10 @@ class Play:
             ):
                 found = await self.runtime.domain.get_disclosure(disclosure_id, language)
                 t.registry_bodies.add(found.body)
+            # Step 22: the approved privacy FAQ's answers, as the faq: parts must carry them
+            t.faq_answers |= {
+                e.answer for e in side_query.privacy_faq(language, self.settings.env).entries
+            }
 
     def erased(self) -> bool:
         session = self.one(
@@ -663,6 +741,7 @@ class Play:
                 got = [q["action"]["type"] for q in released["message"]["quick_replies"]]
                 if got != expect.actions:
                     self.fail(s.turn, f"quick replies {got}, want {expect.actions}")
+            self.expect_step22(s, expect, events)
             if expect.intake:
                 sent = [
                     e.payload["intake"] for e in events
@@ -670,6 +749,22 @@ class Play:
                 ]  # fmt: skip
                 if sent != t.intakes[-1:]:
                     self.fail(s.turn, "the HANDOFF intake is not the one the journey verified")
+
+    def expect_step22(self, s: Sent, expect: Any, events: list[Event]) -> None:
+        """The RESPONSE_RELEASED header's language, FAQ outcome and objection (Step 22)."""
+        release = next((e for e in events if e.event_type == "RESPONSE_RELEASED"), None)
+        header = release.header if release else {}
+        for name in ("language", "faq", "objection", "objection_response"):
+            want = getattr(expect, name)
+            if want is not None and header.get(name) != want:
+                self.fail(s.turn, f"RESPONSE_RELEASED {name} {header.get(name)}, want {want}")
+        chunks = [c for e in events if e.event_type == "RETRIEVAL" for c in e.header["chunk_ids"]]
+        for prefix in expect.retrieved:
+            if not any(c.startswith(prefix) for c in chunks):
+                self.fail(s.turn, f"no {prefix}* chunk retrieved: {chunks}")
+        for prefix in expect.not_retrieved:
+            if found := [c for c in chunks if c.startswith(prefix)]:
+                self.fail(s.turn, f"{prefix}* chunks retrieved: {found}")
 
     def expect_step19(
         self, s: Sent, expect: Any, released: dict[str, Any], events: list[Event]
@@ -679,20 +774,23 @@ class Play:
         text = released["message"]["text"]
         if expect.engine is not None:
             want = expect.engine
-            decisions = [
-                e.payload or {} for e in events
+            found = [
+                e for e in events
                 if e.event_type == "ENGINE_DECISION" and e.header.get("service") == want.service
             ]  # fmt: skip
+            # Step 22: once the subject key is destroyed (a minor's erasure), the payloads are
+            # unreadable and only the decision itself (its header) can be checked.
+            decisions = [e.payload for e in found if e.payload is not None]
             results = [d.get("result", {}) for d in decisions]
-            if not results:
+            if not found:
                 self.fail(s.turn, f"no {want.service} ENGINE_DECISION in the turn")
             for name in ("outcome", "flags", "reason_codes"):
                 value = getattr(want, name)
-                if value is not None and all(r.get(name) != value for r in results):
+                if value is not None and results and all(r.get(name) != value for r in results):
                     got = [r.get(name) for r in results]
                     self.fail(s.turn, f"{want.service} {name} {got}, want {value}")
             for name, value in want.result.items():  # Step 20
-                if all(r.get(name) != value for r in results):
+                if results and all(r.get(name) != value for r in results):
                     got = [r.get(name) for r in results]
                     self.fail(s.turn, f"{want.service} {name} {got}, want {value}")
         if expect.slots is not None:
@@ -803,6 +901,12 @@ async def test_golden_conversation(conversation: Conversation, tmp_path: Path) -
     settings = Settings(
         _env_file=None, log_level="INFO", log_dir=tmp_path, rate_limits={60: 60, 3600: 600}
     )
+    # Step 22: a long run (176 conversations in one process) had full collections of 115-200 ms
+    # mid-turn, which stall the in-process orchestrator past a domain call's 150 ms budget. Collect
+    # between conversations and freeze what survives (module state), so a collection during a turn
+    # scans only that conversation's objects.
+    gc.collect()
+    gc.freeze()
     app = create_app(settings)
     async with app.router.lifespan_context(app):
         run = Play(app, settings, conversation, tmp_path)

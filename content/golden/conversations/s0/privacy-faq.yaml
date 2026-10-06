@@ -1,10 +1,10 @@
 id: s0-privacy-faq
 description: >-
-  A question before consent (row CC4): S0 answers only about privacy, and until Step 22's privacy
-  FAQ that is the S0 caveat; the consent prompt stays open.
+  A question before consent (row CC4): S0 answers only about privacy, from the approved privacy
+  FAQ (Step 22; no generation), and the consent prompt stays open.
 turns:
   - text: hello
     expect: {state: S0, templates: [greeting]}
   - text: How will you use my information?
     script: {nlu-extract: [{intents: [GENERAL_FAQ], side_query: "How will you use my information?"}]}
-    expect: {state: S0, templates: [side_query_caveat], form: true}
+    expect: {state: S0, templates: [], parts: ["faq:2026.10.1:PF-PURPOSES"], form: true, faq: "faq:PF-PURPOSES", absent: [MODEL_CALL, RETRIEVAL]}

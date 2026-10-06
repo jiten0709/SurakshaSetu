@@ -1,0 +1,13 @@
+id: obj-deferral-s2
+description: >-
+  "I need some time to think" in S2: the Pause row (CC3b, after consent), progress saved; no
+  re-engagement line (no quote to remind of, and P3 not granted).
+prelude: to-s2
+turns:
+  - action: {type: SLOT, payload: {slot: goals, value: income_protection}}
+    expect: {templates: [RL-S2-INCOME]}
+  - text: let me think about it, I need some time
+    script: {nlu-extract: [{intents: [NEED_TIME]}]}
+    expect: {state: PAUSE, row: CC3b, reason: NEED_TIME, templates: [paused], objection: deferral, objection_response: pause}
+  - text: okay, I'm ready now
+    expect: {state: S2, row: PAUSE.R, templates: [RL-S2-INCOME]}

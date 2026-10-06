@@ -1,0 +1,17 @@
+id: sq-compound
+description: >-
+  A compound turn in S1 (TDD §2.6): "I'm 34, and does section 80C apply to life insurance
+  premiums?" The age is applied first (proposed), then the question is answered, then the session
+  resumes at the next question with the one-line bridge.
+prelude: to-s1
+turns:
+  - text: I'm 34, and does section 80C apply to life insurance premiums?
+    script:
+      nlu-extract: [{intents: [SLOT_ANSWER, SIDE_QUERY], side_query: "does section 80C apply to life insurance premiums?", slots: [{slot: age_years, value: 34, confidence: 0.95, evidence_span: "34"}]}]
+      gen-recommend: ["Premiums can qualify for the deduction only under the old tax regime [E1]."]
+    expect:
+      state: S1
+      parts: [generated:answer, template:side_query_caveat, template:tax_condition, template:regime_ask, "registry:DISC-GLOBAL-TAX-05", template:sources, template:side_query_bridge, template:RL-S1-RESIDENCY]
+      slots: {age_years: proposed}
+      citations: true
+      faq: answered

@@ -1,0 +1,17 @@
+id: sq-regime-revealed
+description: >-
+  A fact revealed in a question ("I'm on the old regime") is a proposed slot update, never used as
+  said: the answer reads it back for confirmation (no regime question); "no" declines it.
+prelude: to-s2
+turns:
+  - text: I'm on the old regime, does 80C apply for the old regime?
+    script:
+      nlu-extract: [{intents: [SIDE_QUERY], side_query: "does 80C apply for the old regime?"}]
+      gen-recommend: ["Under the old regime the deduction for premiums can apply, subject to its conditions [E1]."]
+    expect:
+      state: S2
+      parts: [generated:answer, template:side_query_caveat, template:tax_condition, "registry:DISC-GLOBAL-TAX-05", template:regime_confirm, template:sources, template:side_query_bridge, template:RL-S2-GOALS]
+      slots: {tax_regime: proposed}
+      lacks: ["Are you on the old regime or the new one?"]
+  - action: {type: FACT, payload: {slot: tax_regime, value: old, confirmed: false}}
+    expect: {state: S2, templates: [RL-S2-GOALS], slots: {tax_regime: declined}}

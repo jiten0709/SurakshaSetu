@@ -47,6 +47,7 @@ from surakshasetu.graph.handlers import (
     bundle,
     granted,
     identity,
+    language_request,
     quick_reply,
     scripts,
     session,
@@ -68,6 +69,7 @@ LOCALES: tuple[Locale, ...] = ("en-IN", "hi-IN")
 PROMPT_CONSENT, PROMPT_AGE, PROMPT_INTENT = "s0.consent", "s0.age", "s0.intent"
 CLARIFY = "intent_clarify"
 CLARIFY_LIMIT = 2  # TDD §3.5: clarify the intent at most twice, then default to new_purchase
+OFF_TOPIC = "off_topic"  # TDD §3.9's S0 cell: off-topic re-presents the options once (Step 22)
 S0_INTENTS = {Intent.NEW_PURCHASE, Intent.SPECIFIC_PLAN, Intent.EXISTING_POLICY}
 Lead = Literal["greeting", "consent_renew", "notice_updated", "consent_reprompt"]
 
@@ -144,16 +146,14 @@ async def _action(turn: Any, current: SessionState, kind: str, payload: dict[str
             await consent_prompt(turn, "consent_reprompt")  # S0.3/S0.4 need a valid P1
         return
     if valid(current):  # START, a repeated submit, a language switch: the intent question stands
+        if kind == "LANGUAGE":  # Step 22: the conversation goes on in the language asked for
+            _switch(turn, current, payload.get("locale"))
         intent_prompt(turn, current, lead=True)
         return
     if kind == "START":
         await consent_prompt(turn, "greeting")
-    elif kind == "NOTICE_LANGUAGE":
-        language = payload.get("language")
-        if language in LOCALES:
-            current.locale = str(language)
-            turn.ai_disclosure = None  # the AI disclosure in the new language
-            logger.info("notice language switched to %s", language)
+    elif kind in ("NOTICE_LANGUAGE", "LANGUAGE"):
+        _switch(turn, current, payload.get("language", payload.get("locale")))
         await consent_prompt(turn, "greeting")
     elif kind == "CONSENT_SUBMIT":
         await _submit(turn, current, payload)
@@ -197,6 +197,11 @@ async def _consent_text(turn: Any, current: SessionState) -> None:
         await consent_prompt(turn, lead)
     elif _asked_faq(turn):
         _faq(turn, current)
+        await consent_prompt(turn, None)
+    elif (target := language_request(turn, current)) is not None:
+        _switch(turn, current, target)  # Step 22: the notice in the language asked for
+        await consent_prompt(turn, "greeting")
+    elif _off_topic_once(turn, current):
         await consent_prompt(turn, None)
     elif current.last_prompt_id == PROMPT_AGE:
         await _age_answer(turn, current, phrase(pipeline.stored_raw))
@@ -249,6 +254,11 @@ def _intent_text(turn: Any, current: SessionState) -> None:
         intent_prompt(turn, current, lead=False)
     elif pipeline is not None and (pipeline.blocked or pipeline.overlong or turn.identity):
         intent_prompt(turn, current, lead=pipeline.blocked)
+    elif (target := language_request(turn, current)) is not None:
+        _switch(turn, current, target)
+        intent_prompt(turn, current, lead=True)
+    elif _off_topic_once(turn, current):
+        intent_prompt(turn, current, lead=False)
     elif current.counters.get(CLARIFY, 0) >= CLARIFY_LIMIT:
         turn.signals["intent"] = "new_purchase"
         logger.info(
@@ -266,12 +276,37 @@ def _intent_text(turn: Any, current: SessionState) -> None:
 
 def _asked_faq(turn: Any) -> bool:
     analysis = turn.pipeline.analysis if turn.pipeline else None
-    return analysis is not None and Intent.GENERAL_FAQ in analysis.intents
+    asked = analysis is not None and Intent.GENERAL_FAQ in analysis.intents
+    return asked or turn.routed == "side_query"
 
 
 def _faq(turn: Any, current: SessionState) -> None:
-    """CC4 in S0: privacy questions only, and until Step 22's privacy FAQ, the caveat alone."""
-    turn.parts = [("side_query_caveat", scripts(turn).side_query_caveat["S0"])]
+    """CC4 in S0: privacy questions only. The side-query subgraph answers from the approved privacy
+    FAQ (Step 22) ahead of the prompt put here; the "general question" quick reply, which asks
+    nothing yet, gets the caveat that says what can be answered."""
+    if turn.routed != "side_query":
+        turn.parts = [("side_query_caveat", scripts(turn).side_query_caveat["S0"])]
+
+
+def _off_topic_once(turn: Any, current: SessionState) -> bool:
+    """TDD §3.9: off-topic in S0 re-presents the options once, with the redirect; after that it is
+    read as any other answer (the consent options again, or a clarification of the intent)."""
+    analysis = turn.pipeline.analysis if turn.pipeline else None
+    if analysis is None or Intent.OFF_TOPIC not in analysis.intents:
+        return False
+    if current.counters.get(OFF_TOPIC, 0) >= 1:
+        return False
+    current.counters = {**current.counters, OFF_TOPIC: 1}
+    turn.parts = [("redirect", scripts(turn).redirect)]
+    logger.info("off-topic in S0: the options again, once")
+    return True
+
+
+def _switch(turn: Any, current: SessionState, locale: Any) -> None:
+    if locale in LOCALES and locale != current.locale:
+        current.locale = str(locale)
+        turn.ai_disclosure = None  # the AI disclosure in the new language
+        logger.info("language switched to %s in S0", locale)
 
 
 def refuse(turn: Any) -> None:

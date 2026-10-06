@@ -1,0 +1,8 @@
+id: matrix-under-18-s1
+description: >-
+  TDD §3.9, S1: a stated age under 18 -> Data Erasure and the polite exit before anything is
+  written (V2).
+prelude: to-s1
+turns:
+  - text: "16"
+    expect: {state: DATA_ERASURE, row: CC1b, templates: [minor_exit], slot_rows: 0, erased: destroyed}

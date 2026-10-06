@@ -1,0 +1,9 @@
+id: matrix-distress-s3
+description: >-
+  TDD §3.9, S3 (same): the safety script leads, and with P2 the care queue takes over.
+prelude: to-s3
+turns:
+  - text: "yes"
+    expect: {state: S3, row: S2.2}
+  - text: I just want to end my life
+    expect: {state: HUMAN_ESCALATION, reason: HE_SAFETY, templates: [safety, handoff], handoff: HE_SAFETY}

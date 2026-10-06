@@ -1,0 +1,8 @@
+id: matrix-regulatory-pushback-s1
+description: >-
+  TDD §3.9, S1: "why do you need this?" gets the material-fact reason, then the question again
+  with its own reason.
+prelude: to-s1
+turns:
+  - text: why do you need my age?
+    expect: {state: S1, templates: [material_fact_note, RL-S1-AGE], counters: {invalid_input: 0}}

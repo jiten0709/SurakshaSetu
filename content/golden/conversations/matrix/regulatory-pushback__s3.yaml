@@ -1,0 +1,15 @@
+id: matrix-regulatory-pushback-s3
+description: >-
+  TDD §3.9, S3: pushback on an exclusion is answered from the policy wording, cited, with the
+  grievance channel (the exclusion note), then the choices again.
+prelude: to-s3
+turns:
+  - text: "yes"
+    expect: {state: S3, row: S2.2}
+  - text: why do I have to accept the exclusions in this policy? remove the exclusion
+    script: {gen-recommend: ["The policy wording sets out the exclusions and waiting periods for these plans [E1]."]}
+    expect:
+      state: S3
+      parts: [generated:answer, template:side_query_caveat, template:exclusion_note, template:sources, template:side_query_bridge, template:s3_choices]
+      citations: true
+      faq: answered

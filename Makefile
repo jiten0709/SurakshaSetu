@@ -37,7 +37,7 @@ TEST_ENV := SS_TEST_PG_DSN_ADMIN="postgresql://postgres:$(POSTGRES_PASSWORD)@127
 .PHONY: up down logs check check-py check-java check-stubs check-db check-stack check-contracts \
 	db-migrate seed-catalog contracts contracts-lint contract-test verify-audit gateway-up \
 	gateway-verify kb-ingest kb-verify kb-chunks check-ingest calibrate-retrieval eval-retrieval \
-	bakeoff-embed bakeoff-rerank test-invariants eval e2e-scripted $(PLACEHOLDERS)
+	bakeoff-embed bakeoff-rerank test-invariants eval e2e-scripted timers-once $(PLACEHOLDERS)
 
 # Postgres first, then the migrations, so domain-services finds its domain_rw role on a fresh
 # volume. `up --wait` treats an exited one-shot as a failure, so the one-shots run on their own.
@@ -201,6 +201,14 @@ eval: db-migrate
 # signed hand-off to the stub application journey. `make eval` runs it too. Same needs as eval.
 e2e-scripted: db-migrate
 	@cd orchestrator && $(GOLDEN_ENV) uv run --locked pytest -m golden -k scripted-s0-s3
+
+# One look of the inactivity timers (Step 22, TDD §3.9's CC3) against the dev database: every
+# post-consent session idle past its state's timeout (SS_INACTIVITY_TIMEOUTS) is paused by a timer
+# turn, committed and audited like any turn; sessions before consent are never touched (V3). The
+# compose `scheduler` service runs `python -m surakshasetu.jobs.timers --every 60` from Step 24.
+# Needs `make up` (and `make gateway-up` for the pause's output rails).
+timers-once:
+	@cd orchestrator && $(GOLDEN_ENV) uv run --locked python -m surakshasetu.jobs.timers --once
 
 # Verify every audit chain active on DATE (UTC) and anchor the day's Merkle root in MinIO and
 # audit.chain_anchor, as app_rw. DB=surakshasetu_test checks the test database instead.

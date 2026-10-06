@@ -105,6 +105,8 @@ class Facts(_Frozen):
     # "Need time", "discuss with spouse", and a deferral objection (Step 22's Pause row).
     need_time: bool = False
     explicit_decline: bool = False
+    # Step 22: the END quick reply, offered only after a repeated objection (CC5b -> Exit).
+    end_requested: bool = False
     # V4: a confirmed correction of an eligibility or a needs slot, this turn.
     correction: Literal["eligibility", "needs"] | None = None
     paused_from: FsmState | None = None

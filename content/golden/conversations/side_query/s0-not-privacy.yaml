@@ -1,0 +1,12 @@
+id: sq-s0-not-privacy
+description: >-
+  A question outside privacy in S0 gets the S0 caveat (what can be answered here), never an answer
+  from the corpus or the model; after consent the intent question stands.
+turns:
+  - action: {type: START}
+    expect: {state: S0, templates: [greeting]}
+  - action: {type: CONSENT_SUBMIT, payload: {purposes: {P1: true, P2: false, P3: false}, age_18_plus: true}}
+    expect: {state: S0, templates: [intent_ask]}
+  - text: how does section 80C work?
+    script: {nlu-extract: [{intents: [GENERAL_FAQ], side_query: "how does section 80C work?"}]}
+    expect: {state: S0, row: CC4, templates: [side_query_caveat], faq: "faq:none", actions: [INTENT, INTENT, INTENT, INTENT], absent: [MODEL_CALL, RETRIEVAL]}

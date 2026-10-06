@@ -1,0 +1,8 @@
+id: matrix-asks-for-human-s1
+description: >-
+  TDD §3.9, S1: the hand-off, asking for P2 first; nothing is shared until it is granted.
+prelude: to-s1
+turns:
+  - text: I'd rather talk to a person
+    script: {nlu-extract: [{intents: [META_HUMAN]}]}
+    expect: {state: HUMAN_ESCALATION, row: CC2, reason: HE_REQUEST, templates: [advisor_consent_ask], absent: [HANDOFF]}

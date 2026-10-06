@@ -12,6 +12,6 @@ turns:
     script: {gen-recommend: ["The policy wording sets out the exclusions and waiting periods for these plans [E1]."]}
     expect:
       state: S3
-      parts: [generated:answer, template:side_query_caveat, template:exclusion_note, template:sources]
+      parts: [generated:answer, template:side_query_caveat, template:exclusion_note, template:sources, template:side_query_bridge, template:s3_choices]
       citations: true
       abstained: false

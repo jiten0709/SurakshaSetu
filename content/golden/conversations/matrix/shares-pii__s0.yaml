@@ -1,0 +1,9 @@
+id: matrix-shares-pii-s0
+description: >-
+  TDD §3.9, S0: an Aadhaar number typed before consent is masked at ingress and never stored
+  (the global PII check reads every header, redacted text, log and briefing).
+turns:
+  - action: {type: START}
+    expect: {state: S0, templates: [greeting]}
+  - text: my aadhaar is 234123412346, can you check it
+    expect: {state: S0, templates: [consent_reprompt], form: true, absent: [CONSENT_CAPTURED]}

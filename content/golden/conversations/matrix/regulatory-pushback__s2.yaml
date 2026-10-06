@@ -1,0 +1,7 @@
+id: matrix-regulatory-pushback-s2
+description: >-
+  TDD §3.9, S2: "why do you need this?" gets the suitability purpose, then the question again.
+prelude: to-s2
+turns:
+  - text: why do you need to know my goals?
+    expect: {state: S2, templates: [suitability_purpose, RL-S2-GOALS]}

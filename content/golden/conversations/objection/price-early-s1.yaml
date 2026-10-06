@@ -1,0 +1,9 @@
+id: obj-price-early-s1
+description: >-
+  A price objection before any premium exists (S1): when a premium will be shown, with no figure;
+  then the pending question again, with no generated sentence.
+prelude: to-s1
+turns:
+  - text: life insurance is too expensive for me
+    script: {nlu-extract: [{intents: [OBJECTION_PRICE]}]}
+    expect: {state: S1, row: CC5, templates: [objection_price_early, RL-S1-AGE], objection: price, objection_response: no_figure, absent: [MODEL_CALL]}

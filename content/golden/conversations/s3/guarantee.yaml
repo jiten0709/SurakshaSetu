@@ -13,5 +13,7 @@ turns:
     expect:
       state: S3
       row: CC5
-      parts: [template:guarantee_note, generated:answer, template:side_query_caveat, template:sources]
+      parts: [template:guarantee_note, generated:answer, template:side_query_caveat, template:sources, template:side_query_bridge, template:s3_choices]
+      objection: guarantee
+      objection_response: "wording:answered"
       citations: true

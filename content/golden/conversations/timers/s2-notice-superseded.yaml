@@ -1,0 +1,12 @@
+id: timer-s2-notice-superseded
+description: >-
+  Idle in S2: paused (CC3). A new consent notice takes effect while the customer is away; resume
+  refreshes the consent record (NOTICE_SUPERSEDED), so the session re-enters S0 for consent on
+  the notice in force (G1, TDD §3.5).
+prelude: to-s2
+turns:
+  - timer: 20
+    expect: {timer_fired: true, state: PAUSE, row: CC3}
+  - text: hello again
+    notice_bump: true
+    expect: {state: S0, templates: [consent_renew], form: true}

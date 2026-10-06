@@ -1,0 +1,18 @@
+id: obj-trust-s2
+description: >-
+  A trust objection (S2): the claim process from the corpus, cited and verified (claims topic),
+  never argued; then the bridge and the pending question.
+prelude: to-s2
+turns:
+  - text: insurers never pay claims, how does the claim process work?
+    script:
+      nlu-extract: [{intents: [OBJECTION_TRUST]}]
+      gen-recommend: ["A death claim is settled within the time the regulations set, once the documents are received [E1]."]
+    expect:
+      state: S2
+      row: CC5
+      parts: [generated:answer, template:side_query_caveat, template:sources, template:side_query_bridge, template:RL-S2-GOALS]
+      citations: true
+      abstained: false
+      objection: trust
+      objection_response: "cited:answered"

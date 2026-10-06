@@ -202,7 +202,7 @@ def test_pilot_requires_the_internal_token_and_role_keys(monkeypatch: pytest.Mon
 
 def test_the_runtime_settings_have_safe_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     settings = load_settings()
-    assert settings.prompt_bundle == "pb-2026.10.5"
+    assert settings.prompt_bundle == "pb-2026.10.6"
     assert (settings.session_ttl_days, settings.session_lock_ttl_s) == (30, 30)
     assert settings.idempotency_ttl_s == 86_400
     assert settings.rate_limits == {60: 20, 3600: 200}

@@ -1,0 +1,11 @@
+id: obj-competitor-s3
+description: >-
+  A competitor named on the recommendation: no comparison, the insurer's own plans only; then the
+  choices again.
+prelude: to-s3
+turns:
+  - text: "yes"
+    expect: {state: S3, row: S2.2}
+  - text: another insurer gives me a better deal than this
+    script: {nlu-extract: [{intents: [OBJECTION_COMPETITOR]}]}
+    expect: {state: S3, row: CC5, templates: [competitor_note, s3_choices], actions: [APPLY, HUMAN_REQUEST, REVISE, SAVE], contains: ["DUMMY Insurer"], objection: competitor, objection_response: declined}

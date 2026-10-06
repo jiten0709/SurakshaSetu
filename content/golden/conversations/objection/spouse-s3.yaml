@@ -1,0 +1,11 @@
+id: obj-spouse-s3
+description: >-
+  "I need to discuss this with my wife" on the recommendation: S3.2's Pause with the options kept as
+  a summary (and the re-engagement line with P3).
+prelude: to-s3
+turns:
+  - text: "yes"
+    expect: {state: S3, row: S2.2}
+  - text: I need to discuss this with my wife first
+    script: {nlu-extract: [{intents: [NEED_TIME]}]}
+    expect: {state: PAUSE, row: S3.2, reason: NEED_TIME, templates: [paused, s3_summary, reengage]}

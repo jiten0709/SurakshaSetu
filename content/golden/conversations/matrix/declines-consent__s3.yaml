@@ -1,0 +1,10 @@
+id: matrix-declines-consent-s3
+description: >-
+  TDD §3.9, S3 (same as S1): the erase action on the recommendation -> Data Erasure in the same
+  turn (I5); the recommendation rows go with the session.
+prelude: to-s3
+turns:
+  - text: "yes"
+    expect: {state: S3, row: S2.2}
+  - action: {type: ERASE}
+    expect: {state: DATA_ERASURE, row: CC1, templates: [erasure_done], events: [ERASURE_REQUEST, CONSENT_WITHDRAWN], erased: scheduled}

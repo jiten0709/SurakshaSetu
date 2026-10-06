@@ -1,0 +1,10 @@
+id: matrix-off-topic-s3
+description: >-
+  TDD §3.9, S3: the redirect and the offer to continue (the four choices).
+prelude: to-s3
+turns:
+  - text: "yes"
+    expect: {state: S3, row: S2.2}
+  - text: the weather is lovely today
+    script: {nlu-extract: [{intents: [OFF_TOPIC]}]}
+    expect: {state: S3, templates: [redirect], actions: [APPLY, HUMAN_REQUEST, REVISE, SAVE]}

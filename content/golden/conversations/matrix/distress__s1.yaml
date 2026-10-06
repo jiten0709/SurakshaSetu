@@ -1,0 +1,7 @@
+id: matrix-distress-s1
+description: >-
+  TDD §3.9, S1 (same): the safety script leads; the escalation asks for P2 before any hand-off.
+prelude: to-s1
+turns:
+  - text: honestly I want to end my life
+    expect: {state: HUMAN_ESCALATION, reason: HE_SAFETY, templates: [safety, advisor_consent_ask]}

@@ -1,0 +1,13 @@
+id: timer-s1-pause-resume
+description: >-
+  Idle in S1 past its timeout (SS_INACTIVITY_TIMEOUTS): the timer turn pauses the session (CC3,
+  INACTIVITY), audited like any turn; the customer's next message resumes exactly at the pending
+  question (PAUSE.R, revalidated).
+prelude: to-s1
+turns:
+  - text: "34"
+    expect: {templates: [RL-S1-RESIDENCY]}
+  - timer: 15
+    expect: {timer_fired: true, state: PAUSE, row: CC3, reason: INACTIVITY, templates: [paused], events: [TURN_INPUT, STATE_TRANSITION, RESPONSE_RELEASED]}
+  - text: sorry, I'm back
+    expect: {state: S1, row: PAUSE.R, templates: [RL-S1-RESIDENCY]}

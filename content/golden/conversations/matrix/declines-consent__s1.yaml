@@ -1,0 +1,11 @@
+id: matrix-declines-consent-s1
+description: >-
+  TDD §3.9, S1: a withdrawal -> Data Erasure in the same turn (I5); the legally required records
+  (audit, the withdrawn consent record) are kept.
+prelude: to-s1
+turns:
+  - text: "34"
+    expect: {templates: [RL-S1-RESIDENCY]}
+  - text: I withdraw my consent, please delete my data
+    script: {nlu-extract: [{intents: [META_WITHDRAW]}]}
+    expect: {state: DATA_ERASURE, row: CC1, templates: [erasure_done], events: [ERASURE_REQUEST, CONSENT_WITHDRAWN], erased: scheduled}

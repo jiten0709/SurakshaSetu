@@ -1,0 +1,10 @@
+id: matrix-shares-pii-s3
+description: >-
+  TDD §3.9, S3 (same as S1): a medical report offered: the customer is asked not to share it
+  here; the choices stand.
+prelude: to-s3
+turns:
+  - text: "yes"
+    expect: {state: S3, row: S2.2}
+  - text: I have my medical report from last month, I can send it to you
+    expect: {state: S3, templates: [pii_reminder, s3_choices]}

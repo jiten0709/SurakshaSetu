@@ -1,0 +1,14 @@
+id: timer-s3-quote-expired
+description: >-
+  Idle on the recommendation: paused (CC3). The customer comes back a month later: resume
+  revalidates the quotes (past their IST validity), drops the stale recommendation, and S3 ranks and
+  presents again with fresh quotes and their disclosure sets.
+prelude: to-s3
+turns:
+  - text: "yes"
+    expect: {state: S3, row: S2.2}
+  - timer: 40
+    expect: {timer_fired: true, state: PAUSE, row: CC3, reason: INACTIVITY, templates: [paused]}
+  - text: I'm back, show me the plans again
+    days_later: 31
+    expect: {state: S3, row: PAUSE.R, engine: {service: ranking}, disclosures: ["999N001V02", "999N002V01"]}

@@ -46,7 +46,6 @@ fails its own integrity check -> the release-blocked template and an advisor.
 import asyncio
 import hashlib
 import logging
-import re
 from collections.abc import Mapping
 from decimal import Decimal
 from typing import Any, Literal, cast
@@ -64,8 +63,8 @@ from surakshasetu.audit.events import (
     RetrievalHeader,
 )
 from surakshasetu.compose import composer
-from surakshasetu.compose.bundle import mentions
-from surakshasetu.compose.citations import EngineFact, TurnHandles, issue, render, source_list
+from surakshasetu.compose.bundle import S3Labels, mentions
+from surakshasetu.compose.citations import EngineFact, TurnHandles, issue
 from surakshasetu.compose.composer import Rendered
 from surakshasetu.compose.envelope import EnvelopeError, SessionFacts, model_call_event
 from surakshasetu.compose.envelope import build as build_envelope
@@ -89,6 +88,7 @@ from surakshasetu.domain.models import (
 from surakshasetu.gateway import GatewayUnavailable
 from surakshasetu.graph import handlers
 from surakshasetu.graph.handlers import (
+    TurnIO,
     append,
     bundle,
     granted,
@@ -110,7 +110,7 @@ from surakshasetu.graph.state import (
 )
 from surakshasetu.graph.states import s1, s2
 from surakshasetu.graph.states.quote_only import bounds_part
-from surakshasetu.graph.states.s1 import QUESTIONS, valid
+from surakshasetu.graph.states.s1 import valid
 from surakshasetu.handoff import intake
 from surakshasetu.rails.normalise import normalise
 from surakshasetu.rails.output import Numbers, products_named
@@ -125,8 +125,6 @@ LANGUAGE: dict[str, Literal["en", "hi"]] = {"en-IN": "en", "hi-IN": "hi"}
 # S3's own evidence query: the options' benefits and exclusions (routing.yaml's RT-EXCLUSION:
 # product and regulatory, with at least one product chunk), filtered to the option UINs.
 EVIDENCE_QUERY = "key benefits, exclusions and waiting periods of the plan"
-TAX_05 = "DISC-GLOBAL-TAX-05"
-_TAX = re.compile(r"(?i)\btax(es)?\b|टैक्स")
 OPTIONS, CHOOSE = "s3.options", "s3.choose"
 CHOICE_KEYS = ("sum_assured_inr", "term_years", "ppt", "rider_uins")
 
@@ -183,10 +181,10 @@ def acks_valid(rec: RecommendationPayload, uin: str) -> bool:
     )
 
 
-def _language(turn: Any) -> Literal["en", "hi", "hi-Latn"]:
-    if turn.pipeline is not None:
-        return cast(Literal["en", "hi", "hi-Latn"], turn.pipeline.language)
-    return LANGUAGE[session(turn).locale]
+def language(io: TurnIO, current: SessionState) -> Literal["en", "hi", "hi-Latn"]:
+    if io.pipeline is not None:
+        return io.pipeline.language
+    return LANGUAGE[current.locale]
 
 
 def _slots(turn: Any) -> dict[str, Any]:
@@ -294,36 +292,41 @@ async def _rank(turn: Any, slots: dict[str, Any]) -> RankingResult:
     return result
 
 
-async def _retrieve(
-    turn: Any,
+async def retrieve(
+    io: TurnIO,
+    current: SessionState,
     query: str,
-    uins: list[str],
     *,
+    focus_uins: list[str],
     entities: list[str] | None = None,
     intents: list[Intent] | None = None,
+    regime: Literal["old", "new"] | None = None,
+    tax_year: str | None = None,
 ) -> RetrievalResult | None:
-    """Evidence for the options, RETRIEVAL audited (its payload holds the queries, which may be
-    the customer's words). None when retrieval is not available: the reply cites the engine only."""
-    if turn.retrieval is None:
+    """Evidence for the turn, RETRIEVAL audited (its payload holds the queries, which may be the
+    customer's words). None when retrieval is not available. Shared with the side-query subgraph
+    (Step 22), which passes its frozen view as `current`."""
+    if io.retrieval is None:
         return None
-    current = session(turn)
     context = RetrievalContext(
-        fsm_state="S3",
+        fsm_state=current.fsm_state.value,
         intents=intents or [],
         entities=entities or [],
-        focus_uins=uins,
-        language=_language(turn),
+        focus_uins=focus_uins,
+        regime=regime,
+        tax_year=tax_year,
+        language=language(io, current),
         as_of=handlers.now(),
         corpus_pins=cast(Any, current.pins.corpus),
     )
     try:
-        result: RetrievalResult = await turn.retrieval.retrieve(query, context)
+        result: RetrievalResult = await io.retrieval.retrieve(query, context)
     except RetrievalUnavailable as exc:
-        logger.warning("retrieval unavailable in S3: %s; the engine facts alone", exc.reason)
+        logger.warning("retrieval unavailable in %s: %s", current.fsm_state, exc.reason)
         return None
     audit = result.audit
-    append(
-        turn,
+    io.append(
+        current,
         EventType.RETRIEVAL,
         RetrievalHeader(
             collections=list(audit.collections),
@@ -337,13 +340,14 @@ async def _retrieve(
     return result
 
 
-def _engine_facts(
-    turn: Any, options: list[RecommendedOption], names: Mapping[str, str]
+def engine_facts(
+    labels: S3Labels,
+    suitability: SuitabilityResult,
+    options: list[RecommendedOption],
+    names: Mapping[str, str],
 ) -> list[EngineFact]:
     """What the model may cite as [R#]: each option's ranking and the needs assessment. Never a
     premium or cover amount: the model writes those as placeholders."""
-    labels = scripts(turn).s3
-    suitability = cast(SuitabilityResult, session(turn).suitability)
     facts = [
         EngineFact(
             rule=o.reason_codes[0] if o.reason_codes else "RANKED",
@@ -375,13 +379,13 @@ def _engine_facts(
     return facts
 
 
-def _session_facts(turn: Any) -> SessionFacts:
+def session_facts(current: SessionState, spoken: Literal["en", "hi", "hi-Latn"]) -> SessionFacts:
     """The confirmed needs, as a REDACTED route may know them: no number, no identifier."""
-    needs = session(turn).needs
+    needs = current.needs
     if needs is None:
-        return SessionFacts(language=_language(turn))
+        return SessionFacts(language=spoken)
     return SessionFacts(
-        language=_language(turn),
+        language=spoken,
         answered_slots=[s for s in s2.NEEDS if getattr(needs, s, None) is not None],
         goals=needs.goals or [],
         income_type=needs.income_type,
@@ -390,8 +394,9 @@ def _session_facts(turn: Any) -> SessionFacts:
     )
 
 
-async def _generate(
-    turn: Any,
+async def generate(
+    io: TurnIO,
+    current: SessionState,
     l1: Literal["S3", "side-query"],
     retrieval: RetrievalResult | None,
     facts: list[EngineFact],
@@ -399,15 +404,14 @@ async def _generate(
 ) -> tuple[str | None, TurnHandles]:
     """One gen-recommend draft (MODEL_CALL appended) and the handles its envelope carried. None
     when the envelope is refused or the route is down: the deterministic card or the template."""
-    current = session(turn)
     evidence = retrieval.evidence if retrieval else []
     try:
         envelope = build_envelope(
-            bundle(turn),
+            io.bundle,
             l1=l1,
             locale=current.locale,
-            user_text=turn.pipeline.redacted if turn.pipeline else "",
-            facts=_session_facts(turn),
+            user_text=io.pipeline.redacted if io.pipeline else "",
+            facts=session_facts(current, language(io, current)),
             retrieval=retrieval,
             engine=facts,
             corrections=errors or (),
@@ -416,12 +420,12 @@ async def _generate(
         logger.warning("%s envelope refused: %s; no generation", l1, exc.reason)
         return None, issue(evidence, facts)
     try:
-        result = await turn.gateway.call(
+        result = await io.gateway.call(
             envelope.route,
             data_class=envelope.data_class,
             messages=envelope.messages,
-            session_id=turn.session_id,
-            turn_id=turn.out_id,
+            session_id=io.session_id,
+            turn_id=io.out_id,
             fsm_state=current.fsm_state.value,
             attestation=envelope.attestation,
         )
@@ -429,11 +433,11 @@ async def _generate(
         logger.warning("%s generation unavailable: %s", l1, exc.reason)
         return None, envelope.handles
     header, payload = model_call_event(envelope, result)
-    append(turn, EventType.MODEL_CALL, header, payload)
+    io.append(current, EventType.MODEL_CALL, header, payload)
     return result.content, envelope.handles
 
 
-def _with_lead(lead: list[tuple[str, str]], rendered: Rendered) -> Rendered:
+def with_lead(lead: list[tuple[str, str]], rendered: Rendered) -> Rendered:
     """Template parts (the S2 bridge, a note) before the composed recommendation, hashed as one."""
     if not lead:
         return rendered
@@ -476,16 +480,21 @@ async def present(
     )
     by_uin = {p.uin: p for p in products}
     set_by_uin = {s.uin: s for s in sets}
-    retrieval = await _retrieve(turn, EVIDENCE_QUERY, uins, entities=["exclusion"])
-    facts = _engine_facts(turn, ranking.options, {u: p.name for u, p in by_uin.items()})
-    draft, handles = await _generate(turn, "S3", retrieval, facts)
+    tio = handlers.io(turn)
+    retrieval = await retrieve(
+        tio, current, EVIDENCE_QUERY, focus_uins=uins, entities=["exclusion"]
+    )
     suitability = cast(SuitabilityResult, current.suitability)
+    facts = engine_facts(
+        scripts(turn).s3, suitability, ranking.options, {u: p.name for u, p in by_uin.items()}
+    )
+    draft, handles = await generate(tio, current, "S3", retrieval, facts)
     needs = cast(NeedsPayload, current.needs)
     partial = suitability.profile_sufficiency < turn.settings.profile_sufficiency_min
     shown_ranking = ranking
 
     def render_(narrative: str | None) -> Rendered:
-        return _with_lead(
+        return with_lead(
             lead,
             composer.compose(
                 bundle(turn),
@@ -502,7 +511,7 @@ async def present(
         )
 
     async def regenerate(errors: list[str]) -> str | None:
-        return (await _generate(turn, "S3", retrieval, facts, errors))[0]
+        return (await generate(tio, current, "S3", retrieval, facts, errors))[0]
 
     turn.draft, turn.render, turn.regenerate = draft, render_, regenerate
     turn.handles, turn.numbers = handles, Numbers(ranking, suitability)
@@ -628,13 +637,20 @@ async def node(state: GraphState, *, runtime: Runtime[Any]) -> None:
         _decline(turn)
         return
     try:
+        if turn.language_switched:
+            # Step 22 (decided 2026-10-05): the options again in the new language, with the
+            # registry's sets for it; acknowledgments bind to this new render.
+            if not await present(turn, []):
+                turn.signals["no_options"] = True
+                _reply(turn, [("no_option", scripts(turn).no_option)], [])
+            return
         rec = await _revalidated(turn)
         if rec is None:
             return
         if kind == "APPLY":
             await _apply(turn, rec, payload)
         elif kind == "CHEAPER":
-            await _cheaper(turn, rec, str(payload.get("uin", "")))
+            await cheaper(turn, rec, str(payload.get("uin", "")))
         elif kind == "DISCLOSURE_ACK":
             await _ack(turn, rec, payload)
         elif kind == "REVISE":
@@ -1130,7 +1146,7 @@ def _journey_down(turn: Any, signed: dict[str, Any], reason: str) -> None:
 
 
 # --- make it cheaper ------------------------------------------------------------------------------
-async def _cheaper(turn: Any, rec: RecommendationPayload, uin: str) -> None:
+async def cheaper(turn: Any, rec: RecommendationPayload, uin: str) -> None:
     """TDD §3.8 "Make it cheaper": the engine's alternatives for the option's own quote, each with
     its protection gap against the recommended cover, and an APPLY quick reply for each."""
     texts = scripts(turn)
@@ -1210,29 +1226,23 @@ async def _cheaper(turn: Any, rec: RecommendationPayload, uin: str) -> None:
 async def _free_text(
     turn: Any, rec: RecommendationPayload, text: str, intents: set[Intent]
 ) -> None:
+    """S3's own free text: "which one should I buy?" (the top option and its reasons) and a plan
+    that is not an option (why) answer here, and say so (turn.answered), so the side-query subgraph
+    adds nothing. Questions, an exclusion dispute and objections are answered by the subgraph and
+    the objection handler (Step 22), which the router sent the turn to: here they get the choices
+    again, after the answer. Off-topic gets the redirect; anything else, structured choices."""
     texts = scripts(turn)
     lexicon = bundle(turn).s3_lexicon
     if mentions(lexicon.which_one, text):
         _which_one(turn, rec)
+        turn.answered = True
         return
     named = products_named(normalise(text).text, turn.products) - {o.uin for o in rec.options}
     if named:
         await _not_recommended(turn, sorted(named)[0])
+        turn.answered = True
         return
-    if Intent.OBJECTION_PRICE in intents or mentions(lexicon.cheaper, text):
-        await _cheaper(turn, rec, rec.options[0].uin)
-        return
-    dispute = mentions(lexicon.exclusion_dispute, text)
-    analysis = turn.pipeline.analysis if turn.pipeline is not None else None
-    guarantee = Intent.OBJECTION_GUARANTEE in intents or mentions(
-        bundle(turn).needs_lexicon.guarantee, text
-    )
-    question = "?" in text or bool(intents & QUESTIONS) or bool(analysis and analysis.side_query)
-    if dispute or guarantee or question:
-        query = (analysis.side_query if analysis else None) or text
-        await answer(turn, rec, query, intents, dispute=dispute, guarantee=guarantee)
-        return
-    if Intent.OFF_TOPIC in intents:
+    if Intent.OFF_TOPIC in intents and turn.routed not in ("side_query", "objection"):
         _reply(turn, [("redirect", texts.redirect)], _cta(turn))
         return
     _choices(turn)
@@ -1294,68 +1304,3 @@ async def _not_recommended(turn: Any, uin: str) -> None:
         _cta(turn),
     )
     logger.info("a plan that is not an option was named: %s", why)
-
-
-async def answer(
-    turn: Any,
-    rec: RecommendationPayload,
-    query: str,
-    intents: set[Intent],
-    *,
-    dispute: bool,
-    guarantee: bool,
-) -> None:
-    """A question about the options, answered only from the evidence, cited and verified (the
-    side-query L1 on gen-recommend; the output rails): tax with the regime condition and
-    DISC-GLOBAL-TAX-05 verbatim, never a personal computation; an exclusion dispute with the
-    wording and the grievance route; a guarantee only as the wording defines one. Insufficient
-    evidence: "I can't confirm that" and an advisor. Step 22's side-query subgraph lifts it out."""
-    current = session(turn)
-    texts = scripts(turn)
-    uins = [o.uin for o in rec.options]
-    retrieval = await _retrieve(turn, query, uins, intents=sorted(intents))
-    tax = (retrieval is not None and retrieval.audit.route_rule == "RT-TAX") or bool(
-        _TAX.search(query)
-    )
-    lead = [("guarantee_note", texts.guarantee_note)] if guarantee else []
-    after = [("side_query_caveat", texts.side_query_caveat["S3"])]
-    if tax:
-        disclosure = await turn.domain.get_disclosure(TAX_05, current.locale)
-        turn.shown.append(disclosure.body)
-        after += [("tax_condition", texts.tax_condition), (f"registry:{TAX_05}", disclosure.body)]
-    if dispute:
-        after.append(("exclusion_note", texts.exclusion_note))
-    if retrieval is None or retrieval.abstained:
-        _reply(turn, [*lead, ("abstain", texts.abstain), *after], _cta(turn))
-        logger.info("S3 question: no sufficient evidence, abstained")
-        return
-    facts = _engine_facts(turn, rec.options, turn.products)
-    draft, handles = await _generate(turn, "side-query", retrieval, facts)
-    sources = bundle(turn).templates[current.locale].recommendation
-
-    def render_(narrative: str | None) -> Rendered:
-        if narrative is None:
-            body = [("abstain", texts.abstain)]
-            cited_parts: list[tuple[str, str]] = []
-            citations: dict[str, str] = {}
-            source_items: list[Any] = []
-        else:
-            cited = render(narrative, handles)
-            body = [("generated:answer", cited.text)]
-            cited_parts = (
-                [("sources", source_list(cited.sources, sources))] if cited.sources else []
-            )
-            citations = handles.evidence_map(cited.handles)
-            source_items = cited.sources
-        parts = [
-            (i if ":" in i else f"template:{i}", t) for i, t in [*lead, *body, *after, *cited_parts]
-        ]
-        joined = "\n\n".join(t for _, t in parts)
-        return Rendered(joined, sha256_hex_text(joined), parts, citations, source_items, {}, {})
-
-    async def regenerate(errors: list[str]) -> str | None:
-        return (await _generate(turn, "side-query", retrieval, facts, errors))[0]
-
-    turn.draft, turn.render, turn.regenerate, turn.handles = draft, render_, regenerate, handles
-    _reply(turn, [], _cta(turn))
-    logger.info("S3 question answered from %d evidence chunks", len(retrieval.evidence))

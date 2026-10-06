@@ -1,0 +1,12 @@
+id: matrix-invalid-input-s2
+description: >-
+  TDD §3.9, S2: the format hint for an amount the system cannot read, then the money read-back
+  of the next answer (annualised, never assumed).
+prelude: to-s2
+turns:
+  - action: {type: SLOT, payload: {slot: goals, value: income_protection}}
+    expect: {templates: [RL-S2-INCOME]}
+  - text: a decent amount
+    expect: {templates: [format_hint, RL-S2-INCOME], counters: {invalid_input: 1}}
+  - text: 12 LPA
+    expect: {templates: [readback], contains: ["Just to check: ₹12,00,000 a year. Is that right?"], slots: {annual_income_inr: proposed}}

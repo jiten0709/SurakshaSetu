@@ -1,0 +1,7 @@
+id: matrix-shares-pii-s2
+description: >-
+  TDD §3.9, S2 (same as S1): a card number masked and the customer asked not to share it.
+prelude: to-s2
+turns:
+  - text: you can charge my card 4111 1111 1111 1111 for the premium
+    expect: {state: S2, templates: [pii_reminder, format_hint, RL-S2-GOALS]}

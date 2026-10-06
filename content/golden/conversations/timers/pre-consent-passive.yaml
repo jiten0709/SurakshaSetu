@@ -1,0 +1,11 @@
+id: timer-pre-consent-passive
+description: >-
+  V3: before consent a session is passive. Idle past every timeout, the timer job leaves it alone:
+  no transition, no turn, nothing sent; the customer carries on later as if nothing happened.
+turns:
+  - action: {type: START}
+    expect: {state: S0, templates: [greeting]}
+  - timer: 60
+    expect: {timer_fired: false, state: S0}
+  - action: {type: CONSENT_SUBMIT, payload: {purposes: {P1: true, P2: false, P3: false}, age_18_plus: true}}
+    expect: {state: S0, templates: [intent_ask]}

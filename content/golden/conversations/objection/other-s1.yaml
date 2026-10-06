@@ -1,0 +1,9 @@
+id: obj-other-s1
+description: >-
+  "Insurance is a waste of money": acknowledged, the decision left with the customer, no argument;
+  then the pending question again.
+prelude: to-s1
+turns:
+  - text: honestly insurance is a waste of money
+    script: {nlu-extract: [{intents: [OBJECTION_OTHER]}]}
+    expect: {state: S1, row: CC5, templates: [objection_other, RL-S1-AGE], objection: other, objection_response: acknowledged}

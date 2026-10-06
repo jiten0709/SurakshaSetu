@@ -425,6 +425,15 @@ class Screen:
         if pipeline.blocked or turn.identity:
             self.noted = True  # slots discarded (injection) or compose answers (I6): nothing else
             return
+        # Step 22: a side question or an objection is answered by the side-query subgraph or the
+        # objection handler, ahead of this prompt; a language switch asks the open question again
+        # in the new language. None of them is an answer to read or count as invalid.
+        handled = turn.routed in ("side_query", "objection") or turn.language_switched
+        if handled:
+            self.noted = True
+        if pushback(turn, text):  # TDD §3.9: the material-fact reason, then the question again
+            self.note("material_fact_note", texts.material_fact_note)
+            turn.answered = True
         if mentions(lexicon.concealment, text):
             self.note("nondisclosure_note", texts.nondisclosure_note)
         if mentions(lexicon.health_terms, text):
@@ -442,9 +451,9 @@ class Screen:
             logger.info("express path asked for in S1: Quote-Only once eligible")
         if Intent.OFF_TOPIC in intents:
             self.note("redirect", texts.redirect)
-        # Any other question, unless it was an answer phrased as one: the state's caveat until
-        # Step 22's side-query subgraph answers it.
-        if question and not self.lead and not self.filled:
+        # Any other question, unless it was an answer phrased as one, that the router did not send
+        # to the side-query subgraph: the state's caveat.
+        if question and not self.lead and not self.filled and not handled:
             self.note("side_query_caveat", texts.side_query_caveat[self.session.fsm_state.value])
 
     def note(self, part_id: str, text: str) -> None:
@@ -658,6 +667,11 @@ class Screen:
         if slot == "occupation_code":
             return phrasing.format(label=(await self.turn.domain.get_occupation(value)).label)
         return phrasing.format(value=value)
+
+
+def pushback(turn: Any, text: str) -> bool:
+    """Regulatory pushback on the open question ("why do you need my income?"; Step 22)."""
+    return mentions(bundle(turn).side_query_lexicon.pushback, text)
 
 
 def said(turn: Any) -> bool | None:

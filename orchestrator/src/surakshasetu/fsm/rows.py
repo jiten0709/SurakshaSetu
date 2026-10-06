@@ -12,6 +12,8 @@ The cross-cutting table is TDD §3.9's five rows plus:
 - the guards G1-G4 (decided 2026-10-02). They sit before CC4 and CC5 because a FAQ or objection
   STAY would otherwise keep a session in place with lapsed consent (I1) or a stale suitability
   record (I2), and would lose a one-turn correction (V4).
+- CC3b and CC5b (decided 2026-10-05, Step 22): a deferral pauses S1, Quote-Only and S2 (S3 has
+  S3.2), and the END quick reply after a repeated objection exits, after the guards.
 PAUSE runs only CC1, CC1b and CC2 itself. A customer turn resumes (PAUSE.R) and is evaluated in
 the paused-from state, guards included; a timer tick stays.
 """
@@ -155,6 +157,17 @@ CROSS_CUTTING: tuple[Row, ...] = (
         "FAQ intent, confidence >= 0.7", "FAQ", "P3", "Return to origin", "side_query"),
     Row("CC5", ENGAGED, 10, "STAY", lambda f, t: f.objection,
         "objection intent", "OBJECTION", fallback="Return to origin", subgraph="objection"),
+    # Step 22 (decided 2026-10-05): a deferral ("I'll think about it", "need to ask my spouse") or
+    # SAVE pauses outside S3 too, after consent (V3); S3 keeps S3.2 and its summary. And the END
+    # quick reply offered after a repeated objection exits (TDD §3.9: "offers Pause or Exit").
+    Row("CC3b", frozenset({S.S1, S.QUOTE_ONLY, S.S2}), 11, S.PAUSE,
+        lambda f, t: f.consent_given_ever and f.need_time,
+        "needs time (a deferral), after consent", "NEED_TIME",
+        fallback="Save progress; resume re-runs the state"),
+    Row("CC5b", frozenset({S.S1, S.QUOTE_ONLY, S.S2, S.S3}), 12, S.EXIT,
+        lambda f, t: f.end_requested,
+        "ends the conversation after a repeated objection", "OBJECTION_EXIT",
+        fallback="Graceful exit; re-engagement only with P3"),
 )  # fmt: skip
 
 

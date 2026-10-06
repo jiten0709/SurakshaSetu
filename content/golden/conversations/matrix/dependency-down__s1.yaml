@@ -1,0 +1,10 @@
+id: matrix-dependency-down-s1
+description: >-
+  TDD §3.9, S1: the domain tier down -> the template question and a retry; the retry asks again.
+prelude: to-s1
+turns:
+  - text: "34"
+    domain_down: [getRequiredAttributes]
+    expect: {state: S1, templates: [screening_retry], actions: [RETRY], slot_rows: 0}
+  - action: {type: RETRY}
+    expect: {state: S1, templates: [RL-S1-AGE]}

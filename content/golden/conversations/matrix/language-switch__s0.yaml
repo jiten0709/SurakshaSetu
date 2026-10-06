@@ -1,0 +1,8 @@
+id: matrix-language-switch-s0
+description: >-
+  TDD §3.9, S0: the approved (DUMMY) translation of the greeting, AI disclosure and notice.
+turns:
+  - action: {type: START}
+    expect: {state: S0, templates: [greeting], language: en}
+  - action: {type: NOTICE_LANGUAGE, payload: {language: hi-IN}}
+    expect: {state: S0, templates: [greeting], form: true, language: hi, contains: ["[hi translation pending approval]"]}

@@ -41,8 +41,9 @@ def test_cross_cutting_orders_and_all_row_ids_are_unique() -> None:
 
 
 def test_cross_cutting_rows_follow_tdd_3_9_with_the_guards_before_faq_and_objection() -> None:
+    # Step 22: the deferral pause (CC3b) and the exit after a repeated objection (CC5b) come last.
     assert [row.id for row in CROSS_CUTTING] == [
-        "CC1", "CC1b", "CC2", "CC3", "G1", "G2", "G3", "G4", "CC4", "CC5",
+        "CC1", "CC1b", "CC2", "CC3", "G1", "G2", "G3", "G4", "CC4", "CC5", "CC3b", "CC5b",
     ]  # fmt: skip
 
 

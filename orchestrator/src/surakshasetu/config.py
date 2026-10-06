@@ -114,7 +114,7 @@ class Settings(BaseSettings):
     # session TTL (TDD §4.4, D7 open); the single-writer lock and idempotency TTLs (TDD §7.2); turn
     # rate limits per subject as {window seconds: max turns}; the side-query stack depth (TDD §2.6);
     # injection hits before HE_INJECTION (TDD §3.9); the app_rw pool size per process.
-    prompt_bundle: str = Field(default="pb-2026.10.5", pattern=r"^pb-\d{4}\.\d{2}\.\d+$")
+    prompt_bundle: str = Field(default="pb-2026.10.6", pattern=r"^pb-\d{4}\.\d{2}\.\d+$")
     session_ttl_days: int = Field(default=30, ge=1)
     session_lock_ttl_s: int = Field(default=30, ge=1)
     idempotency_ttl_s: int = Field(default=86_400, ge=1)
@@ -125,6 +125,17 @@ class Settings(BaseSettings):
     # State-1 (Step 19): answers to one question the system could not use before the advisor offer
     # (TDD §3.9's "invalid input" row).
     invalid_input_limit: int = Field(default=3, ge=1)
+    # Cross-cutting completion (Step 22). Consecutive side queries before the offer to continue or
+    # hand off (TDD §2.6); the same objection's count at which the handler stops answering and
+    # offers Pause or Exit (TDD §3.9: the second); inactivity per state before CC3 pauses a
+    # post-consent session (seconds; TDD §3.10 names only S4's 10 minutes, so 10 minutes each until
+    # the specification owner sets them), and how often the timer job looks (jobs/timers.py).
+    side_query_offer_after: int = Field(default=5, ge=1)
+    objection_repeat_limit: int = Field(default=2, ge=2)
+    inactivity_timeouts: dict[str, int] = Field(
+        default_factory=lambda: dict.fromkeys(("S0", "S1", "QUOTE_ONLY", "S2", "S3"), 600)
+    )
+    timer_interval_s: int = Field(default=60, ge=1)
     # Cross-cutting handlers (Step 17). Erasure hard-deletes live conv and checkpoint rows as
     # erasure_rw, never app_rw. A subject key is destroyed when the longest applicable retention
     # ends (TDD §4.4): the audit hot store's proposed 13 months, as days that always cover 13
@@ -153,6 +164,10 @@ class Settings(BaseSettings):
                 raise ValueError(f"env={self.env} requires {', '.join(missing)}")
             if self.tei_timeout_scale != 1:
                 raise ValueError(f"env={self.env} requires {ENV_PREFIX}TEI_TIMEOUT_SCALE=1")
+        if unknown := set(self.inactivity_timeouts) - {"S0", "S1", "QUOTE_ONLY", "S2", "S3"}:
+            raise ValueError(f"inactivity_timeouts names states no timer pauses: {sorted(unknown)}")
+        if any(seconds < 60 for seconds in self.inactivity_timeouts.values()):
+            raise ValueError("an inactivity timeout is at least 60 seconds")
         return self
 
 

@@ -1,0 +1,9 @@
+id: matrix-under-18-s0
+description: >-
+  TDD §3.9, S0: the 18+ box unticked with P1 -> a polite exit, nothing recorded, the key
+  destroyed (V2; erasure from S0 too, decided 2026-10-02).
+turns:
+  - action: {type: START}
+    expect: {state: S0, templates: [greeting]}
+  - action: {type: CONSENT_SUBMIT, payload: {purposes: {P1: true, P2: false, P3: false}, age_18_plus: false}}
+    expect: {state: DATA_ERASURE, row: CC1b, templates: [minor_exit], absent: [CONSENT_CAPTURED], erased: destroyed}

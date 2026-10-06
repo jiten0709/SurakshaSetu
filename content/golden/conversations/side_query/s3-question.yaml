@@ -1,0 +1,18 @@
+id: sq-s3-question
+description: >-
+  A question on the recommendation (no nlu side_query needed: a question in S3 is a side question):
+  answered from the evidence, cited and verified, with S3's caveat, then the bridge and the
+  structured choices.
+prelude: to-s3
+turns:
+  - text: "yes"
+    expect: {state: S3, row: S2.2}
+  - text: Is the death benefit paid in instalments?
+    script: {gen-recommend: ["The policy wording sets out how the death benefit is paid [E1]."]}
+    expect:
+      state: S3
+      row: S3.STAY
+      parts: [generated:answer, template:side_query_caveat, template:sources, template:side_query_bridge, template:s3_choices]
+      citations: true
+      faq: answered
+      actions: [APPLY, HUMAN_REQUEST, REVISE, SAVE]

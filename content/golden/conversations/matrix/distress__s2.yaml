@@ -1,0 +1,7 @@
+id: matrix-distress-s2
+description: >-
+  TDD §3.9, S2 (same): the safety script leads; P2 asked first.
+prelude: to-s2
+turns:
+  - text: I want to end my life, nothing matters
+    expect: {state: HUMAN_ESCALATION, reason: HE_SAFETY, templates: [safety, advisor_consent_ask]}

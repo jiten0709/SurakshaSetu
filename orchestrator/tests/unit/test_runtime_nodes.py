@@ -31,7 +31,7 @@ from surakshasetu.store.conv import SessionRow
 SID = UUID("0199a1b2-0000-7000-8000-00000000c0de")
 SUBJECT = UUID("0199a1b2-0000-7000-8000-00000000beef")
 KEY = UUID("0199a1b2-0000-7000-8000-0000000000aa")
-BUNDLE = load_bundle("pb-2026.10.5", env="dev")
+BUNDLE = load_bundle("pb-2026.10.6", env="dev")
 SCRIPTS = BUNDLE.templates["en-IN"].scripts
 NOW = datetime.now(UTC)
 SENTINEL = "my PAN is ABCDE1234F and I live at 42 Sentinel Lane"
@@ -121,14 +121,18 @@ def rt(t: Turn) -> Any:
 
 
 async def run(t: Turn) -> None:
-    """input -> route -> (routed handler | side query -> state node) -> decide -> [entered
-    handler] -> compose -> validate"""
+    """input -> route -> (routed handler | side query | objection | timer | state node) -> decide
+    -> [entered handler] -> compose -> validate. The side query and the objection run the state
+    node themselves (Step 22)."""
     state = GraphState()
     await nodes.input_node(state, rt(t))
     goto = (await nodes.route(state, rt(t))).goto
-    if goto == "side_query":
-        goto = (await nodes.side_query(state, rt(t))).goto
-    if goto in nodes.ROUTED:
+    steps = {"side_query": nodes.side_query, "objection": nodes.objection_node}
+    if goto in steps:
+        await steps[str(goto)](state, rt(t))
+    elif goto == "timer":
+        await nodes.timer(state, rt(t))
+    elif goto in nodes.ROUTED:
         await nodes.ROUTED[str(goto)](state, runtime=rt(t))
     else:
         fsm_state = FsmState(goto)
@@ -168,8 +172,13 @@ def test_the_router_honours_a_withdrawal_first_then_safety_then_side_queries() -
     goto, frame = turn_router(session(pending_slot="age"), pipeline(side), 2)
     assert goto == "side_query" and frame == Frame(state=FsmState.S0, pending_slot="age")
 
+    # Step 22: a full stack still reaches the subgraph, without a frame: the brief answer.
     full = session(stack=[Frame(state=FsmState.S0), Frame(state=FsmState.S0)])
-    assert turn_router(full, pipeline(side), 2) == ("S0", None)
+    assert turn_router(full, pipeline(side), 2) == ("side_query", None)
+    # ... and an objection comes before a side question; a question the router read from the turn
+    # (beyond nlu-extract's side_query) is a side question too.
+    assert turn_router(session(), pipeline(side), 2, objecting=True) == ("objection", None)
+    assert turn_router(session(), pipeline(None), 2, question="is it recorded?")[0] == "side_query"
     assert turn_router(session(fsm_state=FsmState.S2), None, 2) == ("S2", None)
 
 
@@ -268,20 +277,23 @@ async def test_an_action_turn_is_audited_without_rails(monkeypatch: pytest.Monke
 
 
 @pytest.mark.asyncio
-async def test_a_side_query_pushes_a_frame_the_stub_pops(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_a_side_query_pushes_a_frame_the_subgraph_pops(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     Recorder(monkeypatch)
     t = turn(Models(side_query="how does 80C work?"))
     state = GraphState()
     await nodes.input_node(state, rt(t))
 
     assert (await nodes.route(state, rt(t))).goto == "side_query"
-    assert t.next is not None and len(t.next.stack) == 1
-    assert (await nodes.side_query(state, rt(t))).goto == "S0"
-    assert t.next.stack == []
+    assert t.next is not None and len(t.next.stack) == 1 and t.frame == t.next.stack[0]
+    await nodes.side_query(state, rt(t))
+    assert t.next.stack == [] and t.side_outcome is not None
 
     full = turn(Models(side_query="how does 80C work?"), side_query_max_stack=0)
     await nodes.input_node(state, rt(full))
-    assert (await nodes.route(state, rt(full))).goto == "S0"
+    assert (await nodes.route(state, rt(full))).goto == "side_query"
+    assert full.side_full and full.frame is None and full.next is not None and not full.next.stack
 
 
 @pytest.mark.asyncio
@@ -395,7 +407,7 @@ async def test_load_hydrates_from_conv_only_when_the_checkpoint_lags(
 async def test_a_kill_switch_on_the_active_bundle_refuses_the_turn(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    loading(monkeypatch, switches={("prompt_bundle", "pb-2026.10.5")})
+    loading(monkeypatch, switches={("prompt_bundle", "pb-2026.10.6")})
 
     with pytest.raises(BundleError) as excinfo:
         await nodes.load(GraphState(), rt(turn()))

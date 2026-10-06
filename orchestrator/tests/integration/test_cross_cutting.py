@@ -35,7 +35,7 @@ pytestmark = [pytest.mark.db, pytest.mark.asyncio]
 H = hashlib.sha256(b"x").hexdigest()
 PII = "my PAN is ABCDE1234F, call me on 9876543210"
 CONV = ("disclosure_ack", "recommendation", "handoff", "slot_value", "turn", "session")
-SCRIPTS = load_bundle("pb-2026.10.5", env="test").templates["en-IN"].scripts
+SCRIPTS = load_bundle("pb-2026.10.6", env="test").templates["en-IN"].scripts
 
 
 class ConsentService:

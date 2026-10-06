@@ -1,0 +1,8 @@
+id: matrix-off-topic-s1
+description: >-
+  TDD §3.9, S1: a one-line redirect to the pending question; not counted as an invalid answer.
+prelude: to-s1
+turns:
+  - text: did you watch the cricket last night
+    script: {nlu-extract: [{intents: [OFF_TOPIC]}]}
+    expect: {state: S1, templates: [redirect, RL-S1-AGE], counters: {invalid_input: 0}}

@@ -1,0 +1,10 @@
+id: matrix-language-switch-s3
+description: >-
+  TDD §3.9, S3: disclosures only from approved translations: the recommendation is presented again
+  with the registry's hi-IN sets (decided 2026-10-05), and acknowledgments bind to this render.
+prelude: to-s3
+turns:
+  - text: "yes"
+    expect: {state: S3, row: S2.2}
+  - action: {type: LANGUAGE, payload: {locale: hi-IN}}
+    expect: {state: S3, language: hi, disclosures: ["999N001V02", "999N002V01"], engine: {service: ranking}}

@@ -1,0 +1,34 @@
+id: sq-80c-worked-example
+description: >-
+  TDD §2.6's worked example, in S2: "How does section 80C affect this tax benefit?" The rewrite
+  maps 80C to section 123 of the Income-tax Act 2025 and Schedule XV, and the current tax year
+  (2026-27, the 2025 Act in force from 1 April 2026) keeps the 1961-Act chunks out. The answer is
+  the general rule, cited and verified, with the regime condition (unknown, so asked) and
+  DISC-GLOBAL-TAX-05 verbatim, never a computation; then the bridge and S2's pending question. The
+  customer answers the regime (confirmed), and the next tax question no longer asks it.
+prelude: to-s2
+turns:
+  - text: How does section 80C affect this tax benefit?
+    script:
+      nlu-extract: [{intents: [SIDE_QUERY], side_query: "How does section 80C affect this tax benefit?"}]
+      gen-recommend: ["The deduction for life insurance premiums is available only under the old tax regime, subject to conditions [E1]."]
+    expect:
+      state: S2
+      row: S2.STAY
+      parts: [generated:answer, template:side_query_caveat, template:tax_condition, template:regime_ask, "registry:DISC-GLOBAL-TAX-05", template:sources, template:side_query_bridge, template:RL-S2-GOALS]
+      citations: true
+      abstained: false
+      faq: answered
+      retrieved: ["tax:ita2025-sch-xv"]
+      not_retrieved: ["tax:ita1961"]
+      lacks: ["you will save"]
+  - action: {type: FACT, payload: {slot: tax_regime, value: old, confirmed: true}}
+    expect: {state: S2, templates: [regime_noted, RL-S2-GOALS], slots: {tax_regime: confirmed}, faq: fact}
+  - text: does 80C apply for the old regime?
+    script:
+      nlu-extract: [{intents: [SIDE_QUERY], side_query: "does 80C apply for the old regime?"}]
+      gen-recommend: ["Under the old regime the deduction for premiums can apply, subject to its conditions [E1]."]
+    expect:
+      state: S2
+      parts: [generated:answer, template:side_query_caveat, template:tax_condition, "registry:DISC-GLOBAL-TAX-05", template:sources, template:side_query_bridge, template:RL-S2-GOALS]
+      faq: answered

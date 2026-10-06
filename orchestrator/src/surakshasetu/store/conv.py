@@ -87,6 +87,22 @@ def get_session(conn: Conn, session_id: UUID, *, lock: bool = False) -> SessionR
     return None if row is None else dataclasses.replace(row, token_sha256=bytes(row.token_sha256))
 
 
+def inactive_sessions(
+    conn: Conn, before: datetime, session_ids: list[UUID] | None = None
+) -> list[SessionRow]:
+    """Active sessions with no turn since `before` (the timer job, Step 22), oldest first: the
+    candidates. The job keeps the post-consent ones past their own state's timeout."""
+    sql = _SELECT_SESSION.removesuffix("WHERE session_id = %s")
+    sql += "WHERE status = 'active' AND last_activity_at <= %s"
+    params: list[Any] = [before]
+    if session_ids is not None:
+        sql += " AND session_id = ANY(%s)"
+        params.append(session_ids)
+    with conn.cursor(row_factory=class_row(SessionRow)) as cur:
+        rows = cur.execute(sql + " ORDER BY last_activity_at", params).fetchall()
+    return [dataclasses.replace(r, token_sha256=bytes(r.token_sha256)) for r in rows]
+
+
 def update_session(
     conn: Conn,
     session_id: UUID,

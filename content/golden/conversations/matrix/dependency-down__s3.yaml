@@ -1,0 +1,14 @@
+id: matrix-dependency-down-s3
+description: >-
+  TDD §3.9, S3: save and resume: the ranker down on entry offers a retry; down again, the session
+  pauses (CC3); the customer comes back and the recommendation is presented.
+prelude: to-s3
+turns:
+  - text: "yes"
+    domain_down: [rankOptions]
+    expect: {state: S3, row: S2.2, templates: [needs_done, rec_retry], actions: [RETRY]}
+  - action: {type: RETRY}
+    domain_down: [rankOptions]
+    expect: {state: PAUSE, row: CC3, reason: DEPENDENCY_DOWN, templates: [dependency_down, paused]}
+  - text: I'm back, show me the plans
+    expect: {state: S3, row: PAUSE.R, disclosures: ["999N001V02", "999N002V01"]}
