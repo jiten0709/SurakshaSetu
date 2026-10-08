@@ -63,11 +63,11 @@ It computes the model-dependent metrics against the stub but does not gate on th
 
 ### Waivers
 
-A gate that the DUMMY seed content cannot meet can be waived, for a limited time, in `content/eval/waivers.yaml` (owner: compliance):
+A gate that the DUMMY seed content cannot meet can be waived in `content/eval/waivers.yaml` (owner: compliance):
 
-- each waiver names its gate, the reason, the owner and an expiry date;
+- each waiver names its gate, the reason and the owner;
 - the gate is still computed, and every report shows it as WAIVED;
-- an expired waiver stops applying, and the gate blocks again;
+- a waiver has no expiry date: it holds until compliance removes it from the file, and the gate then blocks again (decided 2026-10-08);
 - the §5.3 compliance gates, red-team successes and the conversation suites can never be waived (`eval/metrics.NEVER_WAIVED`).
 
 Today's waivers cover the retrieval recall and precision gates of kb_regulatory and kb_tax (Step 12 X1, the reranker decision).

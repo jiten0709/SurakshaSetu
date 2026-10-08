@@ -2,7 +2,7 @@
 
 An AI-assisted conversational advisor for life and term insurance in India. It guides a customer from consent, through eligibility and needs discovery, to a compliant, explainable plan recommendation.
 
-> **🚧 Work in progress.** Steps 1–7 of 24 are done: a runnable skeleton, core local infrastructure, CI, the database migrations, the OpenAPI contract between the two tiers, per-customer encryption keys, a tamper-evident audit trail anchored daily in locked storage, and the deterministic domain tier (consent, product catalog and disclosure registry, eligibility and suitability rules, indicative quotes and ranking, all on dummy data). There's no conversation yet. Phase 1 targets journey states S0–S3.
+> **Phase 1, Steps 1–23 of 24 done.** The whole S0–S3 journey works end to end: consent, eligibility, the Quote-Only path, needs discovery, a ranked and cited recommendation with hash-verified disclosures, and a signed hand-off to the application journey. The cross-cutting handlers (FAQ, objections, human escalation, pause, data erasure) also work. `make eval` passes 207 of 207 golden and red-team conversations, with 0 of 157 attacks succeeding. Every product, rule, rate and document is DUMMY data, and the language models are local stubs until the hosting decision (D2). Step 24 (audit streaming, observability, retention, the compliance dossier) is next.
 
 ## Core idea
 
@@ -38,18 +38,39 @@ _State flow from the product spec. Phase 1 builds only S0–S3 (green) and hands
 | `orchestrator/`    | Conversation tier: Python 3.12, FastAPI and LangGraph                                  |
 | `domain-services/` | Domain tier: Java 21, Spring Boot and DMN rules (eligibility, suitability, consent, catalog) |
 | `tools/stubs/`     | Local stand-ins for the model and external systems                                     |
-| `infra/`           | Docker Compose stack (Postgres, Valkey, Qdrant, MinIO) and Flyway migrations           |
+| `infra/`           | Docker Compose stack (Postgres, Valkey, Qdrant, MinIO, TEI, OmniRoute) and Flyway migrations |
 
 ## Quick start
 
 Prerequisites: [uv](https://docs.astral.sh/uv/), Docker, and JDK 21.
 
 ```sh
-make up          # start the core stack and wait for healthchecks
-make db-migrate  # apply schemas, roles and grants
-make check       # lint, type-check and test all tiers
-make down        # stop the stack
+make local-setup  # TDD §7.5 steps 1-5: stack, gateway, catalog, knowledge base, eval sets,
+                  # invariant tests and the scripted S0-S3 conversation (first run: ~40 min of downloads)
+make serve        # the Conversation API on 127.0.0.1:8000 (leave it running)
 ```
+
+Then chat with it in a second terminal:
+
+```sh
+cd orchestrator && uv run python scripts/chat.py            # --locale hi-IN for Hindi
+```
+
+Type a number to pick a quick reply, `f` to fill the consent form, `/erase` to delete your data, `/quit` to leave.
+
+Other targets:
+
+```sh
+make check        # lint, type-check and test all tiers
+make eval         # every golden and red-team conversation, then the TDD §5.2/§5.3 gates (~13 min)
+make e2e-scripted # the scripted S0-S3 conversation alone, ending in the signed hand-off
+make down         # stop the stack
+```
+
+### Demo notes
+
+- The models are stubs, so their wording is canned and free text is understood only by the deterministic parsers. Use the quick replies and short answers ("34", "411001", "no", "12 lakh"); the seed pincodes are in `content/seed/catalog/reference.yaml`.
+- Retrieval recall and precision for the regulatory and tax collections show as WAIVED in the eval report: they miss their targets on the DUMMY corpus until the reranker decision.
 
 ## Note
 

@@ -1,7 +1,6 @@
 """TDD §5.2/§5.3 metrics and gates (Step 23), each on a tiny hand-labelled fixture whose answer is
 worked out by hand in the test."""
 
-from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -17,7 +16,6 @@ from surakshasetu.eval.metrics import (
     canonical,
     conversation_gates,
     conversations_per_state,
-    expired,
     f1,
     fallback_rate,
     intent_recall,
@@ -129,42 +127,40 @@ def test_a_gate_passes_fails_is_informational_or_waived() -> None:
     assert Gate("count", "x", 0.0, "==", 0, True).status == "PASS"
 
 
-def waiver(gate: str, expires: date) -> Waiver:
-    return Waiver(gate=gate, reason="Step 12 X1: the reranker decision", owner="c", expires=expires)
+def waiver(gate: str) -> Waiver:
+    return Waiver(gate=gate, reason="Step 12 X1: the reranker decision", owner="c")
 
 
-def test_a_waiver_holds_until_it_expires() -> None:
+def test_a_waiver_holds_its_failing_gate() -> None:
     gate = Gate("context_recall:tax", "context_recall", 0.784, ">=", 0.90, True)
-    live = waiver("context_recall:tax", date(2026, 12, 31))
-    (waived,) = apply_waivers([gate], [live], date(2026, 10, 6))
+    (waived,) = apply_waivers([gate], [waiver("context_recall:tax")])
     assert waived.status == "WAIVED" and blocking([waived]) == []
-    (lapsed,) = apply_waivers([gate], [live], date(2027, 1, 1))
-    assert lapsed.status == "FAIL"
-    assert expired([live], date(2027, 1, 1)) == [live]
+    (unwaived,) = apply_waivers([gate], [])
+    assert unwaived.status == "FAIL"
     passing = Gate("context_recall:product", "context_recall", 0.92, ">=", 0.90, True)
-    (still,) = apply_waivers([passing], [waiver("context_recall:product", date(2026, 12, 31))],
-                             date(2026, 10, 6))  # fmt: skip
+    (still,) = apply_waivers([passing], [waiver("context_recall:product")])
     assert still.status == "PASS"
 
 
 def test_a_waiver_for_a_gate_no_run_computes_is_an_error() -> None:
     gate = Gate("context_recall:tax", "context_recall", 0.784, ">=", 0.90, True)
     with pytest.raises(ValueError, match="unknown gates"):
-        apply_waivers([gate], [waiver("context_recall:taxx", date(2026, 12, 31))], date(2026, 1, 1))
+        apply_waivers([gate], [waiver("context_recall:taxx")])
 
 
 def test_the_waiver_file_is_strict(tmp_path: Path) -> None:
     assert load_waivers(tmp_path / "missing.yaml") == []
     path = tmp_path / "waivers.yaml"
-    path.write_text(
-        "waivers:\n  - {gate: abstention, reason: short, owner: c, expires: 2026-12-31}\n"
-    )
+    path.write_text("waivers:\n  - {gate: abstention, reason: short, owner: c}\n")
     with pytest.raises(ValidationError):
         load_waivers(path)  # the reason is too short to say why
-    entry = "{gate: abstention, reason: a reason long enough, owner: c, expires: 2026-12-31}"
+    entry = "{gate: abstention, reason: a reason long enough, owner: c}"
     path.write_text(f"waivers:\n  - {entry}\n  - {entry}\n")
     with pytest.raises(ValueError, match="twice"):
         load_waivers(path)
+    path.write_text(f"waivers:\n  - {entry[:-1]}, expires: 2026-12-31}}\n")
+    with pytest.raises(ValidationError):
+        load_waivers(path)  # no expiry: a waiver holds until it is removed
 
 
 def record(**update: Any) -> dict[str, Any]:
@@ -280,11 +276,10 @@ def test_label_retrieval_and_qa_gates_are_enforced_only_when_asked() -> None:
 def test_compliance_red_team_and_suites_are_never_waived() -> None:
     gate = Gate("injection_success", "injection_success", 1.0, "==", 0, True)
     with pytest.raises(ValueError, match="never waived"):
-        apply_waivers([gate], [waiver("injection_success", date(2026, 12, 31))], date(2026, 1, 1))
+        apply_waivers([gate], [waiver("injection_success")])
     chains = Gate("audit_integrity:chains", "audit_integrity", 0.9, ">=", 1.0, True)
     with pytest.raises(ValueError, match="never waived"):
-        apply_waivers([chains], [waiver("audit_integrity:chains", date(2026, 12, 31))],
-                      date(2026, 1, 1))  # fmt: skip
+        apply_waivers([chains], [waiver("audit_integrity:chains")])
 
 
 def test_the_committed_waivers_load() -> None:

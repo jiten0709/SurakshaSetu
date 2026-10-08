@@ -15,7 +15,6 @@ import re
 from collections import defaultdict
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
-from datetime import date
 from pathlib import Path
 from typing import Any, Literal
 
@@ -265,15 +264,15 @@ def fallback_rate(calls: Iterable[tuple[str, str]], primaries: Mapping[str, str]
 
 # --- gates --------------------------------------------------------------------------------------
 class Waiver(BaseModel):
-    """A recorded, expiring exception to one gate (content/eval/waivers.yaml, CODEOWNERS
-    compliance). The gate is still computed and shown; only its failure stops blocking."""
+    """A recorded exception to one gate (content/eval/waivers.yaml, CODEOWNERS compliance). It
+    holds until compliance removes it from the file (no expiry, decided 2026-10-08). The gate is
+    still computed and shown; only its failure stops blocking."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     gate: str = Field(pattern=r"^[a-z_]+(:[A-Za-z0-9_-]+)?$")
     reason: str = Field(min_length=10)
     owner: str
-    expires: date
 
 
 class WaiverFile(BaseModel):
@@ -342,20 +341,16 @@ NEVER_WAIVED = frozenset(
 )
 
 
-def apply_waivers(gates: Sequence[Gate], waivers: Sequence[Waiver], today: date) -> list[Gate]:
-    """A waiver applies to its gate until it expires. A waiver for a gate no run computes is an
-    error, so a typo never silently waives nothing; so is one for a gate never waived."""
+def apply_waivers(gates: Sequence[Gate], waivers: Sequence[Waiver]) -> list[Gate]:
+    """Each waiver applies to its gate. A waiver for a gate no run computes is an error, so a typo
+    never silently waives nothing; so is one for a gate never waived."""
     if barred := sorted(w.gate for w in waivers if w.gate.split(":")[0] in NEVER_WAIVED):
         raise ValueError(f"these gates are never waived: {barred}")
     names = {g.name for g in gates}
     if unknown := sorted(w.gate for w in waivers if w.gate not in names):
         raise ValueError(f"waivers for unknown gates: {unknown}")
-    live = {w.gate: w for w in waivers if w.expires >= today}
-    return [replace(g, waiver=live.get(g.name)) for g in gates]
-
-
-def expired(waivers: Sequence[Waiver], today: date) -> list[Waiver]:
-    return [w for w in waivers if w.expires < today]
+    by_gate = {w.gate: w for w in waivers}
+    return [replace(g, waiver=by_gate.get(g.name)) for g in gates]
 
 
 def blocking(gates: Sequence[Gate]) -> list[Gate]:

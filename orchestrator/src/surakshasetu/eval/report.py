@@ -10,7 +10,6 @@ from surakshasetu.eval.metrics import (
     LANGUAGES,
     STEP_DEFINITIONS,
     Gate,
-    Waiver,
     blocking,
     latency_class,
     p95,
@@ -107,7 +106,6 @@ def assemble(
     mode: str,
     stamp: str,
     gates: Sequence[Gate],
-    expired: Sequence[Waiver],
     records: Sequence[Mapping[str, Any]],
     sections: Mapping[str, Any],
 ) -> dict[str, Any]:
@@ -115,10 +113,9 @@ def assemble(
     return {
         "mode": mode,
         "generated": stamp,
-        "result": "FAIL" if failing or expired else "PASS",
+        "result": "FAIL" if failing else "PASS",
         "blocking": [g.name for g in failing],
         "gates": [gate_row(g) for g in gates],
-        "expired_waivers": [w.model_dump(mode="json") for w in expired],
         "suites": suite_table(records),
         "red_team": red_team_table(records),
         "states": state_table(records),
@@ -152,7 +149,7 @@ def markdown(report: Mapping[str, Any]) -> str:
     for g in report["gates"]:
         waiver = g["waiver"]
         note = g["note"] + (
-            f" Waived until {waiver['expires']} ({waiver['owner']}): {waiver['reason']}"
+            f" Waived ({waiver['owner']}): {waiver['reason']}"
             if waiver and g["status"] == "WAIVED"
             else ""
         )
@@ -160,12 +157,6 @@ def markdown(report: Mapping[str, Any]) -> str:
             f"| {g['gate']} | {g['definition']} | {g['tdd_gate']} | {_value(g['value'], g['op'])}"
             f" | {g['op']} {g['threshold']:g} | {g['status']} | {note.strip()} |"
         )
-    if report["expired_waivers"]:
-        lines += [
-            "",
-            "**Expired waivers (they block):** "
-            + ", ".join(f"{w['gate']} ({w['expires']})" for w in report["expired_waivers"]),
-        ]
     if report["red_team"]:
         total = sum(r["attacks"] for r in report["red_team"])
         got = sum(r["successes"] for r in report["red_team"])

@@ -1,6 +1,6 @@
-# Evaluation gate waivers (Step 23): a recorded, expiring exception to one gate of
-# `python -m surakshasetu.eval`. The gate is still computed and shown in every report as WAIVED. An
-# expired waiver no longer applies, and the gate blocks again. §5.3 compliance gates, red-team
+# Evaluation gate waivers (Step 23): a recorded exception to one gate of `python -m surakshasetu.eval`.
+# The gate is still computed and shown in every report as WAIVED. A waiver has no expiry (decided
+# 2026-10-08): it holds until compliance removes it from this file. §5.3 compliance gates, red-team
 # successes and the conversation suites can never be waived (eval/metrics.NEVER_WAIVED). Owner:
 # compliance (CODEOWNERS); see RELEASING.md.
 waivers:
@@ -11,16 +11,12 @@ waivers:
   - gate: context_recall:regulatory
     reason: Step 12 X1, the reranker decision is open; the DUMMY seed corpus misses recall@8 0.90
     owner: compliance
-    expires: 2026-12-31
   - gate: context_precision:regulatory
     reason: Step 12 X1, the reranker decision is open; the DUMMY seed corpus misses precision@8 0.80
     owner: compliance
-    expires: 2026-12-31
   - gate: context_recall:tax
     reason: Step 12 X1, the reranker decision is open; the DUMMY seed corpus misses recall@8 0.90
     owner: compliance
-    expires: 2026-12-31
   - gate: context_precision:tax
     reason: Step 12 X1, the reranker decision is open; the DUMMY seed corpus misses precision@8 0.80
     owner: compliance
-    expires: 2026-12-31

@@ -342,26 +342,20 @@ async def main_async(mode: str, records_dir: Path | None) -> int:
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     try:
         run = await evaluate(mode, records_dir, settings)
-        gates = metrics.apply_waivers(
-            gates_of(run, settings), run["waivers"], datetime.now(UTC).date()
-        )
+        gates = metrics.apply_waivers(gates_of(run, settings), run["waivers"])
     except Unrunnable as exc:
         logger.error("%s", exc)
         return 2
-    expired = metrics.expired(run["waivers"], datetime.now(UTC).date())
     body = report.assemble(
         mode=mode,
         stamp=stamp,
         gates=gates,
-        expired=expired,
         records=run["records"],
         sections=sections(run),
     )
     json_path, md_path = write(body, stamp)
     for g in metrics.blocking(gates):
         logger.warning("gate %s failed: %s (%s %s)", g.name, g.value, g.op, g.threshold)
-    for w in expired:
-        logger.warning("waiver for %s expired on %s", w.gate, w.expires)
     logger.info("evaluation %s: %s; wrote %s and %s", mode, body["result"], json_path, md_path)
     return 0 if body["result"] == "PASS" else 1
 

@@ -1,7 +1,7 @@
 # One entry point for local work and CI. Placeholder targets are filled in by later steps.
 COMPOSE := docker compose -f infra/compose.yaml --profile core
 PYTEST_MARKERS := not stack and not golden and not redteam and not live and not db
-PLACEHOLDERS := verify-release-gate local-setup
+PLACEHOLDERS := verify-release-gate
 SPEC := contracts/openapi/domain-services.v1.yaml
 MODELS := src/surakshasetu/domain/models.py
 
@@ -37,7 +37,7 @@ TEST_ENV := SS_TEST_PG_DSN_ADMIN="postgresql://postgres:$(POSTGRES_PASSWORD)@127
 	db-migrate seed-catalog contracts contracts-lint contract-test verify-audit gateway-up \
 	gateway-verify kb-ingest kb-verify kb-chunks check-ingest calibrate-retrieval eval-retrieval \
 	bakeoff-embed bakeoff-rerank test-invariants eval eval-live seed-eval e2e-scripted \
-	timers-once $(PLACEHOLDERS)
+	timers-once serve local-setup $(PLACEHOLDERS)
 
 # Postgres first, then the migrations, so domain-services finds its domain_rw role on a fresh
 # volume. `up --wait` treats an exited one-shot as a failure, so the one-shots run on their own.
@@ -194,11 +194,13 @@ check-stack: db-migrate
 # budgets (CPU retrieval); the conversations run at production budgets, as their latency is a gate.
 # Needs `make up`, `make gateway-up`, `make seed-catalog` and `make kb-ingest`. Run it with nothing
 # else busy on the machine.
-GOLDEN_ENV := SS_EVAL_PG_DSN_ADMIN="postgresql://postgres:$(POSTGRES_PASSWORD)@127.0.0.1:5432/surakshasetu" \
-	SS_PG_DSN_APP="$(PG_DSN_KB)" \
+# What the orchestrator runs with over the dev database (make serve, the goldens, the timers).
+APP_ENV := SS_PG_DSN_APP="$(PG_DSN_KB)" \
 	SS_PG_DSN_KEYVAULT="postgresql://keyvault_rw:$(KEYVAULT_RW_PASSWORD)@127.0.0.1:5432/surakshasetu" \
 	SS_PG_DSN_ERASURE="postgresql://erasure_rw:$(ERASURE_RW_PASSWORD)@127.0.0.1:5432/surakshasetu" \
 	SS_REDIS_URL="redis://127.0.0.1:6379/0" $(DOMAIN_ENV)
+GOLDEN_ENV := SS_EVAL_PG_DSN_ADMIN="postgresql://postgres:$(POSTGRES_PASSWORD)@127.0.0.1:5432/surakshasetu" \
+	$(APP_ENV)
 EVAL_RECORDS := $(CURDIR)/orchestrator/.cache/eval-records
 EVAL_REPORT = cd orchestrator && $(GOLDEN_ENV) SS_LOG_FORMAT=text $(1) \
 	uv run --locked python -m surakshasetu.eval run
@@ -249,6 +251,21 @@ verify-audit:
 	@cd orchestrator && $(MINIO_ENV) \
 		SS_PG_DSN_APP="postgresql://app_rw:$(APP_RW_PASSWORD)@127.0.0.1:5432/$(DB)" \
 		uv run --locked python -m surakshasetu.audit.verify --date "$(DATE)"
+
+# The Conversation API on 127.0.0.1:8000 over the dev database, for a demo with the terminal chat
+# client (`cd orchestrator && uv run python scripts/chat.py`). Needs `make local-setup` (or `make up`,
+# `make gateway-up`, `make seed-catalog` and `make kb-ingest`). Ctrl-C stops it.
+serve:
+	@cd orchestrator && $(APP_ENV) SS_LOG_FORMAT=text \
+		uv run --locked uvicorn surakshasetu.api.app:create_app --factory --port 8000
+
+# TDD §7.5 steps 1-5 in order, each its own target (idempotent; stops at the first failure): the
+# stack and migrations, the gateway, the catalog with its hashes, the KB through the review gate,
+# the evaluation sets, the invariant properties and the scripted S0-S3 conversation. Step 6 (the
+# audit and archive verification, and the verify-release-gate DUMMY proof) comes with Step 24.
+local-setup:
+	@for t in up gateway-up seed-catalog kb-ingest kb-verify seed-eval test-invariants e2e-scripted; do \
+		echo "== local-setup: $$t"; $(MAKE) --no-print-directory $$t || exit 1; done
 
 $(PLACEHOLDERS):
 	@echo "$@: not implemented yet"
