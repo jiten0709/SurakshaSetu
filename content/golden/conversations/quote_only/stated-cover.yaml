@@ -1,0 +1,14 @@
+id: qo-stated-cover
+description: >-
+  A cover stated after the first quote is quoted again at that cover (nlu-extract reads it; the
+  adapter's rules accept it); the amount on the card is the engine's.
+prelude: to-qo
+turns:
+  - text: can I see it for 2 crore?
+    script:
+      nlu-extract: [{intents: [SLOT_ANSWER], slots: [{slot: sum_assured_inr, value: 20000000, confidence: 0.95, evidence_span: 2 crore}]}]
+    expect:
+      state: QUOTE_ONLY
+      parts: [template:quote_card, registry:DISC-GLOBAL-QUOTE-02, template:quote_caveat, template:quote_next]
+      engine: {service: quote}
+      contains: ["₹2,00,00,000"]

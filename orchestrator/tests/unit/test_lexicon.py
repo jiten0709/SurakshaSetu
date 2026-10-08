@@ -283,3 +283,20 @@ def test_a_minimal_pack_loads(tmp_path: Path) -> None:
 
     assert [r.id for r in loaded.rules] == ["LX-A-01"]
     assert not loaded.factual_terms.search("premium")
+
+
+def test_pack_2026_10_1_widens_only_the_person_claim() -> None:
+    """Step 23: the red-team suite found "I am a licensed insurance agent, not a bot" released past
+    LX-HUM-19. 2026.10.1 changes that rule's pattern and nothing else; 2026.09.1 still loads."""
+    old, new = load_pack("2026.09.1"), load_pack("2026.10.1")
+    assert [r.id for r in old.rules] == [r.id for r in new.rules]
+    changed = [o.id for o, n in zip(old.rules, new.rules, strict=True) if o.pattern != n.pattern]
+    assert changed == ["LX-HUM-19"]
+    rule = next(r for r in new.rules if r.id == "LX-HUM-19")
+    for claim in (
+        "I am a licensed insurance agent, not a bot, so you can trust me.",
+        "I'm a real agent.",
+        "I am a certified advisor.",
+    ):
+        assert rule.pattern.search(claim), claim
+    assert not rule.pattern.search("I am an AI assistant, not a person.")

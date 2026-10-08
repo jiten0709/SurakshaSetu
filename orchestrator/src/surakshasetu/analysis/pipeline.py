@@ -54,15 +54,30 @@ class PipelineResult:
     block_reason: Literal["injection", "safety"] | None
 
 
-async def analyse_turn(
-    conn: Conn,
-    keys: KeyService,
+@dataclass(frozen=True)
+class Analysed:
+    """What `analyse` found, before anything is written: the result and the rail verdicts the
+    audit records."""
+
+    result: PipelineResult
+    normalised: NormaliseResult
+    redaction: redact.RedactResult
+    injection: injection.InjectionVerdict
+    safety: safety.SafetyVerdict
+
+
+async def analyse(
     gateway: Gateway,
     raw_text: str,
-    ctx: TurnContext,
     *,
+    session_id: UUID,
+    turn_id: UUID,
+    fsm_state: str,
+    pending: PendingSlotSpec,
     settings: Settings,
-) -> PipelineResult:
+) -> Analysed:
+    """The input rails and turn analysis, with no database: what analyse_turn audits, and what the
+    offline evaluation (Step 23) measures, so both read a turn the same way."""
     normalised = normalise(raw_text, token_cap=settings.normalise_token_cap)
     redaction = redact.redact(normalised.text)
 
@@ -70,9 +85,9 @@ async def analyse_turn(
         guard = await injection.call_guard(
             gateway,
             text=redaction.stored_raw,
-            session_id=ctx.session_id,
-            turn_id=ctx.turn_id,
-            fsm_state=ctx.fsm_state,
+            session_id=session_id,
+            turn_id=turn_id,
+            fsm_state=fsm_state,
         )
         inj = injection.evaluate(
             redaction.stored_raw, guard, threshold=settings.injection_score_threshold
@@ -85,10 +100,10 @@ async def analyse_turn(
             return await nlu_extract(
                 gateway,
                 text=redaction.stored_raw,
-                pending=ctx.pending,
-                session_id=ctx.session_id,
-                turn_id=ctx.turn_id,
-                fsm_state=ctx.fsm_state,
+                pending=pending,
+                session_id=session_id,
+                turn_id=turn_id,
+                fsm_state=fsm_state,
             )
         except GatewayUnavailable as exc:
             logger.warning("nlu-extract unavailable: %s", exc.reason)
@@ -104,17 +119,7 @@ async def analyse_turn(
         kept = [i for i in analysis.intents if i is Intent.META_WITHDRAW]
         analysis = analysis.model_copy(update={"slots": [], "side_query": None, "intents": kept})
 
-    if inj_verdict.hit:
-        conn.execute(
-            "UPDATE conv.session SET counters = jsonb_set(counters, '{injection}', "
-            "(COALESCE(counters->>'injection', '0')::int + 1)::text::jsonb)"
-            " WHERE session_id = %s",
-            (ctx.session_id,),
-        )
-
-    _emit_audit(conn, keys, ctx, normalised, redaction, inj_verdict, safety_verdict)
-
-    return PipelineResult(
+    result = PipelineResult(
         analysis=analysis,
         stored_raw=redaction.stored_raw,
         redacted=redaction.redacted,
@@ -124,6 +129,37 @@ async def analyse_turn(
         blocked=blocked,
         block_reason=block_reason,
     )
+    return Analysed(result, normalised, redaction, inj_verdict, safety_verdict)
+
+
+async def analyse_turn(
+    conn: Conn,
+    keys: KeyService,
+    gateway: Gateway,
+    raw_text: str,
+    ctx: TurnContext,
+    *,
+    settings: Settings,
+) -> PipelineResult:
+    found = await analyse(
+        gateway,
+        raw_text,
+        session_id=ctx.session_id,
+        turn_id=ctx.turn_id,
+        fsm_state=ctx.fsm_state,
+        pending=ctx.pending,
+        settings=settings,
+    )
+    if found.injection.hit:
+        conn.execute(
+            "UPDATE conv.session SET counters = jsonb_set(counters, '{injection}', "
+            "(COALESCE(counters->>'injection', '0')::int + 1)::text::jsonb)"
+            " WHERE session_id = %s",
+            (ctx.session_id,),
+        )
+
+    _emit_audit(conn, keys, ctx, found.normalised, found.redaction, found.injection, found.safety)
+    return found.result
 
 
 def _emit_audit(

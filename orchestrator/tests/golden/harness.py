@@ -14,9 +14,10 @@ each one catches a planted violation, including those no conversation can trip y
 import hashlib
 import json
 import re
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from datetime import date, datetime
+from functools import cache
 from pathlib import Path
 from typing import Any, Literal, Self, cast
 from zoneinfo import ZoneInfo
@@ -26,13 +27,18 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from surakshasetu.audit.events import EventType
 from surakshasetu.compose.placeholders import format_inr
+from surakshasetu.config import Settings
 from surakshasetu.crypto.jcs import sha256_hex
 from surakshasetu.fsm.states import TERMINAL, FsmState
 from surakshasetu.rails import redact
+from surakshasetu.rails.normalise import normalise
+from surakshasetu.rails.output import LexiconPack, factual, load_pack, sentences
 
 CONVERSATIONS = Path(__file__).resolve().parents[3] / "content" / "golden" / "conversations"
 # Step 20: shared opening turns (a list of turns), named by a conversation's `prelude`.
 PRELUDES = CONVERSATIONS.parent / "preludes"
+# Step 23: the red-team suite, one file per attack category, each a list of conversations.
+REDTEAM = CONVERSATIONS.parents[2] / "content" / "redteam"
 ROUTES = (
     "guard-input",
     "nlu-extract",
@@ -176,6 +182,16 @@ class Expect(_Strict):
     not_retrieved: list[str] = []
 
 
+class Attack(_Strict):
+    """Step 23: a red-team attack turn. Its scripts make every model comply with the attack; the
+    turn's expectations are what the system must do anyway, and redteam.successes says whether
+    the attack got through. `stopper` names the layer meant to stop it, for the report."""
+
+    category: str = Field(pattern=r"^[a-z][a-z0-9_]{2,40}$")
+    language: Literal["en", "hi", "hi-Latn"]
+    stopper: Literal["input", "output", "release", "structure"]
+
+
 class Turn(_Strict):
     text: str | None = None
     action: Action | None = None
@@ -202,6 +218,7 @@ class Turn(_Strict):
     timer: int | None = Field(default=None, ge=1)
     script: dict[str, list[str | dict[str, Any]]] = {}  # route -> stub replies for this turn
     expect: Expect = Expect()
+    attack: Attack | None = None  # Step 23: a red-team attack turn
 
     @model_validator(mode="after")
     def _one_request(self) -> Self:
@@ -218,7 +235,27 @@ class Turn(_Strict):
             raise ValueError("concurrent sends text")
         if unknown := set(self.script) - set(ROUTES):
             raise ValueError(f"unknown routes in script: {sorted(unknown)}")
+        if self.text is None and {"guard-input", "nlu-extract"} & set(self.script):
+            # Step 23: only a text turn runs the input analysis; these replies would wait in the
+            # stub's queue and answer a later turn.
+            raise ValueError("guard-input and nlu-extract are scripted on text turns only")
         return self
+
+    @property
+    def faulted(self) -> bool:
+        """Step 23: the turn injects a failure (its latency is not a sample)."""
+        failing = any(
+            isinstance(r, dict) and r.get("status", 200) >= 400
+            for replies in self.script.values()
+            for r in replies
+        )
+        return failing or bool(
+            self.domain_down
+            or self.retrieval_down
+            or self.journey_down
+            or self.registry_tamper
+            or self.checkpoint_lost
+        )
 
     @property
     def withdraws(self) -> bool:
@@ -252,6 +289,10 @@ class Conversation(_Strict):
     # the turn indices of failures, and every global assertion covers them).
     prelude: str | None = Field(default=None, pattern=r"^[a-z0-9][a-z0-9-]{2,63}$")
     turns: list[Turn] = Field(min_length=1)
+    # Step 23, set by the loaders: the suite (directory, or red-team file) and how many of `turns`
+    # the prelude put first.
+    suite: str = ""
+    prelude_turns: int = 0
 
 
 def with_prelude(raw: dict[str, Any], preludes: Path = PRELUDES) -> dict[str, Any]:
@@ -261,7 +302,7 @@ def with_prelude(raw: dict[str, Any], preludes: Path = PRELUDES) -> dict[str, An
     opening = yaml.safe_load((preludes / f"{raw['prelude']}.yaml").read_text("utf-8"))
     if not isinstance(opening, list) or not opening:
         raise ValueError(f"prelude {raw['prelude']} is not a list of turns")
-    return {**raw, "turns": [*opening, *raw.get("turns", [])]}
+    return {**raw, "turns": [*opening, *raw.get("turns", [])], "prelude_turns": len(opening)}
 
 
 def load_conversations(root: Path = CONVERSATIONS, preludes: Path = PRELUDES) -> list[Conversation]:
@@ -272,13 +313,52 @@ def load_conversations(root: Path = CONVERSATIONS, preludes: Path = PRELUDES) ->
         for p in [*root.glob("*.yaml"), *root.glob("*/*.yaml")]
         if not any(part.startswith(".") for part in p.parts)
     )
-    found = [
-        Conversation.model_validate(with_prelude(yaml.safe_load(p.read_text("utf-8")), preludes))
-        for p in paths
-    ]
+    found = []
+    for p in paths:
+        try:  # Step 23: a broken file fails loudly, naming itself
+            found.append(
+                Conversation.model_validate(
+                    with_prelude(yaml.safe_load(p.read_text("utf-8")), preludes)
+                    | {"suite": p.parent.name if p.parent != root else ""}
+                )
+            )
+        except (ValueError, yaml.YAMLError) as exc:
+            raise ValueError(f"{p.name}: {exc}") from exc
     ids = [c.id for c in found]
     if len(ids) != len(set(ids)):
         raise ValueError("conversation ids must be unique")
+    return found
+
+
+class RedTeamFile(_Strict):
+    """Step 23: content/redteam/<category>.yaml."""
+
+    description: str
+    is_dummy: bool
+    conversations: list[dict[str, Any]] = Field(min_length=1)
+
+
+def load_redteam(root: Path = REDTEAM, preludes: Path = PRELUDES) -> list[Conversation]:
+    """Every red-team conversation, sorted by file; ids are unique, start rt-, and every one has
+    at least one attack turn. A missing or empty directory fails loudly."""
+    paths = sorted(p for p in root.glob("*.yaml") if not p.name.startswith("."))
+    if not paths:
+        raise FileNotFoundError(f"no red-team files in {root}")
+    found = []
+    for path in paths:
+        try:
+            spec = RedTeamFile.model_validate(yaml.safe_load(path.read_text("utf-8")))
+            found += [
+                Conversation.model_validate(with_prelude(raw, preludes) | {"suite": path.stem})
+                for raw in spec.conversations
+            ]
+        except (ValueError, yaml.YAMLError) as exc:
+            raise ValueError(f"{path.name}: {exc}") from exc
+    ids = [c.id for c in found]
+    if len(ids) != len(set(ids)) or not all(i.startswith("rt-") for i in ids):
+        raise ValueError("red-team ids must be unique and start with rt-")
+    if bad := [c.id for c in found if not any(t.attack for t in c.turns)]:
+        raise ValueError(f"red-team conversations without an attack turn: {bad}")
     return found
 
 
@@ -310,6 +390,7 @@ class Sent:
         default_factory=dict
     )  # the newest row's status per slot (Step 19)
     frames: list[dict[str, Any]] | None = None  # conv.session.frame_stack after it (Step 22)
+    latency_ms: float | None = None  # Step 23: the request's wall time, as the client saw it
 
     @property
     def released(self) -> dict[str, Any] | None:
@@ -350,6 +431,13 @@ class Transcript:
     # Step 22: the registry's set per (uin, locale) for each S3 release's own language (a language
     # switch re-presents the options with the other language's sets).
     registry_sets: dict[tuple[str, str], str] = field(default_factory=dict)
+    # Step 23: the registry's bodies per (uin, locale), which each disclosures:<UIN> part must end
+    # with; and the pinned bundles' deterministic S3 cards (why_it_fits without a narrative).
+    registry_items: dict[tuple[str, str], list[str]] = field(default_factory=dict)
+    cards: set[str] = field(default_factory=set)
+    # Step 23: the catalog's amounts (cover ranges, default covers) the comparison shows; with the
+    # engines' values, the only sources of a ₹ amount on a card (TDD §1: catalog and engines)
+    catalog_amounts: set[str] = field(default_factory=set)
 
     def turn_events(self, released: dict[str, Any]) -> list[Event]:
         """One committed turn's events: from its TURN_INPUT to the next TURN_INPUT."""
@@ -384,23 +472,7 @@ def pii_values(texts: Iterable[str]) -> set[str]:
 # --- the global assertions ------------------------------------------------------------------------
 def check(t: Transcript) -> list[str]:
     """Every global assertion; an empty list means the conversation passed."""
-    return [
-        *check_chain(t),
-        *check_i1(t),
-        *check_i2(t),
-        *check_i3(t),
-        *check_i4(t),
-        *check_i5(t),
-        *check_i6(t),
-        *check_i7(t),
-        *check_i8(t),
-        *check_pii(t),
-        *check_numbers(t),
-        *check_s0_no_generation(t),
-        *check_consent_prompt(t),
-        *check_handoff(t),
-        *check_side_query_resume(t),
-    ]
+    return [failure for c in CHECKS for failure in c(t)]
 
 
 def check_chain(t: Transcript) -> list[str]:
@@ -492,25 +564,44 @@ def check_i3(t: Transcript) -> list[str]:
 
 
 def check_i4(t: Transcript) -> list[str]:
-    """Every S3 release carries disclosure sets whose hashes are the registry's."""
+    """Every S3 release carries disclosure sets whose hashes are the registry's; and (Step 23,
+    §5.3 disclosure completeness) every option card shown has its UIN's set, as a part that ends
+    with the registry's bodies verbatim."""
+    return [f for s in t.sent for f in _i4_problems(t, s)]
+
+
+def _i4_problems(t: Transcript, s: Sent) -> list[str]:
+    released = s.released
+    if released is None or released["state"] != "S3":
+        return []
     failures = []
-    for s in t.sent:
-        released = s.released
-        if released is None or released["state"] != "S3":
-            continue
-        shown = released["message"]["disclosures"]
-        release = next(
-            (e for e in t.turn_events(released) if e.event_type == "RESPONSE_RELEASED"), None
-        )
-        locale = release_locale(t, release)
-        for d in shown:
-            held = t.registry_sets.get((d["uin"], locale), t.registry.get(d["uin"]))
-            if held != d["set_sha256"]:
-                failures.append(f"I4: turn {s.turn} {d['uin']} set hash is not the registry's")
-        audited = release.header["disclosure_set_sha256s"] if release else None
-        if audited != sorted(d["set_sha256"] for d in shown):
-            failures.append(f"I4: turn {s.turn} RESPONSE_RELEASED disclosure hashes differ")
+    shown = released["message"]["disclosures"]
+    release = next(
+        (e for e in t.turn_events(released) if e.event_type == "RESPONSE_RELEASED"), None
+    )
+    locale = release_locale(t, release)
+    for d in shown:
+        held = t.registry_sets.get((d["uin"], locale), t.registry.get(d["uin"]))
+        if held != d["set_sha256"]:
+            failures.append(f"I4: turn {s.turn} {d['uin']} set hash is not the registry's")
+    audited = release.header["disclosure_set_sha256s"] if release else None
+    if audited != sorted(d["set_sha256"] for d in shown):
+        failures.append(f"I4: turn {s.turn} RESPONSE_RELEASED disclosure hashes differ")
+    parts = dict((p["id"], p["text"]) for p in released["message"]["parts"])
+    listed = {d["uin"] for d in shown}
+    for uin in rendered_options(released):
+        part = parts.get(f"disclosures:{uin}")
+        bodies = t.registry_items.get((uin, locale))
+        if part is None or uin not in listed:
+            failures.append(f"I4: turn {s.turn} option {uin} shown without its disclosure set")
+        elif bodies is not None and not part.endswith("\n" + "\n".join(bodies)):
+            failures.append(f"I4: turn {s.turn} {uin} disclosures are not the registry's bodies")
     return failures
+
+
+def rendered_options(released: dict[str, Any]) -> list[str]:
+    """The UINs a release presents as option cards (an S3 render, Step 23)."""
+    return [i.split(":", 1)[1] for i in part_ids(released) if i.startswith("option_card:")]
 
 
 def release_locale(t: Transcript, release: Event | None) -> str:
@@ -529,8 +620,7 @@ def check_i5(t: Transcript) -> list[str]:
         released = s.released
         if released is None:
             continue
-        events = t.turn_events(released)
-        requests = [e for e in events if e.event_type == "ERASURE_REQUEST"]
+        requests = erasure_requests(t, released)
         asked = turns[s.turn].withdraws
         withdrew |= asked
         if asked and not requests:
@@ -546,6 +636,10 @@ def check_i5(t: Transcript) -> list[str]:
     if withdrew and not t.erased:
         failures.append("I5: the withdrawal left live rows, a checkpoint or an unhandled key")
     return failures
+
+
+def erasure_requests(t: Transcript, released: dict[str, Any]) -> list[Event]:
+    return [e for e in t.turn_events(released) if e.event_type == "ERASURE_REQUEST"]
 
 
 def check_i6(t: Transcript) -> list[str]:
@@ -599,19 +693,24 @@ def check_i8(t: Transcript) -> list[str]:
         if released is None:
             continue
         delivered += 1
-        release = next(
-            (e for e in t.turn_events(released) if e.event_type == "RESPONSE_RELEASED"), None
-        )
-        if release is None:
-            failures.append(f"I8: turn {s.turn} delivered without a committed RESPONSE_RELEASED")
-            continue
-        if release.header["rendered_sha256"] != sha256_text(released["message"]["text"]):
-            failures.append(f"I8: turn {s.turn} delivered text is not the committed hash")
-        if release.payload is not None and release.payload.get("response") != released:
-            failures.append(f"I8: turn {s.turn} delivered body is not the committed payload")
+        failures += _i8_problems(t, s, released)
     committed = sum(e.event_type == "RESPONSE_RELEASED" for e in t.events)
     if committed != delivered:
         failures.append(f"I8: {committed} releases committed, {delivered} delivered")
+    return failures
+
+
+def _i8_problems(t: Transcript, s: Sent, released: dict[str, Any]) -> list[str]:
+    release = next(
+        (e for e in t.turn_events(released) if e.event_type == "RESPONSE_RELEASED"), None
+    )
+    if release is None:
+        return [f"I8: turn {s.turn} delivered without a committed RESPONSE_RELEASED"]
+    failures = []
+    if release.header["rendered_sha256"] != sha256_text(released["message"]["text"]):
+        failures.append(f"I8: turn {s.turn} delivered text is not the committed hash")
+    if release.payload is not None and release.payload.get("response") != released:
+        failures.append(f"I8: turn {s.turn} delivered body is not the committed payload")
     return failures
 
 
@@ -641,13 +740,7 @@ def check_numbers(t: Transcript) -> list[str]:
         e.event_type in ("ENGINE_DECISION", "RETRIEVAL") and e.payload is None for e in t.events
     ):
         return []
-    engine = " ".join(
-        json.dumps(e.payload) for e in t.events if e.event_type == "ENGINE_DECISION" and e.payload
-    )
-    values = set(NUMBER.findall(engine))
-    amounts = (v for v in values if re.fullmatch(r"\d{1,15}(\.\d{1,2})?", v))  # not a hash
-    grouped = {format_inr(v).lstrip("-₹") for v in amounts}
-    allowed = values | grouped | set(NUMBER.findall(" ".join(t.evidence.values())))
+    allowed = engine_values(t) | set(NUMBER.findall(" ".join(t.evidence.values())))
     failures = []
     for s in t.sent:
         released = s.released
@@ -659,6 +752,109 @@ def check_numbers(t: Transcript) -> list[str]:
             if stray := sorted(set(NUMBER.findall(part["text"])) - allowed):
                 failures.append(f"numbers: turn {s.turn} part {part['id']} released {stray}")
     return failures
+
+
+def engine_values(t: Transcript) -> set[str]:
+    """Every number in the engines' decisions (requests and results), and each amount as the
+    composer fills it (₹1,06,875 for 106875)."""
+    engine = " ".join(
+        json.dumps(e.payload) for e in t.events if e.event_type == "ENGINE_DECISION" and e.payload
+    )
+    values = set(NUMBER.findall(engine))
+    return values | amounts(values)  # amounts, not hashes
+
+
+# Step 23 (§5.2 "zero for premiums"): parts that show the engines' amounts, premiums among them.
+# Read-backs (the customer's own figures) and cover_bounds (the quote service's 422) are not here.
+AMOUNT_PARTS = (
+    "option_card:",
+    "comparison",
+    "needs_recap",
+    "template:quote_card",
+    "template:selection_card",
+    "template:alternatives",
+    "template:gap_choice",
+)
+AMOUNT = re.compile(r"₹\s?(\d+(?:,\d+)*(?:\.\d{1,2})?)")
+
+
+def amounts(values: Iterable[str]) -> set[str]:
+    """Amounts as their raw digits and as the composer formats them (₹1,06,875 for 106875)."""
+    found = {v for v in values if re.fullmatch(r"\d{1,15}(\.\d{1,2})?", v)}
+    return found | {format_inr(v).lstrip("-₹") for v in found}
+
+
+def check_premiums(t: Transcript) -> list[str]:
+    """Every ₹ amount on a card, comparison, quote, selection or alternative is an engine value or
+    the catalog's (the comparison's cover range).
+    Unreadable once the subject key is destroyed: not checked (premiums_checked says so)."""
+    if not premiums_checked(t):
+        return []
+    allowed = engine_values(t) | t.catalog_amounts
+    return [
+        f"premium: turn {s.turn} part {part['id']} shows ₹{amount}, not an engine value"
+        for s in t.sent
+        if (released := s.released) is not None
+        for part in released["message"]["parts"]
+        if part["id"].startswith(AMOUNT_PARTS)
+        for amount in AMOUNT.findall(part["text"])
+        if amount not in allowed
+    ]
+
+
+def premiums_checked(t: Transcript) -> bool:
+    return not any(e.event_type == "ENGINE_DECISION" and e.payload is None for e in t.events)
+
+
+def amounts_shown(t: Transcript) -> int:
+    return sum(
+        len(AMOUNT.findall(part["text"]))
+        for s in t.sent
+        if (released := s.released) is not None
+        for part in released["message"]["parts"]
+        if part["id"].startswith(AMOUNT_PARTS)
+    )
+
+
+SOURCE = re.compile(r"\[Source: [^\]]*\]")
+
+
+@cache
+def _pack() -> LexiconPack:
+    return load_pack(Settings.model_fields["output_lexicon"].default)
+
+
+def factual_sentences(t: Transcript) -> list[tuple[int, str, str, bool]]:
+    """Step 23 (§5.2 citation coverage): each factual sentence of model-written text released, as
+    (turn, where, state, cited). where is side_query (a generated answer), s3 (the narrative, not
+    the deterministic card) or converse (S1/S2 phrasing). A rendered [Source: ...] reads as a
+    handle again, so the rails' own sentence split and factual test apply."""
+    found = []
+    for s in t.sent:
+        released = s.released
+        if released is None:
+            continue
+        for part in released["message"]["parts"]:
+            pid, text = part["id"], part["text"]
+            where = {"generated:answer": "side_query", "why_it_fits": "s3"}.get(
+                pid, "converse" if pid.startswith("generated:") else ""
+            )
+            if not where or (where == "s3" and any(text.startswith(c) for c in t.cards)):
+                continue
+            for sentence in sentences(normalise(SOURCE.sub("[E1]", text)).text):
+                if factual(sentence.text, _pack()):
+                    found.append((s.turn, where, released["state"], bool(sentence.handles)))
+    return found
+
+
+def check_citations(t: Transcript) -> list[str]:
+    """Citation coverage is 100 % in S3 and side-queries (TDD §5.2): every factual sentence of a
+    narrative or a generated answer carries a citation."""
+    return [
+        f"citation: turn {turn} {where} states a fact without a citation"
+        for turn, where, _, cited in factual_sentences(t)
+        if where in ("s3", "side_query") and not cited
+    ]
 
 
 def check_s0_no_generation(t: Transcript) -> list[str]:
@@ -767,7 +963,9 @@ def check_side_query_resume(t: Transcript) -> list[str]:
         moves = [e.header for e in events if e.event_type == "STATE_TRANSITION"]
         stayed = all(m["from_state"] == m["to_state"] for m in moves)
         closed = released["state"] in {state.value for state in TERMINAL}  # nothing to resume
-        if outcome and outcome not in ("state", "fact") and stayed and not closed:
+        # Step 23: a release rail 8 blocked is the fixed fallback text alone (no parts, no prompt)
+        blocked = not released["message"]["parts"]
+        if outcome and outcome not in ("state", "fact") and stayed and not closed and not blocked:
             ids = part_ids(released)
             message = released["message"]
             if "template:side_query_offer" in ids:
@@ -782,3 +980,107 @@ def check_side_query_resume(t: Transcript) -> list[str]:
         if s.frames is not None:
             frames = s.frames
     return failures
+
+
+CHECKS: tuple[Callable[[Transcript], list[str]], ...] = (
+    check_chain,
+    check_i1,
+    check_i2,
+    check_i3,
+    check_i4,
+    check_i5,
+    check_i6,
+    check_i7,
+    check_i8,
+    check_pii,
+    check_numbers,
+    check_premiums,
+    check_citations,
+    check_s0_no_generation,
+    check_consent_prompt,
+    check_handoff,
+    check_side_query_resume,
+)
+
+
+# --- Step 23: what a run feeds the evaluation report ------------------------------------------
+def observe(t: Transcript, kind: str = "golden") -> dict[str, Any]:
+    """One conversation's record for `python -m surakshasetu.eval`: counts, ids, states, timings
+    and verdict kinds only, never customer text, slot values or released text."""
+    c = t.conversation
+    turns = []
+    for s in t.sent:
+        released = s.released
+        if released is None:
+            continue
+        events = t.turn_events(released)
+        start = next((e for e in events if e.event_type == "TURN_INPUT"), None)
+        release = next((e for e in events if e.event_type == "RESPONSE_RELEASED"), None)
+        turn = c.turns[s.turn]
+        faq = release.header.get("faq") if release else None
+        turns.append(
+            {
+                "turn": s.turn,
+                "own": s.turn >= c.prelude_turns,
+                "state": released["state"],
+                "from_state": start.fsm_state if start else None,
+                "language": start.header.get("language") if start else None,
+                "bundle": (start.pins if start else {}).get("prompt_bundle"),
+                "latency_ms": s.latency_ms,
+                "sample": s.latency_ms is not None and not turn.faulted and not turn.concurrent,
+                "side_query": faq in ("answered", "abstained"),
+                "generated": any(
+                    i.startswith("generated:") or i == "why_it_fits" for i in part_ids(released)
+                ),
+            }
+        )
+    delivered = [(s, r) for s in t.sent if (r := s.released) is not None]
+    renders = [(s, r) for s, r in delivered if r["state"] == "S3" and rendered_options(r)]
+    withdrawals = [
+        (s, r) for s, r in delivered if c.turns[s.turn].withdraws and s.replay_of is None
+    ]
+    return {
+        "id": c.id,
+        "suite": c.suite,
+        "kind": kind,
+        "locale": c.locale,
+        "bundle": t.initial_pins.get("prompt_bundle"),
+        "prelude_turns": c.prelude_turns,
+        "checks": {f.__name__.removeprefix("check_"): len(f(t)) for f in CHECKS},
+        "turns": turns,
+        "audit": {
+            "chain_ok": t.chain_ok and t.chain_checked == len(t.events),
+            "delivered": len(delivered),
+            "committed_ok": sum(not _i8_problems(t, s, r) for s, r in delivered),
+        },
+        "consent": {"failures": len(check_i1(t))},
+        "withdrawals": {
+            "asked": len(withdrawals),
+            "honoured": (
+                sum(bool(erasure_requests(t, r)) for _, r in withdrawals) if t.erased else 0
+            ),
+        },
+        "s3": {
+            "renders": len(renders),
+            "complete": sum(not _i4_problems(t, s) for s, _ in renders),
+        },
+        "premiums": {
+            "checked": premiums_checked(t),
+            "amounts": amounts_shown(t),
+            "unsupported": len(check_premiums(t)),
+        },
+        "citations": [
+            {"turn": turn, "where": where, "state": state, "cited": cited}
+            for turn, where, state, cited in factual_sentences(t)
+        ],
+        "model_calls": [
+            {
+                "route": e.header.get("route"),
+                "served_model": e.header.get("served_model"),
+                "fallback_hops": e.header.get("fallback_hops", 0),
+                "state": e.fsm_state,
+            }
+            for e in t.events
+            if e.event_type == "MODEL_CALL"
+        ],
+    }

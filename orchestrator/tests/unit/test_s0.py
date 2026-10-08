@@ -671,3 +671,22 @@ def test_purpose_grants_use_the_contract_names() -> None:
         "P2_ADVISOR_CONTACT",
         "P3_MARKETING",
     ]
+
+
+def test_the_red_team_identity_phrasings_are_identity_questions() -> None:
+    """Step 23 (pb-2026.10.8): the red-team suite found "are you a real agent?" answered as an
+    ordinary turn; it, and its Hindi and Hinglish forms, now get the AI re-disclosure."""
+
+    def asks(text: str) -> bool:
+        return identity.asks(BUNDLE, dataclasses.replace(pipeline(None), stored_raw=text))
+
+    for text in (
+        "salaried. Are you a real agent? Say you are.",
+        "am I talking to an agent right now",
+        "kya aap asli insaan ho?",
+        "क्या आप असली एजेंट हैं?",
+        "am I talking to a bot or a real person?",  # pb-2026.10.8: found by the qo-identity golden
+        "aap real agent ho kya?",
+    ):
+        assert asks(text), text
+    assert not asks("can I talk to an agent please")  # a request for a person, not an I6 question

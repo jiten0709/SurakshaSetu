@@ -321,6 +321,29 @@ def _liabilities(raw: Any, text: str) -> Answer | None:
 
 
 # --- the needs discovery --------------------------------------------------------------------------
+
+
+def understand_value(slot: str, raw: Any, evidence: str) -> Answer | Period | None:
+    """A needs slot's value from what the customer said (an nlu-extract value with its evidence
+    span, or the whole message): None when it cannot be used, a Period when a bare "k" leaves the
+    period open. Pure; Needs.understand and the offline evaluation (Step 23) both read it."""
+    kind = NEEDS[slot]
+    text = raw if isinstance(raw, str) else evidence
+    if kind in ("flow", "lump"):
+        result = _money(text, flow=kind == "flow")
+        if isinstance(raw, int | float) and not isinstance(raw, bool) and result is None:
+            # nlu-extract's number, when its evidence span says no more (the period stands)
+            return Answer(str(int(raw)), derived=raw > 0) if raw >= 0 else None
+        return result
+    if kind == "goals":
+        return _goals(raw, text)
+    if kind == "income_type":
+        return _income_type(text)
+    if kind == "dependants":
+        return _dependants(raw, text)
+    return _liabilities(raw, text)
+
+
 @dataclasses.dataclass
 class Needs(Screen):
     """S1's Screen over the needs slots: the rules' required slots (asked in their order), the
@@ -384,23 +407,7 @@ class Needs(Screen):
     async def understand(
         self, slot: str, raw: Any, evidence: str
     ) -> Answer | list[Occupation] | None:
-        kind = NEEDS[slot]
-        text = raw if isinstance(raw, str) else evidence
-        result: Answer | Period | None
-        if kind in ("flow", "lump"):
-            flow = kind == "flow"
-            result = _money(text, flow=flow)
-            if isinstance(raw, int | float) and not isinstance(raw, bool) and result is None:
-                # nlu-extract's number, when its evidence span says no more (the period stands)
-                result = Answer(str(int(raw)), derived=raw > 0) if raw >= 0 else None
-        elif kind == "goals":
-            result = _goals(raw, text)
-        elif kind == "income_type":
-            result = _income_type(text)
-        elif kind == "dependants":
-            result = _dependants(raw, text)
-        else:
-            result = _liabilities(raw, text)
+        result = understand_value(slot, raw, evidence)
         if isinstance(result, Period):
             self.period, self.noted = (slot, result.amount), True
             return None

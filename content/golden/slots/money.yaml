@@ -1,0 +1,427 @@
+# Labelled slot utterances (TDD §5.2 slot extraction; Step 23): DUMMY but realistic, en / hi / hi-Latn.
+# gold is the value a careful human records, in the stored shape (ages int; S2 money a digit string,
+# "0" for none, null when declined; Quote-Only cover an int; tobacco a bool, null declined;
+# dependants [{relation, age}]; liabilities [{kind, outstanding_inr, years_left}]); {} when the turn
+# gives no usable value. Never relabel to pass a metric: disputes go to reports/label-disputes.md.
+description: 'Money in all its forms: lakh, crore, LPA, Indian grouping, a month, a bare k, words, Devanagari.'
+is_dummy: true
+items:
+- id: sl-income-en-001
+  language: en
+  state: S2
+  pending_slot: annual_income_inr
+  text: 24 lakh
+  gold:
+    annual_income_inr: '2400000'
+- id: sl-income-en-002
+  language: en
+  state: S2
+  pending_slot: annual_income_inr
+  text: I earn 12 LPA
+  gold:
+    annual_income_inr: '1200000'
+- id: sl-income-en-003
+  language: en
+  state: S2
+  pending_slot: annual_income_inr
+  text: about 18,00,000 a year
+  gold:
+    annual_income_inr: '1800000'
+- id: sl-income-en-004
+  language: en
+  state: S2
+  pending_slot: annual_income_inr
+  text: 1.2 crore per annum
+  gold:
+    annual_income_inr: '12000000'
+- id: sl-income-en-005
+  language: en
+  state: S2
+  pending_slot: annual_income_inr
+  text: 50k a month
+  gold:
+    annual_income_inr: '600000'
+- id: sl-income-en-006
+  language: en
+  state: S2
+  pending_slot: annual_income_inr
+  text: my salary is 75,000 per month
+  gold:
+    annual_income_inr: '900000'
+- id: sl-income-en-007
+  language: en
+  state: S2
+  pending_slot: annual_income_inr
+  text: 80k
+  gold: {}
+- id: sl-income-en-008
+  language: en
+  state: S2
+  pending_slot: annual_income_inr
+  text: 9.5 lakh
+  gold:
+    annual_income_inr: '950000'
+- id: sl-income-en-009
+  language: en
+  state: S2
+  pending_slot: annual_income_inr
+  text: around ten lakh
+  gold:
+    annual_income_inr: '1000000'
+- id: sl-income-en-010
+  language: en
+  state: S2
+  pending_slot: annual_income_inr
+  text: I'd rather not share my income
+  gold:
+    annual_income_inr: null
+- id: sl-income-en-011
+  language: en
+  state: S2
+  pending_slot: annual_income_inr
+  text: ₹6,50,000
+  gold:
+    annual_income_inr: '650000'
+- id: sl-income-en-012
+  language: en
+  state: S2
+  pending_slot: annual_income_inr
+  text: I don't earn right now
+  gold:
+    annual_income_inr: '0'
+- id: sl-income-hi-013
+  language: hi
+  state: S2
+  pending_slot: annual_income_inr
+  text: 24 लाख
+  gold:
+    annual_income_inr: '2400000'
+- id: sl-income-hi-014
+  language: hi
+  state: S2
+  pending_slot: annual_income_inr
+  text: सालाना 12 लाख
+  gold:
+    annual_income_inr: '1200000'
+- id: sl-income-hi-015
+  language: hi
+  state: S2
+  pending_slot: annual_income_inr
+  text: महीने के 50 हज़ार
+  gold:
+    annual_income_inr: '600000'
+- id: sl-income-hi-016
+  language: hi
+  state: S2
+  pending_slot: annual_income_inr
+  text: १८ लाख सालाना
+  gold:
+    annual_income_inr: '1800000'
+- id: sl-income-hi-017
+  language: hi
+  state: S2
+  pending_slot: annual_income_inr
+  text: मेरी आय 1 करोड़ है
+  gold:
+    annual_income_inr: '10000000'
+- id: sl-income-hi-018
+  language: hi
+  state: S2
+  pending_slot: annual_income_inr
+  text: करीब 8 लाख
+  gold:
+    annual_income_inr: '800000'
+- id: sl-income-hi-019
+  language: hi
+  state: S2
+  pending_slot: annual_income_inr
+  text: आय नहीं बताऊँगा
+  gold:
+    annual_income_inr: null
+- id: sl-income-hi-020
+  language: hi
+  state: S2
+  pending_slot: annual_income_inr
+  text: हर महीने 40,000
+  gold:
+    annual_income_inr: '480000'
+- id: sl-income-hilatn-021
+  language: hi-Latn
+  state: S2
+  pending_slot: annual_income_inr
+  text: 24 lakh saal ka
+  gold:
+    annual_income_inr: '2400000'
+- id: sl-income-hilatn-022
+  language: hi-Latn
+  state: S2
+  pending_slot: annual_income_inr
+  text: mahine ka 60 hazaar
+  gold:
+    annual_income_inr: '720000'
+- id: sl-income-hilatn-023
+  language: hi-Latn
+  state: S2
+  pending_slot: annual_income_inr
+  text: salary 15 LPA hai
+  gold:
+    annual_income_inr: '1500000'
+- id: sl-income-hilatn-024
+  language: hi-Latn
+  state: S2
+  pending_slot: annual_income_inr
+  text: lagbhag 7 lakh
+  gold:
+    annual_income_inr: '700000'
+- id: sl-income-hilatn-025
+  language: hi-Latn
+  state: S2
+  pending_slot: annual_income_inr
+  text: 1.5 crore saalana
+  gold:
+    annual_income_inr: '15000000'
+- id: sl-income-hilatn-026
+  language: hi-Latn
+  state: S2
+  pending_slot: annual_income_inr
+  text: income nahi batana
+  gold:
+    annual_income_inr: null
+- id: sl-income-hilatn-027
+  language: hi-Latn
+  state: S2
+  pending_slot: annual_income_inr
+  text: 35k mahina
+  gold:
+    annual_income_inr: '420000'
+- id: sl-income-hilatn-028
+  language: hi-Latn
+  state: S2
+  pending_slot: annual_income_inr
+  text: abhi kuch nahi kamata
+  gold:
+    annual_income_inr: '0'
+- id: sl-budget-en-001
+  language: en
+  state: S2
+  pending_slot: premium_budget_inr_pa
+  text: 30,000 a year
+  gold:
+    premium_budget_inr_pa: '30000'
+- id: sl-budget-en-002
+  language: en
+  state: S2
+  pending_slot: premium_budget_inr_pa
+  text: about 2,500 a month
+  gold:
+    premium_budget_inr_pa: '30000'
+- id: sl-budget-en-003
+  language: en
+  state: S2
+  pending_slot: premium_budget_inr_pa
+  text: I can spend 40k a year
+  gold:
+    premium_budget_inr_pa: '40000'
+- id: sl-budget-hi-004
+  language: hi
+  state: S2
+  pending_slot: premium_budget_inr_pa
+  text: साल का 25 हज़ार
+  gold:
+    premium_budget_inr_pa: '25000'
+- id: sl-budget-hi-005
+  language: hi
+  state: S2
+  pending_slot: premium_budget_inr_pa
+  text: महीने के 3000
+  gold:
+    premium_budget_inr_pa: '36000'
+- id: sl-budget-hilatn-006
+  language: hi-Latn
+  state: S2
+  pending_slot: premium_budget_inr_pa
+  text: saal ka 50 hazaar tak
+  gold:
+    premium_budget_inr_pa: '50000'
+- id: sl-budget-hilatn-007
+  language: hi-Latn
+  state: S2
+  pending_slot: premium_budget_inr_pa
+  text: mahine ka 2000
+  gold:
+    premium_budget_inr_pa: '24000'
+- id: sl-premiums-en-001
+  language: en
+  state: S2
+  pending_slot: existing_annual_premium_inr
+  text: I pay 12,000 a year for my LIC policy
+  gold:
+    existing_annual_premium_inr: '12000'
+- id: sl-premiums-en-002
+  language: en
+  state: S2
+  pending_slot: existing_annual_premium_inr
+  text: none
+  gold:
+    existing_annual_premium_inr: '0'
+- id: sl-premiums-hi-003
+  language: hi
+  state: S2
+  pending_slot: existing_annual_premium_inr
+  text: कोई नहीं
+  gold:
+    existing_annual_premium_inr: '0'
+- id: sl-premiums-hilatn-004
+  language: hi-Latn
+  state: S2
+  pending_slot: existing_annual_premium_inr
+  text: koi premium nahi bharta
+  gold:
+    existing_annual_premium_inr: '0'
+- id: sl-premiums-hilatn-005
+  language: hi-Latn
+  state: S2
+  pending_slot: existing_annual_premium_inr
+  text: 15 hazaar saalana
+  gold:
+    existing_annual_premium_inr: '15000'
+- id: sl-cover-en-001
+  language: en
+  state: S2
+  pending_slot: existing_cover_inr
+  text: I have a 50 lakh term plan
+  gold:
+    existing_cover_inr: '5000000'
+- id: sl-cover-en-002
+  language: en
+  state: S2
+  pending_slot: existing_cover_inr
+  text: none
+  gold:
+    existing_cover_inr: '0'
+- id: sl-cover-en-003
+  language: en
+  state: S2
+  pending_slot: existing_cover_inr
+  text: 1 crore
+  gold:
+    existing_cover_inr: '10000000'
+- id: sl-cover-hi-004
+  language: hi
+  state: S2
+  pending_slot: existing_cover_inr
+  text: 25 लाख का कवर है
+  gold:
+    existing_cover_inr: '2500000'
+- id: sl-cover-hilatn-005
+  language: hi-Latn
+  state: S2
+  pending_slot: existing_cover_inr
+  text: koi cover nahi hai
+  gold:
+    existing_cover_inr: '0'
+- id: sl-cover-hilatn-006
+  language: hi-Latn
+  state: S2
+  pending_slot: existing_cover_inr
+  text: 75 lakh ka term plan
+  gold:
+    existing_cover_inr: '7500000'
+- id: sl-employer-en-001
+  language: en
+  state: S2
+  pending_slot: employer_cover_inr
+  text: my company gives 15 lakh group cover
+  gold:
+    employer_cover_inr: '1500000'
+- id: sl-employer-en-002
+  language: en
+  state: S2
+  pending_slot: employer_cover_inr
+  text: 3 times my salary, about 30 lakh
+  gold:
+    employer_cover_inr: '3000000'
+- id: sl-employer-hi-003
+  language: hi
+  state: S2
+  pending_slot: employer_cover_inr
+  text: कंपनी से 10 लाख
+  gold:
+    employer_cover_inr: '1000000'
+- id: sl-employer-hilatn-004
+  language: hi-Latn
+  state: S2
+  pending_slot: employer_cover_inr
+  text: office se 20 lakh ka cover
+  gold:
+    employer_cover_inr: '2000000'
+- id: sl-employer-hilatn-005
+  language: hi-Latn
+  state: S2
+  pending_slot: employer_cover_inr
+  text: nahi milta
+  gold:
+    employer_cover_inr: '0'
+- id: sl-assets-en-001
+  language: en
+  state: S2
+  pending_slot: earmarked_assets_inr
+  text: about 5 lakh in FDs
+  gold:
+    earmarked_assets_inr: '500000'
+- id: sl-assets-en-002
+  language: en
+  state: S2
+  pending_slot: earmarked_assets_inr
+  text: I'd rather not say
+  gold:
+    earmarked_assets_inr: null
+- id: sl-assets-hi-003
+  language: hi
+  state: S2
+  pending_slot: earmarked_assets_inr
+  text: 2 लाख बचत
+  gold:
+    earmarked_assets_inr: '200000'
+- id: sl-assets-hilatn-004
+  language: hi-Latn
+  state: S2
+  pending_slot: earmarked_assets_inr
+  text: 10 lakh ka FD hai
+  gold:
+    earmarked_assets_inr: '1000000'
+- id: sl-qo-cover-en-001
+  language: en
+  state: QUOTE_ONLY
+  pending_slot: sum_assured_inr
+  text: 1 crore cover
+  gold:
+    sum_assured_inr: 10000000
+- id: sl-qo-cover-en-002
+  language: en
+  state: QUOTE_ONLY
+  pending_slot: sum_assured_inr
+  text: 50 lakh
+  gold:
+    sum_assured_inr: 5000000
+- id: sl-qo-cover-hi-003
+  language: hi
+  state: QUOTE_ONLY
+  pending_slot: sum_assured_inr
+  text: 75 लाख का कवर
+  gold:
+    sum_assured_inr: 7500000
+- id: sl-qo-cover-hilatn-004
+  language: hi-Latn
+  state: QUOTE_ONLY
+  pending_slot: sum_assured_inr
+  text: 2 crore chahiye
+  gold:
+    sum_assured_inr: 20000000
+- id: sl-qo-cover-hilatn-005
+  language: hi-Latn
+  state: QUOTE_ONLY
+  pending_slot: sum_assured_inr
+  text: ek crore
+  gold:
+    sum_assured_inr: 10000000

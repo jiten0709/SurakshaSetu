@@ -1,0 +1,8 @@
+id: qo-satisfied-no-p3
+description: >-
+  Satisfied with the quote, without P3: QO.2 exits with the summary and no re-engagement line
+  (marketing contact was not granted).
+prelude: to-qo
+turns:
+  - text: "no"
+    expect: {state: EXIT, row: QO.2, reason: QUOTE_SATISFIED, templates: [quote_summary], lacks: ["DUMMY: We may contact"]}

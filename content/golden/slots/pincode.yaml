@@ -1,0 +1,174 @@
+# Labelled slot utterances (TDD §5.2 slot extraction; Step 23): DUMMY but realistic, en / hi / hi-Latn.
+# gold is the value a careful human records, in the stored shape (ages int; S2 money a digit string,
+# "0" for none, null when declined; Quote-Only cover an int; tobacco a bool, null declined;
+# dependants [{relation, age}]; liabilities [{kind, outstanding_inr, years_left}]); {} when the turn
+# gives no usable value. Never relabel to pass a metric: disputes go to reports/label-disputes.md.
+description: 'Pincodes from the seed master, as said: bare, in a sentence, spaced, in Devanagari digits;
+  a city alone is not a pincode.'
+is_dummy: true
+items:
+- id: sl-pin-en-001
+  language: en
+  state: S1
+  pending_slot: pincode
+  text: '411001'
+  gold:
+    pincode: '411001'
+- id: sl-pin-en-002
+  language: en
+  state: S1
+  pending_slot: pincode
+  text: My pincode is 560001
+  gold:
+    pincode: '560001'
+- id: sl-pin-en-003
+  language: en
+  state: S1
+  pending_slot: pincode
+  text: PIN 110001
+  gold:
+    pincode: '110001'
+- id: sl-pin-en-004
+  language: en
+  state: S1
+  pending_slot: pincode
+  text: I live in Pune, 411014
+  gold:
+    pincode: '411014'
+- id: sl-pin-en-005
+  language: en
+  state: S1
+  pending_slot: pincode
+  text: 400 001
+  gold:
+    pincode: '400001'
+- id: sl-pin-en-006
+  language: en
+  state: S1
+  pending_slot: pincode
+  text: Pune
+  gold: {}
+- id: sl-pin-en-007
+  language: en
+  state: S1
+  pending_slot: pincode
+  text: it's 600001
+  gold:
+    pincode: '600001'
+- id: sl-pin-en-008
+  language: en
+  state: S1
+  pending_slot: pincode
+  text: 380001, Ahmedabad
+  gold:
+    pincode: '380001'
+- id: sl-pin-en-009
+  language: en
+  state: S1
+  pending_slot: pincode
+  text: postal code is 160017
+  gold:
+    pincode: '160017'
+- id: sl-pin-en-010
+  language: en
+  state: S1
+  pending_slot: pincode
+  text: 744101 (Port Blair)
+  gold:
+    pincode: '744101'
+- id: sl-pin-hi-011
+  language: hi
+  state: S1
+  pending_slot: pincode
+  text: मेरा पिनकोड 411001 है
+  gold:
+    pincode: '411001'
+- id: sl-pin-hi-012
+  language: hi
+  state: S1
+  pending_slot: pincode
+  text: पिन ५६०००१
+  gold:
+    pincode: '560001'
+- id: sl-pin-hi-013
+  language: hi
+  state: S1
+  pending_slot: pincode
+  text: ११०००१
+  gold:
+    pincode: '110001'
+- id: sl-pin-hi-014
+  language: hi
+  state: S1
+  pending_slot: pincode
+  text: 302001 जयपुर
+  gold:
+    pincode: '302001'
+- id: sl-pin-hi-015
+  language: hi
+  state: S1
+  pending_slot: pincode
+  text: मुंबई में रहता हूँ
+  gold: {}
+- id: sl-pin-hi-016
+  language: hi
+  state: S1
+  pending_slot: pincode
+  text: पिन कोड 700001
+  gold:
+    pincode: '700001'
+- id: sl-pin-hi-017
+  language: hi
+  state: S1
+  pending_slot: pincode
+  text: हमारा पिन 380001
+  gold:
+    pincode: '380001'
+- id: sl-pin-hilatn-018
+  language: hi-Latn
+  state: S1
+  pending_slot: pincode
+  text: pincode 500001 hai
+  gold:
+    pincode: '500001'
+- id: sl-pin-hilatn-019
+  language: hi-Latn
+  state: S1
+  pending_slot: pincode
+  text: mera pin 682001
+  gold:
+    pincode: '682001'
+- id: sl-pin-hilatn-020
+  language: hi-Latn
+  state: S1
+  pending_slot: pincode
+  text: 226001 Lucknow mein
+  gold:
+    pincode: '226001'
+- id: sl-pin-hilatn-021
+  language: hi-Latn
+  state: S1
+  pending_slot: pincode
+  text: Pune me rehta hoon
+  gold: {}
+- id: sl-pin-hilatn-022
+  language: hi-Latn
+  state: S1
+  pending_slot: pincode
+  text: pin 800001 hai
+  gold:
+    pincode: '800001'
+- id: sl-pin-hilatn-023
+  language: hi-Latn
+  state: S1
+  pending_slot: pincode
+  text: 452001 Indore
+  gold:
+    pincode: '452001'
+- id: sl-pin-hilatn-024
+  language: hi-Latn
+  state: S1
+  pending_slot: pincode
+  text: pincode bataun? 411038
+  gold:
+    pincode: '411038'

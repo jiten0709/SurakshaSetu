@@ -1,0 +1,40 @@
+# Change governance (TDD §4.5): who signs off each artefact that can change behaviour. GitHub asks
+# the owners of every changed path for a review. With branch protection's "Require review from Code
+# Owners" and two approvals (repository admin settings; see RELEASING.md), the merge waits for them.
+# One handle for now (decided 2026-10-06). The comment above each rule names the roles whose
+# sign-off it stands for: replace the handle with those roles' teams once the organisation has them.
+# tests/unit/test_governance.py checks that every path here exists.
+
+# Prompt bundles: compliance and the product owner
+/content/prompt-bundles/ @jiten0709
+# Output lexicon packs: compliance
+/content/lexicon/ @jiten0709
+# The privacy FAQ (S0's only answers): compliance with the DPO
+/content/faq/ @jiten0709
+# Catalog, disclosure sets and reference data: legal and compliance
+/content/seed/catalog/ @jiten0709
+# Consent notices: legal and compliance, with the DPO
+/content/seed/consent/ @jiten0709
+# Knowledge-base corpora and their review manifest (corpus snapshots): compliance
+/content/seed/kb/ @jiten0709
+# Golden sets and labels: compliance and product specialists
+/content/golden/ @jiten0709
+# Red-team suite: compliance and InfoSec
+/content/redteam/ @jiten0709
+# Evaluation gate waivers: compliance
+/content/eval/ @jiten0709
+# Experiment configs (non-legal wording only): product and compliance
+/content/experiments/ @jiten0709
+# Eligibility and suitability DMN rules: actuarial and compliance
+/domain-services/src/main/resources/dmn/ @jiten0709
+# Actuarial parameters: actuarial and compliance
+/domain-services/src/main/resources/params/ @jiten0709
+# Ranking weights and rider-fit rules: actuarial and compliance
+/domain-services/src/main/resources/ranking/ @jiten0709
+# Rate table, including gst_rate: actuarial, compliance and tax
+/domain-services/src/main/resources/rating/ @jiten0709
+# Model routes and gateway hardening: architecture and InfoSec
+/infra/omniroute/ @jiten0709
+# The governance files themselves: compliance
+/CODEOWNERS @jiten0709
+/RELEASING.md @jiten0709

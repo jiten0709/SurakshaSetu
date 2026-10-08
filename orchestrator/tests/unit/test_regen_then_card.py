@@ -17,7 +17,7 @@ from surakshasetu.compose.composer import Rendered
 from surakshasetu.config import Settings
 from surakshasetu.gateway import Route
 from surakshasetu.logging import configure_logging
-from surakshasetu.rails.output import OutputContext, Released, release
+from surakshasetu.rails.output import OutputContext, Released, factual, lexicon, release
 
 CLEAN = "Suraksha Term Shield fits the need you described [R1]. Suicide is excluded [E1]."
 SUPERLATIVE = "Suraksha Term Shield is the best plan for you [R1]."
@@ -114,7 +114,7 @@ async def test_every_verdict_is_one_guard_verdict_event(monkeypatch: pytest.Monk
     for event in recorder.events:
         assert event["event_type"] is EventType.GUARD_VERDICT
         assert event["session_id"] == ctx().session_id and event["key_ref"] == "key-ref"
-        assert event["pins"] == {"prompt_bundle": "pb-2026.10.6"}
+        assert event["pins"] == {"prompt_bundle": "pb-2026.10.8"}
         header = event["header"]
         assert header.pack_version == ("2026.09.1" if header.rail == "lexicon" else None)
     assert released.verdicts["grounding:GR-NLI"] == "pass"
@@ -294,3 +294,24 @@ async def test_no_model_or_customer_text_reaches_the_log(
 
 def files(directory: Path) -> str:
     return "".join(p.read_text() for p in directory.iterdir())
+
+
+@pytest.mark.asyncio
+async def test_a_narrative_repeating_the_instructions_is_blocked(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Step 23 (red-team): the bundle's own instructions, cited and free of lexicon terms, numbers
+    and UINs, pass rails 6-7; RC-LEAK's prompt_echo stops them at release."""
+    words = bundle().l0.replace(".", " ").split()
+    windows = (" ".join(words[i : i + 10]) for i in range(len(words) - 10))
+    echo = next(
+        w
+        for w in windows
+        if not set(w) & set("{}[]<>")
+        and not factual(w, pack())
+        and lexicon(w, ctx(), pack())[0].rule_id == "none"
+    )
+    echo += " [R1]."
+    released, recorder, _, _ = await run(monkeypatch, echo)
+    assert released.kind == "blocked"
+    assert released.verdicts["release:RC-LEAK"] == "block"

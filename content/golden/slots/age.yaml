@@ -1,0 +1,328 @@
+# Labelled slot utterances (TDD §5.2 slot extraction; Step 23): DUMMY but realistic, en / hi / hi-Latn.
+# gold is the value a careful human records, in the stored shape (ages int; S2 money a digit string,
+# "0" for none, null when declined; Quote-Only cover an int; tobacco a bool, null declined;
+# dependants [{relation, age}]; liabilities [{kind, outstanding_inr, years_left}]); {} when the turn
+# gives no usable value. Never relabel to pass a metric: disputes go to reports/label-disputes.md.
+description: 'Ages as customers state them: digits, words, Devanagari digits, with other details.'
+is_dummy: true
+items:
+- id: sl-age-en-001
+  language: en
+  state: S1
+  pending_slot: age_years
+  text: I'm 34
+  gold:
+    age_years: 34
+- id: sl-age-en-002
+  language: en
+  state: S1
+  pending_slot: age_years
+  text: '34'
+  gold:
+    age_years: 34
+- id: sl-age-en-003
+  language: en
+  state: S1
+  pending_slot: age_years
+  text: I am 29 years old
+  gold:
+    age_years: 29
+- id: sl-age-en-004
+  language: en
+  state: S1
+  pending_slot: age_years
+  text: thirty-four
+  gold:
+    age_years: 34
+- id: sl-age-en-005
+  language: en
+  state: S1
+  pending_slot: age_years
+  text: I'll be 41 next month, so 40 now
+  gold:
+    age_years: 40
+- id: sl-age-en-006
+  language: en
+  state: S1
+  pending_slot: age_years
+  text: Age 52
+  gold:
+    age_years: 52
+- id: sl-age-en-007
+  language: en
+  state: S1
+  pending_slot: age_years
+  text: I just turned 18
+  gold:
+    age_years: 18
+- id: sl-age-en-008
+  language: en
+  state: S1
+  pending_slot: age_years
+  text: 27 yrs
+  gold:
+    age_years: 27
+- id: sl-age-en-009
+  language: en
+  state: S1
+  pending_slot: age_years
+  text: I'm in my mid thirties
+  gold: {}
+- id: sl-age-en-010
+  language: en
+  state: S1
+  pending_slot: age_years
+  text: My age is 45, my wife is 41
+  gold:
+    age_years: 45
+- id: sl-age-en-011
+  language: en
+  state: S1
+  pending_slot: age_years
+  text: Sixty
+  gold:
+    age_years: 60
+- id: sl-age-en-012
+  language: en
+  state: S1
+  pending_slot: age_years
+  text: I'm 34 and I don't smoke
+  gold:
+    age_years: 34
+    tobacco_12m: false
+- id: sl-age-en-013
+  language: en
+  state: S1
+  pending_slot: age_years
+  text: I'm 16
+  gold:
+    age_years: 16
+- id: sl-age-en-014
+  language: en
+  state: S1
+  pending_slot: age_years
+  text: Rather not say
+  gold: {}
+- id: sl-age-hi-015
+  language: hi
+  state: S1
+  pending_slot: age_years
+  text: मेरी उम्र 34 साल है
+  gold:
+    age_years: 34
+- id: sl-age-hi-016
+  language: hi
+  state: S1
+  pending_slot: age_years
+  text: मैं 34 का हूँ
+  gold:
+    age_years: 34
+- id: sl-age-hi-017
+  language: hi
+  state: S1
+  pending_slot: age_years
+  text: ३४ साल
+  gold:
+    age_years: 34
+- id: sl-age-hi-018
+  language: hi
+  state: S1
+  pending_slot: age_years
+  text: उम्र ४२
+  gold:
+    age_years: 42
+- id: sl-age-hi-019
+  language: hi
+  state: S1
+  pending_slot: age_years
+  text: मैं पैंतीस साल का हूँ
+  gold:
+    age_years: 35
+- id: sl-age-hi-020
+  language: hi
+  state: S1
+  pending_slot: age_years
+  text: 28 वर्ष
+  gold:
+    age_years: 28
+- id: sl-age-hi-021
+  language: hi
+  state: S1
+  pending_slot: age_years
+  text: मेरी आयु 50 वर्ष है
+  gold:
+    age_years: 50
+- id: sl-age-hi-022
+  language: hi
+  state: S1
+  pending_slot: age_years
+  text: मैं 31 साल की हूँ
+  gold:
+    age_years: 31
+- id: sl-age-hi-023
+  language: hi
+  state: S1
+  pending_slot: age_years
+  text: पचास
+  gold:
+    age_years: 50
+- id: sl-age-hi-024
+  language: hi
+  state: S1
+  pending_slot: age_years
+  text: मैं 19 साल का हूँ और पढ़ाई करता हूँ
+  gold:
+    age_years: 19
+- id: sl-age-hi-025
+  language: hi
+  state: S1
+  pending_slot: age_years
+  text: उम्र बताना नहीं चाहता
+  gold: {}
+- id: sl-age-hi-026
+  language: hi
+  state: S1
+  pending_slot: age_years
+  text: मेरी उम्र 38 है, पत्नी की 35
+  gold:
+    age_years: 38
+- id: sl-age-hi-027
+  language: hi
+  state: S1
+  pending_slot: age_years
+  text: ६० साल
+  gold:
+    age_years: 60
+- id: sl-age-hilatn-028
+  language: hi-Latn
+  state: S1
+  pending_slot: age_years
+  text: meri age 34 hai
+  gold:
+    age_years: 34
+- id: sl-age-hilatn-029
+  language: hi-Latn
+  state: S1
+  pending_slot: age_years
+  text: main 29 saal ka hoon
+  gold:
+    age_years: 29
+- id: sl-age-hilatn-030
+  language: hi-Latn
+  state: S1
+  pending_slot: age_years
+  text: 34 saal
+  gold:
+    age_years: 34
+- id: sl-age-hilatn-031
+  language: hi-Latn
+  state: S1
+  pending_slot: age_years
+  text: umar 45
+  gold:
+    age_years: 45
+- id: sl-age-hilatn-032
+  language: hi-Latn
+  state: S1
+  pending_slot: age_years
+  text: abhi 33 ka hoon
+  gold:
+    age_years: 33
+- id: sl-age-hilatn-033
+  language: hi-Latn
+  state: S1
+  pending_slot: age_years
+  text: main tees saal ki hoon
+  gold:
+    age_years: 30
+- id: sl-age-hilatn-034
+  language: hi-Latn
+  state: S1
+  pending_slot: age_years
+  text: age toh 40 hai
+  gold:
+    age_years: 40
+- id: sl-age-hilatn-035
+  language: hi-Latn
+  state: S1
+  pending_slot: age_years
+  text: 22 ka hoon bhai
+  gold:
+    age_years: 22
+- id: sl-age-hilatn-036
+  language: hi-Latn
+  state: S1
+  pending_slot: age_years
+  text: meri umar 55 saal hai
+  gold:
+    age_years: 55
+- id: sl-age-hilatn-037
+  language: hi-Latn
+  state: S1
+  pending_slot: age_years
+  text: main 26 ki hoon aur smoke nahi karti
+  gold:
+    age_years: 26
+    tobacco_12m: false
+- id: sl-age-hilatn-038
+  language: hi-Latn
+  state: S1
+  pending_slot: age_years
+  text: batana zaroori hai kya?
+  gold: {}
+- id: sl-age-hilatn-039
+  language: hi-Latn
+  state: S1
+  pending_slot: age_years
+  text: 47 saal ka hoon
+  gold:
+    age_years: 47
+- id: sl-age-hilatn-040
+  language: hi-Latn
+  state: S1
+  pending_slot: age_years
+  text: pachpan
+  gold:
+    age_years: 55
+- id: sl-qo-age-en-001
+  language: en
+  state: QUOTE_ONLY
+  pending_slot: age_years
+  text: I'm 38
+  gold:
+    age_years: 38
+- id: sl-qo-age-hi-002
+  language: hi
+  state: QUOTE_ONLY
+  pending_slot: age_years
+  text: मैं 44 का हूँ
+  gold:
+    age_years: 44
+- id: sl-qo-age-hilatn-003
+  language: hi-Latn
+  state: QUOTE_ONLY
+  pending_slot: age_years
+  text: umar 36 hai
+  gold:
+    age_years: 36
+- id: sl-la-age-en-001
+  language: en
+  state: S1
+  pending_slot: proposer.la_age
+  text: She is 32
+  gold:
+    proposer.la_age: 32
+- id: sl-la-age-hi-002
+  language: hi
+  state: S1
+  pending_slot: proposer.la_age
+  text: वह 60 साल के हैं
+  gold:
+    proposer.la_age: 60
+- id: sl-la-age-hilatn-003
+  language: hi-Latn
+  state: S1
+  pending_slot: proposer.la_age
+  text: papa 58 ke hain
+  gold:
+    proposer.la_age: 58

@@ -1,0 +1,7 @@
+id: qo-need-time
+description: Needing time after consent pauses Quote-Only (CC3b), to be resumed later.
+prelude: to-qo
+turns:
+  - text: I need some time to think about it
+    script: {nlu-extract: [{intents: [NEED_TIME]}]}
+    expect: {state: PAUSE}

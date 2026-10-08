@@ -1,0 +1,218 @@
+# Labelled slot utterances (TDD §5.2 slot extraction; Step 23): DUMMY but realistic, en / hi / hi-Latn.
+# gold is the value a careful human records, in the stored shape (ages int; S2 money a digit string,
+# "0" for none, null when declined; Quote-Only cover an int; tobacco a bool, null declined;
+# dependants [{relation, age}]; liabilities [{kind, outstanding_inr, years_left}]); {} when the turn
+# gives no usable value. Never relabel to pass a metric: disputes go to reports/label-disputes.md.
+description: 'Tobacco in the last 12 months: yes/no, habits, quitting (inside or outside 12 months), declines.'
+is_dummy: true
+items:
+- id: sl-tob-en-001
+  language: en
+  state: S1
+  pending_slot: tobacco_12m
+  text: 'no'
+  gold:
+    tobacco_12m: false
+- id: sl-tob-en-002
+  language: en
+  state: S1
+  pending_slot: tobacco_12m
+  text: never smoked
+  gold:
+    tobacco_12m: false
+- id: sl-tob-en-003
+  language: en
+  state: S1
+  pending_slot: tobacco_12m
+  text: 'yes'
+  gold:
+    tobacco_12m: true
+- id: sl-tob-en-004
+  language: en
+  state: S1
+  pending_slot: tobacco_12m
+  text: I smoke occasionally
+  gold:
+    tobacco_12m: true
+- id: sl-tob-en-005
+  language: en
+  state: S1
+  pending_slot: tobacco_12m
+  text: I quit 3 years ago
+  gold:
+    tobacco_12m: false
+- id: sl-tob-en-006
+  language: en
+  state: S1
+  pending_slot: tobacco_12m
+  text: I quit last month
+  gold:
+    tobacco_12m: true
+- id: sl-tob-en-007
+  language: en
+  state: S1
+  pending_slot: tobacco_12m
+  text: I chew gutka sometimes
+  gold:
+    tobacco_12m: true
+- id: sl-tob-en-008
+  language: en
+  state: S1
+  pending_slot: tobacco_12m
+  text: no, not at all
+  gold:
+    tobacco_12m: false
+- id: sl-tob-en-009
+  language: en
+  state: S1
+  pending_slot: tobacco_12m
+  text: prefer not to say
+  gold:
+    tobacco_12m: null
+- id: sl-tob-en-010
+  language: en
+  state: S1
+  pending_slot: tobacco_12m
+  text: only socially, a cigarette at parties
+  gold:
+    tobacco_12m: true
+- id: sl-tob-en-011
+  language: en
+  state: S1
+  pending_slot: tobacco_12m
+  text: nope
+  gold:
+    tobacco_12m: false
+- id: sl-tob-hi-012
+  language: hi
+  state: S1
+  pending_slot: tobacco_12m
+  text: नहीं
+  gold:
+    tobacco_12m: false
+- id: sl-tob-hi-013
+  language: hi
+  state: S1
+  pending_slot: tobacco_12m
+  text: हाँ
+  gold:
+    tobacco_12m: true
+- id: sl-tob-hi-014
+  language: hi
+  state: S1
+  pending_slot: tobacco_12m
+  text: मैं सिगरेट नहीं पीता
+  gold:
+    tobacco_12m: false
+- id: sl-tob-hi-015
+  language: hi
+  state: S1
+  pending_slot: tobacco_12m
+  text: कभी-कभी गुटखा खाता हूँ
+  gold:
+    tobacco_12m: true
+- id: sl-tob-hi-016
+  language: hi
+  state: S1
+  pending_slot: tobacco_12m
+  text: दो साल पहले छोड़ दिया
+  gold:
+    tobacco_12m: false
+- id: sl-tob-hi-017
+  language: hi
+  state: S1
+  pending_slot: tobacco_12m
+  text: बताना नहीं चाहता
+  gold:
+    tobacco_12m: null
+- id: sl-tob-hi-018
+  language: hi
+  state: S1
+  pending_slot: tobacco_12m
+  text: रोज़ बीड़ी पीता हूँ
+  gold:
+    tobacco_12m: true
+- id: sl-tob-hi-019
+  language: hi
+  state: S1
+  pending_slot: tobacco_12m
+  text: कभी नहीं
+  gold:
+    tobacco_12m: false
+- id: sl-tob-hi-020
+  language: hi
+  state: S1
+  pending_slot: tobacco_12m
+  text: हाँ, थोड़ा
+  gold:
+    tobacco_12m: true
+- id: sl-tob-hilatn-021
+  language: hi-Latn
+  state: S1
+  pending_slot: tobacco_12m
+  text: nahi
+  gold:
+    tobacco_12m: false
+- id: sl-tob-hilatn-022
+  language: hi-Latn
+  state: S1
+  pending_slot: tobacco_12m
+  text: haan
+  gold:
+    tobacco_12m: true
+- id: sl-tob-hilatn-023
+  language: hi-Latn
+  state: S1
+  pending_slot: tobacco_12m
+  text: kabhi nahi piya
+  gold:
+    tobacco_12m: false
+- id: sl-tob-hilatn-024
+  language: hi-Latn
+  state: S1
+  pending_slot: tobacco_12m
+  text: kabhi kabhi cigarette
+  gold:
+    tobacco_12m: true
+- id: sl-tob-hilatn-025
+  language: hi-Latn
+  state: S1
+  pending_slot: tobacco_12m
+  text: 6 mahine pehle chhoda
+  gold:
+    tobacco_12m: true
+- id: sl-tob-hilatn-026
+  language: hi-Latn
+  state: S1
+  pending_slot: tobacco_12m
+  text: nahi batana
+  gold:
+    tobacco_12m: null
+- id: sl-tob-hilatn-027
+  language: hi-Latn
+  state: S1
+  pending_slot: tobacco_12m
+  text: gutka khata hoon
+  gold:
+    tobacco_12m: true
+- id: sl-tob-hilatn-028
+  language: hi-Latn
+  state: S1
+  pending_slot: tobacco_12m
+  text: bilkul nahi
+  gold:
+    tobacco_12m: false
+- id: sl-tob-hilatn-029
+  language: hi-Latn
+  state: S1
+  pending_slot: tobacco_12m
+  text: haan roz
+  gold:
+    tobacco_12m: true
+- id: sl-tob-hilatn-030
+  language: hi-Latn
+  state: S1
+  pending_slot: tobacco_12m
+  text: 2 saal se nahi pi
+  gold:
+    tobacco_12m: false

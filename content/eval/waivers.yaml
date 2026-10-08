@@ -1,0 +1,26 @@
+# Evaluation gate waivers (Step 23): a recorded, expiring exception to one gate of
+# `python -m surakshasetu.eval`. The gate is still computed and shown in every report as WAIVED. An
+# expired waiver no longer applies, and the gate blocks again. §5.3 compliance gates, red-team
+# successes and the conversation suites can never be waived (eval/metrics.NEVER_WAIVED). Owner:
+# compliance (CODEOWNERS); see RELEASING.md.
+waivers:
+  # Step 12 X1: with the TDD pipeline as specified (gte-multilingual-reranker-base), recall@8 and
+  # precision@8 miss the gates for kb_regulatory (0.875 / 0.775) and kb_tax (0.784 / 0.667) on the
+  # DUMMY seed corpus. The reranker decision is open (docs/audits/step-12.md X1). kb_product and
+  # abstention pass. Re-gate on the real corpus.
+  - gate: context_recall:regulatory
+    reason: Step 12 X1, the reranker decision is open; the DUMMY seed corpus misses recall@8 0.90
+    owner: compliance
+    expires: 2026-12-31
+  - gate: context_precision:regulatory
+    reason: Step 12 X1, the reranker decision is open; the DUMMY seed corpus misses precision@8 0.80
+    owner: compliance
+    expires: 2026-12-31
+  - gate: context_recall:tax
+    reason: Step 12 X1, the reranker decision is open; the DUMMY seed corpus misses recall@8 0.90
+    owner: compliance
+    expires: 2026-12-31
+  - gate: context_precision:tax
+    reason: Step 12 X1, the reranker decision is open; the DUMMY seed corpus misses precision@8 0.80
+    owner: compliance
+    expires: 2026-12-31

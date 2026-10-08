@@ -25,7 +25,7 @@ import os
 import time
 from collections import defaultdict
 from collections.abc import Callable, Iterable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from functools import partial
 from pathlib import Path
@@ -283,6 +283,10 @@ class Report:
     recall: dict[Collection, float]
     precision: dict[Collection, float]
     abstention: float
+    # Step 23 (language parity): the means per (collection, language) and the abstention
+    # accuracy per language, over the same decisions.
+    by_language: dict[tuple[Collection, str], tuple[float, float]] = field(default_factory=dict)
+    abstention_by_language: dict[str, float] = field(default_factory=dict)
 
     @property
     def passed(self) -> bool:
@@ -311,6 +315,7 @@ def report(service: RetrievalService, outcomes: list[Outcome], thresholds: Thres
             abstained = f", abstained {result.abstain_reason}" if result.abstained else ""
             misses.append(f"  {q.id}: recall {r:.2f}, precision {p:.2f}, {rule}{abstained}")
     recall, precision = {}, {}
+    by_language: dict[tuple[Collection, str], tuple[float, float]] = {}
     for domain in COLLECTIONS:
         for language in ("all", "en", "hi", "hi-Latn"):
             got = rows.get((domain, language), [])
@@ -321,11 +326,18 @@ def report(service: RetrievalService, outcomes: list[Outcome], thresholds: Thres
             answered = sum(a for _, _, a in got)
             if language == "all":
                 recall[domain], precision[domain] = mean_r, mean_p
+            else:
+                by_language[(domain, language)] = (mean_r, mean_p)
             lines.append(
                 f"{domain:<11}{language:<9}{len(got):>3}  {mean_r:8.3f}  {mean_p:11.3f}"
                 f"  {answered:>3}/{len(got)}"
             )
     correct = sum((o.question.collection is None) == r.abstained for o, r in decided)
+    per_language: dict[str, list[bool]] = defaultdict(list)
+    for o, decision in decided:
+        per_language[o.question.language].append(
+            (o.question.collection is None) == decision.abstained
+        )
     unanswerable = [r for o, r in decided if o.question.collection is None]
     abstention = correct / len(decided)
     lines.append(
@@ -342,7 +354,14 @@ def report(service: RetrievalService, outcomes: list[Outcome], thresholds: Thres
         lines += ["misses:", *misses]
     if wrong:
         lines += ["answered, should have abstained:", *wrong]
-    return Report(lines, recall, precision, abstention)
+    return Report(
+        lines,
+        recall,
+        precision,
+        abstention,
+        by_language,
+        {lang: sum(ok) / len(ok) for lang, ok in per_language.items()},
+    )
 
 
 def _gate_lines(result: Report) -> list[str]:

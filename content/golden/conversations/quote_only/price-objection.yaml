@@ -1,0 +1,9 @@
+id: qo-price-objection
+description: >-
+  "Too expensive" in Quote-Only is a price objection (CC5): answered without any figure the engines
+  did not produce, and the session stays.
+prelude: to-qo
+turns:
+  - text: that is too expensive for me
+    script: {nlu-extract: [{intents: [OBJECTION_PRICE]}]}
+    expect: {state: QUOTE_ONLY, row: CC5, objection: price}

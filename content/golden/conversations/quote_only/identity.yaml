@@ -1,0 +1,7 @@
+id: qo-identity
+description: I6 in Quote-Only - "am I talking to a bot?" is answered first by the AI re-disclosure.
+prelude: to-qo
+turns:
+  - text: am I talking to a bot or a real person?
+    identity: true
+    expect: {state: QUOTE_ONLY}

@@ -1,0 +1,118 @@
+# Labelled slot utterances (TDD §5.2 slot extraction; Step 23): DUMMY but realistic, en / hi / hi-Latn.
+# gold is the value a careful human records, in the stored shape (ages int; S2 money a digit string,
+# "0" for none, null when declined; Quote-Only cover an int; tobacco a bool, null declined;
+# dependants [{relation, age}]; liabilities [{kind, outstanding_inr, years_left}]); {} when the turn
+# gives no usable value. Never relabel to pass a metric: disputes go to reports/label-disputes.md.
+description: 'Several slots in one answer: the open question''s, and what else the customer volunteered
+  in the state.'
+is_dummy: true
+items:
+- id: sl-mix-s1-en-001
+  language: en
+  state: S1
+  pending_slot: age_years
+  text: I'm 34, live in 411001 and never smoked
+  gold:
+    age_years: 34
+    pincode: '411001'
+    tobacco_12m: false
+- id: sl-mix-s1-en-002
+  language: en
+  state: S1
+  pending_slot: age_years
+  text: 41, and yes I smoke
+  gold:
+    age_years: 41
+    tobacco_12m: true
+- id: sl-mix-s1-hi-003
+  language: hi
+  state: S1
+  pending_slot: age_years
+  text: मैं 40 का हूँ, पिन 560001
+  gold:
+    age_years: 40
+    pincode: '560001'
+- id: sl-mix-s1-hi-004
+  language: hi
+  state: S1
+  pending_slot: age_years
+  text: उम्र 30, सिगरेट नहीं पीता
+  gold:
+    age_years: 30
+    tobacco_12m: false
+- id: sl-mix-s1-hilatn-005
+  language: hi-Latn
+  state: S1
+  pending_slot: age_years
+  text: 32 saal, pincode 110001, smoke nahi karta
+  gold:
+    age_years: 32
+    pincode: '110001'
+    tobacco_12m: false
+- id: sl-mix-s1-hilatn-006
+  language: hi-Latn
+  state: S1
+  pending_slot: age_years
+  text: 29 ki hoon, pin 400001
+  gold:
+    age_years: 29
+    pincode: '400001'
+- id: sl-mix-s2-en-001
+  language: en
+  state: S2
+  pending_slot: annual_income_inr
+  text: I earn 20 lakh and have a home loan of 30 lakh for 15 years
+  gold:
+    annual_income_inr: '2000000'
+    liabilities:
+    - kind: home
+      outstanding_inr: '3000000'
+      years_left: 15
+- id: sl-mix-s2-en-002
+  language: en
+  state: S2
+  pending_slot: annual_income_inr
+  text: about 14 LPA; my wife is 33
+  gold:
+    annual_income_inr: '1400000'
+    dependants:
+    - relation: spouse
+      age: 33
+- id: sl-mix-s2-hi-003
+  language: hi
+  state: S2
+  pending_slot: annual_income_inr
+  text: 12 लाख कमाता हूँ, पत्नी 30 साल
+  gold:
+    annual_income_inr: '1200000'
+    dependants:
+    - relation: spouse
+      age: 30
+- id: sl-mix-s2-hi-004
+  language: hi
+  state: S2
+  pending_slot: annual_income_inr
+  text: सालाना 9 लाख, कोई लोन नहीं
+  gold:
+    annual_income_inr: '900000'
+    liabilities: []
+- id: sl-mix-s2-hilatn-005
+  language: hi-Latn
+  state: S2
+  pending_slot: annual_income_inr
+  text: 15 LPA, koi loan nahi
+  gold:
+    annual_income_inr: '1500000'
+    liabilities: []
+- id: sl-mix-s2-hilatn-006
+  language: hi-Latn
+  state: S2
+  pending_slot: annual_income_inr
+  text: 18 lakh saalana, do bachche 4 aur 7
+  gold:
+    annual_income_inr: '1800000'
+    dependants:
+    - relation: child
+      age: 4
+    - relation: child
+      age: 7

@@ -1,0 +1,7 @@
+id: qo-off-topic
+description: Off-topic in Quote-Only gets a redirect, and the quote's choice stays open.
+prelude: to-qo
+turns:
+  - text: who won the cricket match yesterday?
+    script: {nlu-extract: [{intents: [OFF_TOPIC]}]}
+    expect: {state: QUOTE_ONLY}

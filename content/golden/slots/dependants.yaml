@@ -1,0 +1,270 @@
+# Labelled slot utterances (TDD §5.2 slot extraction; Step 23): DUMMY but realistic, en / hi / hi-Latn.
+# gold is the value a careful human records, in the stored shape (ages int; S2 money a digit string,
+# "0" for none, null when declined; Quote-Only cover an int; tobacco a bool, null declined;
+# dependants [{relation, age}]; liabilities [{kind, outstanding_inr, years_left}]); {} when the turn
+# gives no usable value. Never relabel to pass a metric: disputes go to reports/label-disputes.md.
+description: Dependants as relation and age pairs; none is []; a declined answer leaves the slot out.
+is_dummy: true
+items:
+- id: sl-dep-en-001
+  language: en
+  state: S2
+  pending_slot: dependants
+  text: my wife is 32, my son is 7 and my daughter is 4
+  gold:
+    dependants:
+    - relation: spouse
+      age: 32
+    - relation: child
+      age: 7
+    - relation: child
+      age: 4
+- id: sl-dep-en-002
+  language: en
+  state: S2
+  pending_slot: dependants
+  text: my wife, 30
+  gold:
+    dependants:
+    - relation: spouse
+      age: 30
+- id: sl-dep-en-003
+  language: en
+  state: S2
+  pending_slot: dependants
+  text: no one depends on me
+  gold:
+    dependants: []
+- id: sl-dep-en-004
+  language: en
+  state: S2
+  pending_slot: dependants
+  text: two kids, 5 and 9
+  gold:
+    dependants:
+    - relation: child
+      age: 5
+    - relation: child
+      age: 9
+- id: sl-dep-en-005
+  language: en
+  state: S2
+  pending_slot: dependants
+  text: my parents, 60 and 58
+  gold:
+    dependants:
+    - relation: parent
+      age: 60
+    - relation: parent
+      age: 58
+- id: sl-dep-en-006
+  language: en
+  state: S2
+  pending_slot: dependants
+  text: wife 35 and mother 62
+  gold:
+    dependants:
+    - relation: spouse
+      age: 35
+    - relation: parent
+      age: 62
+- id: sl-dep-en-007
+  language: en
+  state: S2
+  pending_slot: dependants
+  text: my husband is 40
+  gold:
+    dependants:
+    - relation: spouse
+      age: 40
+- id: sl-dep-en-008
+  language: en
+  state: S2
+  pending_slot: dependants
+  text: just my daughter, she's 12
+  gold:
+    dependants:
+    - relation: child
+      age: 12
+- id: sl-dep-en-009
+  language: en
+  state: S2
+  pending_slot: dependants
+  text: none
+  gold:
+    dependants: []
+- id: sl-dep-en-010
+  language: en
+  state: S2
+  pending_slot: dependants
+  text: I'd rather not say
+  gold: {}
+- id: sl-dep-en-011
+  language: en
+  state: S2
+  pending_slot: dependants
+  text: my wife (34) and twins aged 3
+  gold:
+    dependants:
+    - relation: spouse
+      age: 34
+    - relation: child
+      age: 3
+    - relation: child
+      age: 3
+- id: sl-dep-en-012
+  language: en
+  state: S2
+  pending_slot: dependants
+  text: my brother is 20 and still studies
+  gold:
+    dependants:
+    - relation: other
+      age: 20
+- id: sl-dep-hi-013
+  language: hi
+  state: S2
+  pending_slot: dependants
+  text: पत्नी 32 साल, बेटा 7 साल
+  gold:
+    dependants:
+    - relation: spouse
+      age: 32
+    - relation: child
+      age: 7
+- id: sl-dep-hi-014
+  language: hi
+  state: S2
+  pending_slot: dependants
+  text: कोई नहीं
+  gold:
+    dependants: []
+- id: sl-dep-hi-015
+  language: hi
+  state: S2
+  pending_slot: dependants
+  text: दो बच्चे, 3 और 6 साल के
+  gold:
+    dependants:
+    - relation: child
+      age: 3
+    - relation: child
+      age: 6
+- id: sl-dep-hi-016
+  language: hi
+  state: S2
+  pending_slot: dependants
+  text: माता-पिता, 65 और 60
+  gold:
+    dependants:
+    - relation: parent
+      age: 65
+    - relation: parent
+      age: 60
+- id: sl-dep-hi-017
+  language: hi
+  state: S2
+  pending_slot: dependants
+  text: पति 38 साल के
+  gold:
+    dependants:
+    - relation: spouse
+      age: 38
+- id: sl-dep-hi-018
+  language: hi
+  state: S2
+  pending_slot: dependants
+  text: मेरी बेटी 10 साल की है
+  gold:
+    dependants:
+    - relation: child
+      age: 10
+- id: sl-dep-hi-019
+  language: hi
+  state: S2
+  pending_slot: dependants
+  text: पत्नी और बेटा, 29 और 2
+  gold:
+    dependants:
+    - relation: spouse
+      age: 29
+    - relation: child
+      age: 2
+- id: sl-dep-hilatn-020
+  language: hi-Latn
+  state: S2
+  pending_slot: dependants
+  text: wife 31 aur beta 5
+  gold:
+    dependants:
+    - relation: spouse
+      age: 31
+    - relation: child
+      age: 5
+- id: sl-dep-hilatn-021
+  language: hi-Latn
+  state: S2
+  pending_slot: dependants
+  text: koi nahi
+  gold:
+    dependants: []
+- id: sl-dep-hilatn-022
+  language: hi-Latn
+  state: S2
+  pending_slot: dependants
+  text: do bachche 8 aur 11 saal
+  gold:
+    dependants:
+    - relation: child
+      age: 8
+    - relation: child
+      age: 11
+- id: sl-dep-hilatn-023
+  language: hi-Latn
+  state: S2
+  pending_slot: dependants
+  text: mummy papa 57 aur 61
+  gold:
+    dependants:
+    - relation: parent
+      age: 57
+    - relation: parent
+      age: 61
+- id: sl-dep-hilatn-024
+  language: hi-Latn
+  state: S2
+  pending_slot: dependants
+  text: husband 36 ke hain
+  gold:
+    dependants:
+    - relation: spouse
+      age: 36
+- id: sl-dep-hilatn-025
+  language: hi-Latn
+  state: S2
+  pending_slot: dependants
+  text: beti 14 ki hai
+  gold:
+    dependants:
+    - relation: child
+      age: 14
+- id: sl-dep-hilatn-026
+  language: hi-Latn
+  state: S2
+  pending_slot: dependants
+  text: biwi 27, beta 1 saal
+  gold:
+    dependants:
+    - relation: spouse
+      age: 27
+    - relation: child
+      age: 1
+- id: sl-dep-hilatn-027
+  language: hi-Latn
+  state: S2
+  pending_slot: dependants
+  text: maa 70 saal ki
+  gold:
+    dependants:
+    - relation: parent
+      age: 70

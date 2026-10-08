@@ -1,0 +1,11 @@
+id: qo-side-question
+description: >-
+  A question about the named plan in Quote-Only is a side question: answered from its own
+  documents (the plan is in focus, so the I3 gate is open), cited, then back to the quote's choice.
+prelude: to-qo
+turns:
+  - text: Is the death benefit paid in instalments?
+    script:
+      nlu-extract: [{intents: [SIDE_QUERY], side_query: "Is the death benefit paid in instalments?"}]
+      gen-recommend: ["The policy wording sets out how the death benefit is paid [E1]."]
+    expect: {state: QUOTE_ONLY, faq: answered, citations: true}

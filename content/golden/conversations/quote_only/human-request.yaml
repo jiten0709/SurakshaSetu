@@ -1,0 +1,8 @@
+id: qo-human-request
+description: >-
+  Asking for a person in Quote-Only escalates (CC2); without P2 the customer is asked for advisor
+  contact first, and nothing is shared.
+prelude: to-qo
+turns:
+  - action: {type: HUMAN_REQUEST}
+    expect: {state: HUMAN_ESCALATION, row: CC2, reason: HE_REQUEST, templates: [advisor_consent_ask], absent: [HANDOFF]}

@@ -1,8 +1,7 @@
 # One entry point for local work and CI. Placeholder targets are filled in by later steps.
 COMPOSE := docker compose -f infra/compose.yaml --profile core
 PYTEST_MARKERS := not stack and not golden and not redteam and not live and not db
-PLACEHOLDERS := seed-eval \
-	verify-release-gate eval-live local-setup
+PLACEHOLDERS := verify-release-gate local-setup
 SPEC := contracts/openapi/domain-services.v1.yaml
 MODELS := src/surakshasetu/domain/models.py
 
@@ -37,7 +36,8 @@ TEST_ENV := SS_TEST_PG_DSN_ADMIN="postgresql://postgres:$(POSTGRES_PASSWORD)@127
 .PHONY: up down logs check check-py check-java check-stubs check-db check-stack check-contracts \
 	db-migrate seed-catalog contracts contracts-lint contract-test verify-audit gateway-up \
 	gateway-verify kb-ingest kb-verify kb-chunks check-ingest calibrate-retrieval eval-retrieval \
-	bakeoff-embed bakeoff-rerank test-invariants eval e2e-scripted timers-once $(PLACEHOLDERS)
+	bakeoff-embed bakeoff-rerank test-invariants eval eval-live seed-eval e2e-scripted \
+	timers-once $(PLACEHOLDERS)
 
 # Postgres first, then the migrations, so domain-services finds its domain_rw role on a fresh
 # volume. `up --wait` treats an exited one-shot as a failure, so the one-shots run on their own.
@@ -182,19 +182,50 @@ contract-test:
 check-stack: db-migrate
 	@cd orchestrator && $(TEST_ENV) uv run --locked pytest -m stack
 
-# The golden conversations (Step 17; Step 23 adds the red-team suite) against the running stack: the
-# orchestrator in-process with its real lifespan, over the dev database (domain-services writes
-# consent there), valkey, domain-services and OmniRoute in front of the stubs. Each conversation's
-# rows (conv, checkpoints, audit, consent, its subject key) are deleted after its assertions; the
-# active prompt bundle's CONFIG_RELEASE stays. Needs `make up`, `make gateway-up` and
-# `make seed-catalog`.
+# The evaluation (Steps 17 and 23, TDD §5.2/§5.3). First every golden conversation and the red-team
+# suite (content/redteam) against the running stack: the orchestrator in-process with its real
+# lifespan, over the dev database (domain-services writes consent there), valkey, domain-services and
+# OmniRoute in front of the stubs. Each writes a record (counts, ids, timings) and deletes its rows
+# (conv, checkpoints, audit, consent, its subject key); the active prompt bundle's CONFIG_RELEASE
+# stays. Then `python -m surakshasetu.eval` adds the labelled slots and intents, retrieval and the QA
+# drafts (model-dependent metrics are informational against the stub), applies the gates and the
+# waivers (content/eval/waivers.yaml), writes reports/eval-<ts>.json and .md, and prints the summary.
+# Exit non-zero when a conversation or an enforced gate fails. Only the report step scales the TEI
+# budgets (CPU retrieval); the conversations run at production budgets, as their latency is a gate.
+# Needs `make up`, `make gateway-up`, `make seed-catalog` and `make kb-ingest`. Run it with nothing
+# else busy on the machine.
 GOLDEN_ENV := SS_EVAL_PG_DSN_ADMIN="postgresql://postgres:$(POSTGRES_PASSWORD)@127.0.0.1:5432/surakshasetu" \
 	SS_PG_DSN_APP="$(PG_DSN_KB)" \
 	SS_PG_DSN_KEYVAULT="postgresql://keyvault_rw:$(KEYVAULT_RW_PASSWORD)@127.0.0.1:5432/surakshasetu" \
 	SS_PG_DSN_ERASURE="postgresql://erasure_rw:$(ERASURE_RW_PASSWORD)@127.0.0.1:5432/surakshasetu" \
 	SS_REDIS_URL="redis://127.0.0.1:6379/0" $(DOMAIN_ENV)
+EVAL_RECORDS := $(CURDIR)/orchestrator/.cache/eval-records
+EVAL_REPORT = cd orchestrator && $(GOLDEN_ENV) SS_LOG_FORMAT=text $(1) \
+	uv run --locked python -m surakshasetu.eval run
 eval: db-migrate
-	@cd orchestrator && $(GOLDEN_ENV) uv run --locked pytest -m "golden or redteam"
+	@rm -rf "$(EVAL_RECORDS)" reports/eval-latest.md && mkdir -p "$(EVAL_RECORDS)"
+	@rc=0; rc2=0; \
+		(cd orchestrator && $(GOLDEN_ENV) SS_EVAL_RECORDS="$(EVAL_RECORDS)" \
+			uv run --locked pytest -m "golden or redteam") || rc=$$?; \
+		($(call EVAL_REPORT,SS_TEI_TIMEOUT_SCALE=1000) --mode stub --records "$(EVAL_RECORDS)") \
+			|| rc2=$$?; \
+		cat reports/eval-latest.md 2>/dev/null; \
+		if [ $$rc2 -ne 0 ]; then exit $$rc2; fi; exit $$rc
+
+# Every §5.2 gate enforced on provisioned model routes (D2): the labelled slots and intents, retrieval
+# and the QA drafts through OmniRoute's real combos. Exit 2, "eval-live requires provisioned model
+# routes (D2)", while a stub still answers any route. SS_EVAL_PRIMARY_MODELS names each route's
+# primary model for the fallback rate. The scripted suites stay with `make eval`.
+eval-live:
+	@rm -f reports/eval-latest.md; rc=0; ($(call EVAL_REPORT,) --mode live) || rc=$$?; \
+		cat reports/eval-latest.md 2>/dev/null; exit $$rc
+
+# Validate the evaluation's sets offline (TDD §7.5 step 4): the golden conversations and the
+# scripted S0-S3 conversation, the retrieval golden sets, the labelled slots and intents, the
+# red-team suite and the gate waivers. No stack needed.
+seed-eval:
+	cd orchestrator && uv run --locked pytest -q tests/unit/test_eval_sets.py \
+		tests/unit/test_golden_assertions.py tests/unit/test_retrieval_metrics.py tests/unit/test_metrics.py
 
 # The scripted S0-S3 conversation of TDD §7.4 alone (Step 21): greeting, consent, eligibility, needs,
 # the recommendation with its disclosures, a chosen rider set re-quoted, the acknowledgment and the

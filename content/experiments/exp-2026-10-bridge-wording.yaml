@@ -1,0 +1,16 @@
+# An experiment config (TDD §5.4): experiments are allowed only on non-legal wording, such as
+# question phrasing and bridge lines. What §5.4 keeps out of every experiment is listed in
+# RELEASING.md §5, and tests/unit/test_governance.py fails if a config here refers to any of it,
+# comments included. Nothing runs experiments yet: a deployment pipeline with the 5% canary would read
+# the active ones. DUMMY.
+id: exp-2026-10-bridge-wording
+status: draft
+owner: product
+hypothesis: A shorter bridge after a side answer brings more customers back to the pending question.
+metric: side-query recovery (TDD §5.1)
+targets: [side_query_bridge]
+variants:
+  - name: control
+    text: null  # the pinned bundle's own wording
+  - name: shorter
+    text: "DUMMY: Back to where we were."

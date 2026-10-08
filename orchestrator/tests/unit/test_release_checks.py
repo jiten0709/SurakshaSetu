@@ -232,3 +232,29 @@ async def test_without_model_text_there_is_nothing_to_classify() -> None:
 
     assert verdict.action == "pass"
     assert models.requests == []
+
+
+# Step 23: the model repeating its instructions is a leak (RC-LEAK prompt_echo).
+INSTRUCTIONS = (
+    "You are the assistant of a life insurer. Never state a premium yourself; write the"
+    " placeholder the engine fills, and cite every product fact with its handle."
+)
+
+
+def test_the_model_repeating_its_instructions_blocks() -> None:
+    echo = "Sure. Never state a premium yourself; write the placeholder the engine fills [E1]."
+    verdict = leaks(echo, ctx(), {}, model_text=echo, instructions=INSTRUCTIONS)
+    assert (verdict.action, verdict.detail) == ("block", ("prompt_echo",))
+
+
+def test_an_echo_through_homoglyphs_is_still_an_echo() -> None:
+    echo = "Nеvеr state a premium yourself; write the placeholder thе engine fills."  # Cyrillic е
+    assert leaks(echo, ctx(), {}, model_text=echo, instructions=INSTRUCTIONS).action == "block"
+
+
+def test_a_paraphrase_or_template_text_is_not_an_echo() -> None:
+    reply = "The policy wording defines when the death benefit is paid [E1]."
+    assert leaks(reply, ctx(), {}, model_text=reply, instructions=INSTRUCTIONS).action == "pass"
+    # the instructions' words outside the model's own text (a template part) are not checked
+    rendered = f"{INSTRUCTIONS}\n{reply}"
+    assert leaks(rendered, ctx(), {}, model_text=reply, instructions=INSTRUCTIONS).action == "pass"

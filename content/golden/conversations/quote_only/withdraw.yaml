@@ -1,0 +1,8 @@
+id: qo-withdraw
+description: >-
+  A withdrawal in Quote-Only is honoured in the same turn (I5): erased, the key scheduled.
+prelude: to-qo
+turns:
+  - text: please delete my data, I withdraw my consent
+    script: {nlu-extract: [{intents: [META_WITHDRAW]}]}
+    expect: {state: DATA_ERASURE, events: [ERASURE_REQUEST], erased: scheduled}

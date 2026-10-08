@@ -42,7 +42,7 @@ def settings(**update: Any) -> Settings:
 
 def pins() -> VersionPins:
     return VersionPins(
-        prompt_bundle="pb-2026.10.6",
+        prompt_bundle="pb-2026.10.8",
         rules="2026.09.1",
         corpus={},
         consent_notice=NOTICE,

@@ -250,13 +250,13 @@ class Released:
 
 
 @dataclass(frozen=True)
-class _Sentence:
+class Sentence:
     n: int  # 1-based, as the error list names it
     text: str
     handles: list[str]
 
 
-def _sentences(text: str) -> list[_Sentence]:
+def sentences(text: str) -> list[Sentence]:
     """Split on . ! ? । and newlines; a citation that opens a sentence ("fact. [E3]") belongs to
     the one before. ponytail: abbreviations ("Rs. 500") split early; the citation rule then asks
     for a handle on each half, which fails closed."""
@@ -269,13 +269,13 @@ def _sentences(text: str) -> list[_Sentence]:
             part = part[lead.end() :].strip()
         if part:
             parts.append(part)
-    return [_Sentence(n, s, cited(s)) for n, s in enumerate(parts, start=1)]
+    return [Sentence(n, s, cited(s)) for n, s in enumerate(parts, start=1)]
 
 
 def lexicon(text: str, ctx: OutputContext, pack: LexiconPack) -> list[Verdict]:
     """Rail 6: one verdict per rule that matched (allow or fail), or one pass."""
     hits: dict[str, list[str]] = {}
-    for s in _sentences(normalise(text).text):
+    for s in sentences(normalise(text).text):
         chunks = [ctx.handles.evidence[h] for h in s.handles if h in ctx.handles.evidence]
         for rule in pack.rules:
             match = rule.pattern.search(s.text)
@@ -318,17 +318,17 @@ def grounding(
     """Rail 7's deterministic checks, one verdict each. The placeholders and handles are checked
     on the raw text, as the composer will fill and render it; the rest on the normalised text."""
     normalised = normalise(text).text
-    sentences = _sentences(normalised)
+    split = sentences(normalised)
     return [
-        _products(sentences, ctx),
+        _products(split, ctx),
         _placeholders(text, numbers),
-        _numbers(sentences, ctx, pack),
+        _numbers(split, ctx, pack),
         _handles(text, normalised, ctx),
-        _citations(sentences, ctx, pack),
+        _citations(split, ctx, pack),
     ]
 
 
-def _products(sentences: Sequence[_Sentence], ctx: OutputContext) -> Verdict:
+def _products(sentences: Sequence[Sentence], ctx: OutputContext) -> Verdict:
     """I3: before S3 only products the customer named; in S3 also those in ENGINE_RESULT. Rider
     names ("Critical illness") are benefit types, so riders are checked by UIN only."""
     allowed = set(ctx.customer_uins)
@@ -362,7 +362,7 @@ def products_named(text: str, products: Mapping[str, str]) -> set[str]:
 
 def _placeholders(raw: str, numbers: Numbers | None) -> Verdict:
     problems = []
-    for s in _sentences(raw):
+    for s in sentences(raw):
         if numbers is None:
             if "{" in s.text or "}" in s.text:
                 problems.append(f"GR-PLACEHOLDER sentence {s.n}: write no placeholders here")
@@ -374,7 +374,7 @@ def _placeholders(raw: str, numbers: Numbers | None) -> Verdict:
     return _verdict("GR-PLACEHOLDER", problems)
 
 
-def _numbers(sentences: Sequence[_Sentence], ctx: OutputContext, pack: LexiconPack) -> Verdict:
+def _numbers(sentences: Sequence[Sentence], ctx: OutputContext, pack: LexiconPack) -> Verdict:
     """After the fill, every number comes from the engine or is verbatim in a cited source: so a
     number the model wrote must appear in a source its own sentence cites."""
     problems = []
@@ -382,14 +382,14 @@ def _numbers(sentences: Sequence[_Sentence], ctx: OutputContext, pack: LexiconPa
         found = _number_tokens(s.text, pack)
         if not found:
             continue
-        sources = _sources(s.handles, ctx.handles)
+        cited_sources = sources(s.handles, ctx.handles)
         for token in dict.fromkeys(found):
             pattern = (
                 re.compile(rf"(?<!\d)(?<!\d[.,]){re.escape(token)}(?!\d)(?![.,]\d)")
                 if token[0].isdigit()
                 else _words([token])
             )
-            if not any(pattern.search(source) for source in sources):
+            if not any(pattern.search(source) for source in cited_sources):
                 problems.append(
                     f'GR-NUMBER sentence {s.n}: "{token}" is not in ENGINE_RESULT or in the'
                     " evidence this sentence cites"
@@ -405,7 +405,7 @@ def _number_tokens(text: str, pack: LexiconPack) -> list[str]:
     return _NUMERAL.findall(bare) + [m.group(0) for m in pack.number_words.finditer(bare)]
 
 
-def _sources(cited_handles: Sequence[str], handles: TurnHandles) -> list[str]:
+def sources(cited_handles: Sequence[str], handles: TurnHandles) -> list[str]:
     sources = []
     for h in cited_handles:
         if h in handles.evidence:
@@ -430,7 +430,7 @@ def _handles(raw: str, normalised: str, ctx: OutputContext) -> Verdict:
     return _verdict("GR-HANDLE", problems)
 
 
-def _citations(sentences: Sequence[_Sentence], ctx: OutputContext, pack: LexiconPack) -> Verdict:
+def _citations(sentences: Sequence[Sentence], ctx: OutputContext, pack: LexiconPack) -> Verdict:
     """TDD §2.5: a sentence stating a product, regulatory or tax fact (a lexicon term), a number
     or a placeholder carries at least one handle issued this turn."""
     issued = set(ctx.handles.evidence) | set(ctx.handles.engine)
@@ -438,14 +438,17 @@ def _citations(sentences: Sequence[_Sentence], ctx: OutputContext, pack: Lexicon
         f"GR-CITATION sentence {s.n}: it states a product, regulatory or tax fact or a number"
         " without a handle"
         for s in sentences
-        if (
-            pack.factual_terms.search(s.text)
-            or _PLACEHOLDER.search(s.text)
-            or _number_tokens(s.text, pack)
-        )
-        and not issued.intersection(s.handles)
+        if factual(s.text, pack) and not issued.intersection(s.handles)
     ]
     return _verdict("GR-CITATION", problems)
+
+
+def factual(text: str, pack: LexiconPack) -> bool:
+    """A sentence stating a product, regulatory or tax fact (a pack term), a number or a
+    placeholder: what must carry a handle (GR-CITATION, and Step 23's citation coverage)."""
+    return bool(
+        pack.factual_terms.search(text) or _PLACEHOLDER.search(text) or _number_tokens(text, pack)
+    )
 
 
 def _verdict(rule_id: str, problems: list[str]) -> Verdict:
@@ -470,13 +473,13 @@ async def verify_claims(
         return Verdict("grounding", "GR-NLI", "not_sampled")
     claims = [
         (s, premise)
-        for s in _sentences(normalise(text).text)
-        if (premise := "\n".join(_sources(s.handles, ctx.handles)))
+        for s in sentences(normalise(text).text)
+        if (premise := "\n".join(sources(s.handles, ctx.handles)))
     ]
     if not claims:
         return Verdict("grounding", "GR-NLI", "pass")
     results = await asyncio.gather(
-        *(_entailed(gateway, s.text, premise, ctx) for s, premise in claims),
+        *(entailed(gateway, s.text, premise, ctx) for s, premise in claims),
         return_exceptions=True,
     )
     down = [r for r in results if isinstance(r, GatewayUnavailable)]
@@ -507,7 +510,7 @@ def _nli_due(ctx: OutputContext, settings: Settings) -> bool:
     return draw < settings.verify_sample_rate
 
 
-async def _entailed(gateway: Gateway, claim: str, premise: str, ctx: OutputContext) -> bool:
+async def entailed(gateway: Gateway, claim: str, premise: str, ctx: OutputContext) -> bool:
     plain = _PLACEHOLDER.sub(lambda m: f"[{m.group(1)}]", _CITATION.sub("", claim)).strip()
     result = await gateway.call(
         Route.VERIFY_CLAIMS,
@@ -589,10 +592,20 @@ async def guard(gateway: Gateway, model_text: str | None, ctx: OutputContext) ->
     return Verdict("release", "RC-GUARD", "pass")
 
 
-def leaks(text: str, ctx: OutputContext, sets: Mapping[str, DisclosureSet]) -> Verdict:
+def leaks(
+    text: str,
+    ctx: OutputContext,
+    sets: Mapping[str, DisclosureSet],
+    *,
+    model_text: str | None = None,
+    instructions: str = "",
+) -> Verdict:
     """Cross-session leaks: a redaction token, an id other than this session's, or PII that is
-    neither this session's own nor in the approved registry text shown. Kinds only, never values."""
+    neither this session's own nor in the approved registry text shown; and (Step 23) the model's
+    own text repeating its instructions (L0 or an L1) word for word. Kinds only, never values."""
     kinds = []
+    if model_text and instructions and _echoes(model_text, instructions):
+        kinds.append("prompt_echo")
     if _TOKEN.search(text):
         kinds.append("redaction_token")
     own_ids = {str(ctx.session_id), str(ctx.subject_ref)}
@@ -611,6 +624,23 @@ def leaks(text: str, ctx: OutputContext, sets: Mapping[str, DisclosureSet]) -> V
     ]
     kinds = list(dict.fromkeys(kinds))
     return Verdict("release", "RC-LEAK", "block" if kinds else "pass", None, tuple(kinds))
+
+
+_ECHO_WORDS = 8  # a window this long, verbatim from the instructions, is an echo, not a paraphrase
+
+
+def _windows(text: str) -> set[tuple[str, ...]]:
+    words = re.findall(r"\w+", normalise(text).text.casefold())
+    return {tuple(words[i : i + _ECHO_WORDS]) for i in range(len(words) - _ECHO_WORDS + 1)}
+
+
+def _echoes(model_text: str, instructions: str) -> bool:
+    return not _windows(model_text).isdisjoint(_windows(instructions))
+
+
+def instructions(bundle: PromptBundle) -> str:
+    """Every instruction layer a generation route can see: L0 and each L1."""
+    return "\n".join([bundle.l0, *bundle.l1.values()])
 
 
 def dummy(text: str, env: str) -> Verdict:
@@ -678,7 +708,7 @@ async def release(
     checks = [
         disclosures(rendered, numbers, sets),
         await guard(gateway, chosen, ctx),
-        leaks(rendered.text, ctx, sets),
+        leaks(rendered.text, ctx, sets, model_text=chosen, instructions=instructions(bundle)),
         dummy(rendered.text, settings.env),
     ]
     _emit(conn, keys, ctx, pack, checks)

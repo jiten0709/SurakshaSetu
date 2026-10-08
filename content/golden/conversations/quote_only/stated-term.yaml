@@ -1,0 +1,12 @@
+id: qo-stated-term
+description: A term stated after the first quote is quoted again for that term.
+prelude: to-qo
+turns:
+  - text: what if I take it for 20 years
+    script:
+      nlu-extract: [{intents: [SLOT_ANSWER], slots: [{slot: term_years, value: 20, confidence: 0.95, evidence_span: 20 years}]}]
+    expect:
+      state: QUOTE_ONLY
+      parts: [template:quote_card, registry:DISC-GLOBAL-QUOTE-02, template:quote_caveat, template:quote_next]
+      engine: {service: quote}
+      contains: ["for 20 years"]

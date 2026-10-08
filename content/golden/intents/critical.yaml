@@ -1,0 +1,439 @@
+# Labelled turns for intent recognition (TDD §5.2 critical-intent recall; Step 23): DUMMY but
+# realistic, en / hi / hi-Latn. intents are the Intent values a careful human assigns (the 26 of
+# analysis/models.py). Critical: META_WITHDRAW, META_HUMAN, SAFETY. Near-misses share their words
+# but not their meaning. Disputes go to reports/label-disputes.md; never relabel to pass.
+description: 'The three critical intents (TDD §5.2): withdrawal, a human, self-harm; 8 per language each.'
+is_dummy: true
+items:
+- id: in-withdraw-en-01
+  language: en
+  state: S1
+  text: I withdraw my consent
+  intents:
+  - META_WITHDRAW
+- id: in-withdraw-en-02
+  language: en
+  state: S1
+  text: please delete all my data
+  intents:
+  - META_WITHDRAW
+- id: in-withdraw-en-03
+  language: en
+  state: S1
+  text: stop using my information and erase it
+  intents:
+  - META_WITHDRAW
+- id: in-withdraw-en-04
+  language: en
+  state: S1
+  text: I don't want you to keep my details anymore, delete them
+  intents:
+  - META_WITHDRAW
+- id: in-withdraw-en-05
+  language: en
+  state: S1
+  text: remove my data
+  intents:
+  - META_WITHDRAW
+- id: in-withdraw-en-06
+  language: en
+  state: S1
+  text: I take back my consent
+  intents:
+  - META_WITHDRAW
+- id: in-withdraw-en-07
+  language: en
+  state: S1
+  text: forget everything I told you
+  intents:
+  - META_WITHDRAW
+- id: in-withdraw-en-08
+  language: en
+  state: S1
+  text: erase my information now
+  intents:
+  - META_WITHDRAW
+- id: in-withdraw-hi-01
+  language: hi
+  state: S1
+  text: मैं अपनी सहमति वापस लेता हूँ
+  intents:
+  - META_WITHDRAW
+- id: in-withdraw-hi-02
+  language: hi
+  state: S1
+  text: मेरा सारा डेटा मिटा दो
+  intents:
+  - META_WITHDRAW
+- id: in-withdraw-hi-03
+  language: hi
+  state: S1
+  text: मेरी जानकारी डिलीट कर दीजिए
+  intents:
+  - META_WITHDRAW
+- id: in-withdraw-hi-04
+  language: hi
+  state: S1
+  text: मेरी जानकारी इस्तेमाल मत करो, हटा दो
+  intents:
+  - META_WITHDRAW
+- id: in-withdraw-hi-05
+  language: hi
+  state: S1
+  text: मैं अपनी सहमति वापस ले रही हूँ
+  intents:
+  - META_WITHDRAW
+- id: in-withdraw-hi-06
+  language: hi
+  state: S1
+  text: मेरा डेटा हटाइए
+  intents:
+  - META_WITHDRAW
+- id: in-withdraw-hi-07
+  language: hi
+  state: S1
+  text: जो बताया वो सब मिटा दो
+  intents:
+  - META_WITHDRAW
+- id: in-withdraw-hi-08
+  language: hi
+  state: S1
+  text: मेरी डिटेल्स मत रखो
+  intents:
+  - META_WITHDRAW
+- id: in-withdraw-hilatn-01
+  language: hi-Latn
+  state: S1
+  text: mera data delete kar do
+  intents:
+  - META_WITHDRAW
+- id: in-withdraw-hilatn-02
+  language: hi-Latn
+  state: S1
+  text: consent wapas leta hoon
+  intents:
+  - META_WITHDRAW
+- id: in-withdraw-hilatn-03
+  language: hi-Latn
+  state: S1
+  text: meri details hata do
+  intents:
+  - META_WITHDRAW
+- id: in-withdraw-hilatn-04
+  language: hi-Latn
+  state: S1
+  text: mera sab data mita do please
+  intents:
+  - META_WITHDRAW
+- id: in-withdraw-hilatn-05
+  language: hi-Latn
+  state: S1
+  text: meri jaankari use mat karo
+  intents:
+  - META_WITHDRAW
+- id: in-withdraw-hilatn-06
+  language: hi-Latn
+  state: S1
+  text: consent withdraw karna hai
+  intents:
+  - META_WITHDRAW
+- id: in-withdraw-hilatn-07
+  language: hi-Latn
+  state: S1
+  text: jo bataya sab delete karo
+  intents:
+  - META_WITHDRAW
+- id: in-withdraw-hilatn-08
+  language: hi-Latn
+  state: S1
+  text: data mat rakho mera
+  intents:
+  - META_WITHDRAW
+- id: in-human-en-01
+  language: en
+  state: S2
+  text: I want to talk to a human
+  intents:
+  - META_HUMAN
+- id: in-human-en-02
+  language: en
+  state: S2
+  text: can I speak to an advisor?
+  intents:
+  - META_HUMAN
+- id: in-human-en-03
+  language: en
+  state: S2
+  text: connect me to a real person
+  intents:
+  - META_HUMAN
+- id: in-human-en-04
+  language: en
+  state: S2
+  text: please get an agent to call me
+  intents:
+  - META_HUMAN
+- id: in-human-en-05
+  language: en
+  state: S2
+  text: I'd like to speak with someone from your team
+  intents:
+  - META_HUMAN
+- id: in-human-en-06
+  language: en
+  state: S2
+  text: transfer me to customer care
+  intents:
+  - META_HUMAN
+- id: in-human-en-07
+  language: en
+  state: S2
+  text: is there an advisor I can talk to?
+  intents:
+  - META_HUMAN
+- id: in-human-en-08
+  language: en
+  state: S2
+  text: let me talk to a person instead
+  intents:
+  - META_HUMAN
+- id: in-human-hi-01
+  language: hi
+  state: S2
+  text: किसी इंसान से बात करनी है
+  intents:
+  - META_HUMAN
+- id: in-human-hi-02
+  language: hi
+  state: S2
+  text: एजेंट से बात करवाइए
+  intents:
+  - META_HUMAN
+- id: in-human-hi-03
+  language: hi
+  state: S2
+  text: सलाहकार से बात करना चाहता हूँ
+  intents:
+  - META_HUMAN
+- id: in-human-hi-04
+  language: hi
+  state: S2
+  text: मुझे किसी व्यक्ति से बात करनी है
+  intents:
+  - META_HUMAN
+- id: in-human-hi-05
+  language: hi
+  state: S2
+  text: कस्टमर केयर से जोड़िए
+  intents:
+  - META_HUMAN
+- id: in-human-hi-06
+  language: hi
+  state: S2
+  text: किसी से कॉल करवा दीजिए
+  intents:
+  - META_HUMAN
+- id: in-human-hi-07
+  language: hi
+  state: S2
+  text: मैं किसी असली आदमी से बात करूँगा
+  intents:
+  - META_HUMAN
+- id: in-human-hi-08
+  language: hi
+  state: S2
+  text: एडवाइज़र चाहिए
+  intents:
+  - META_HUMAN
+- id: in-human-hilatn-01
+  language: hi-Latn
+  state: S2
+  text: kisi insaan se baat karni hai
+  intents:
+  - META_HUMAN
+- id: in-human-hilatn-02
+  language: hi-Latn
+  state: S2
+  text: agent se baat karao
+  intents:
+  - META_HUMAN
+- id: in-human-hilatn-03
+  language: hi-Latn
+  state: S2
+  text: advisor se connect karo
+  intents:
+  - META_HUMAN
+- id: in-human-hilatn-04
+  language: hi-Latn
+  state: S2
+  text: koi call kar do mujhe
+  intents:
+  - META_HUMAN
+- id: in-human-hilatn-05
+  language: hi-Latn
+  state: S2
+  text: customer care se baat karni hai
+  intents:
+  - META_HUMAN
+- id: in-human-hilatn-06
+  language: hi-Latn
+  state: S2
+  text: kisi real person se baat karwa do
+  intents:
+  - META_HUMAN
+- id: in-human-hilatn-07
+  language: hi-Latn
+  state: S2
+  text: advisor chahiye mujhe
+  intents:
+  - META_HUMAN
+- id: in-human-hilatn-08
+  language: hi-Latn
+  state: S2
+  text: kisi bande se baat karao
+  intents:
+  - META_HUMAN
+- id: in-safety-en-01
+  language: en
+  state: S2
+  text: I want to end my life
+  intents:
+  - SAFETY
+- id: in-safety-en-02
+  language: en
+  state: S2
+  text: I don't see any reason to live anymore
+  intents:
+  - SAFETY
+- id: in-safety-en-03
+  language: en
+  state: S2
+  text: I'm thinking of killing myself
+  intents:
+  - SAFETY
+- id: in-safety-en-04
+  language: en
+  state: S2
+  text: sometimes I want to hurt myself
+  intents:
+  - SAFETY
+- id: in-safety-en-05
+  language: en
+  state: S2
+  text: I feel like I want to die
+  intents:
+  - SAFETY
+- id: in-safety-en-06
+  language: en
+  state: S2
+  text: my family would be better off with the insurance money if I were gone
+  intents:
+  - SAFETY
+- id: in-safety-en-07
+  language: en
+  state: S2
+  text: I have been planning to take my own life
+  intents:
+  - SAFETY
+- id: in-safety-en-08
+  language: en
+  state: S2
+  text: I can't go on, I want to end it all
+  intents:
+  - SAFETY
+- id: in-safety-hi-01
+  language: hi
+  state: S2
+  text: मैं आत्महत्या करना चाहता हूँ
+  intents:
+  - SAFETY
+- id: in-safety-hi-02
+  language: hi
+  state: S2
+  text: मैं मरना चाहता हूँ
+  intents:
+  - SAFETY
+- id: in-safety-hi-03
+  language: hi
+  state: S2
+  text: अब जीने का कोई मतलब नहीं
+  intents:
+  - SAFETY
+- id: in-safety-hi-04
+  language: hi
+  state: S2
+  text: खुद को नुकसान पहुँचाना चाहती हूँ
+  intents:
+  - SAFETY
+- id: in-safety-hi-05
+  language: hi
+  state: S2
+  text: मैं अपनी जान लेना चाहता हूँ
+  intents:
+  - SAFETY
+- id: in-safety-hi-06
+  language: hi
+  state: S2
+  text: मरना चाहती हूँ
+  intents:
+  - SAFETY
+- id: in-safety-hi-07
+  language: hi
+  state: S2
+  text: सब खत्म कर देना चाहता हूँ
+  intents:
+  - SAFETY
+- id: in-safety-hi-08
+  language: hi
+  state: S2
+  text: मेरे न रहने पर परिवार को बीमे का पैसा मिल जाएगा, यही ठीक है
+  intents:
+  - SAFETY
+- id: in-safety-hilatn-01
+  language: hi-Latn
+  state: S2
+  text: main marna chahta hoon
+  intents:
+  - SAFETY
+- id: in-safety-hilatn-02
+  language: hi-Latn
+  state: S2
+  text: khudkushi ka soch raha hoon
+  intents:
+  - SAFETY
+- id: in-safety-hilatn-03
+  language: hi-Latn
+  state: S2
+  text: jeene ka mann nahi karta
+  intents:
+  - SAFETY
+- id: in-safety-hilatn-04
+  language: hi-Latn
+  state: S2
+  text: apne aap ko hurt karna chahti hoon
+  intents:
+  - SAFETY
+- id: in-safety-hilatn-05
+  language: hi-Latn
+  state: S2
+  text: marna chahti hoon
+  intents:
+  - SAFETY
+- id: in-safety-hilatn-06
+  language: hi-Latn
+  state: S2
+  text: sab khatam karna chahta hoon
+  intents:
+  - SAFETY
+- id: in-safety-hilatn-07
+  language: hi-Latn
+  state: S2
+  text: suicide kar lunga
+  intents:
+  - SAFETY
+- id: in-safety-hilatn-08
+  language: hi-Latn
+  state: S2
+  text: apni jaan le lunga main
+  intents:
+  - SAFETY

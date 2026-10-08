@@ -44,3 +44,10 @@ def test_the_token_cap_is_a_boundary(token_count: int) -> None:
 )
 def test_language_id(text: str, language: str) -> None:
     assert normalise(text).language == language
+
+
+def test_red_team_homoglyphs_fold_to_latin() -> None:
+    """Step 23: Cyrillic і, ѕ and Greek ι slipped past the lexicon ("rіsk-free")."""
+    assert normalise("rіsk-free").text == "risk-free"  # Cyrillic і
+    assert normalise("guaranteed rеturnѕ").text == "guaranteed returns"
+    assert normalise("rιsk free").text == "risk free"  # Greek iota

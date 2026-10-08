@@ -1,0 +1,172 @@
+# I6 (TDD §3.2): asking whether the customer is talking to a person gets the templated AI
+# re-disclosure, in any state. A message matches when it contains a phrase as whole words, after
+# NFKC, case-folding and collapsing spaces. Owner: compliance; the red-team suite extends it
+# (Step 23: the red-team suite and goldens found "are you a real agent?" and "am I talking to a
+# bot or a real person?" missed; pb-2026.10.8 lists each question form with each word for a
+# person or a machine, in English, Hinglish and Hindi. DUMMY additions for compliance review).
+phrases:
+  - are you a human
+  - are you human
+  - are you a person
+  - are you a real person
+  - is this a real person
+  - is this a human
+  - am i talking to a human
+  - am i talking to a person
+  - am i talking to a real person
+  - am i speaking to a human
+  - am i speaking to a person
+  - am i chatting with a human
+  - are you a bot
+  - are you a robot
+  - is this a bot
+  - is this a robot
+  - are you an ai
+  - are you a real agent
+  - are you an agent
+  - are you a real human
+  - is this a real agent
+  - am i talking to an agent
+  - am i talking to a machine
+  - are you a machine
+  - is this a machine
+  - kya aap insaan ho
+  - kya aap insan ho
+  - kya tum insaan ho
+  - kya aap bot ho
+  - kya aap robot ho
+  - kya main insaan se baat kar raha hoon
+  - kya main insaan se baat kar rahi hoon
+  - kya aap real agent ho
+  - kya aap asli insaan ho
+  - kya aap asli agent ho
+  - kya aap machine ho
+  - क्या आप इंसान हैं
+  - क्या आप इंसान हो
+  - क्या आप रोबोट हैं
+  - क्या आप बॉट हैं
+  - क्या मैं इंसान से बात कर रहा हूँ
+  - क्या मैं इंसान से बात कर रही हूँ
+  - क्या आप असली एजेंट हैं
+  - क्या आप असली इंसान हैं
+  - क्या आप मशीन हैं
+  - are you a chatbot
+  - are you a live agent
+  - are you an advisor
+  - are you a real advisor
+  - is this human
+  - is this a real human
+  - is this a person
+  - is this a chatbot
+  - is this an ai
+  - is this an agent
+  - is this a live agent
+  - is this an advisor
+  - is this a real advisor
+  - am i talking to human
+  - am i talking to a real human
+  - am i talking to a bot
+  - am i talking to a robot
+  - am i talking to a chatbot
+  - am i talking to an ai
+  - am i talking to a real agent
+  - am i talking to a live agent
+  - am i talking to an advisor
+  - am i talking to a real advisor
+  - am i speaking to human
+  - am i speaking to a real human
+  - am i speaking to a real person
+  - am i speaking to a bot
+  - am i speaking to a robot
+  - am i speaking to a chatbot
+  - am i speaking to a machine
+  - am i speaking to an ai
+  - am i speaking to an agent
+  - am i speaking to a real agent
+  - am i speaking to a live agent
+  - am i speaking to an advisor
+  - am i speaking to a real advisor
+  - am i speaking with human
+  - am i speaking with a human
+  - am i speaking with a real human
+  - am i speaking with a person
+  - am i speaking with a real person
+  - am i speaking with a bot
+  - am i speaking with a robot
+  - am i speaking with a chatbot
+  - am i speaking with a machine
+  - am i speaking with an ai
+  - am i speaking with an agent
+  - am i speaking with a real agent
+  - am i speaking with a live agent
+  - am i speaking with an advisor
+  - am i speaking with a real advisor
+  - am i chatting with human
+  - am i chatting with a real human
+  - am i chatting with a person
+  - am i chatting with a real person
+  - am i chatting with a bot
+  - am i chatting with a robot
+  - am i chatting with a chatbot
+  - am i chatting with a machine
+  - am i chatting with an ai
+  - am i chatting with an agent
+  - am i chatting with a real agent
+  - am i chatting with a live agent
+  - am i chatting with an advisor
+  - am i chatting with a real advisor
+  - kya aap real person ho
+  - kya aap real insaan ho
+  - kya aap insaan hain
+  - kya aap insan hain
+  - kya aap bot hain
+  - kya aap robot hain
+  - kya aap machine hain
+  - kya aap real agent hain
+  - kya aap asli agent hain
+  - kya aap asli insaan hain
+  - kya aap real person hain
+  - kya aap real insaan hain
+  - aap insaan ho kya
+  - aap insan ho kya
+  - aap bot ho kya
+  - aap robot ho kya
+  - aap machine ho kya
+  - aap real agent ho kya
+  - aap asli agent ho kya
+  - aap asli insaan ho kya
+  - aap real person ho kya
+  - aap real insaan ho kya
+  - kya tum insan ho
+  - kya tum bot ho
+  - kya tum robot ho
+  - kya tum machine ho
+  - kya tum real agent ho
+  - kya tum asli agent ho
+  - kya tum asli insaan ho
+  - kya tum real person ho
+  - kya tum real insaan ho
+  - kya main kisi insaan se baat kar raha hoon
+  - kya main bot se baat kar raha hoon
+  - kya main machine se baat kar raha hoon
+  - kya main robot se baat kar raha hoon
+  - kya main kisi insaan se baat kar rahi hoon
+  - kya main bot se baat kar rahi hoon
+  - kya main machine se baat kar rahi hoon
+  - kya main robot se baat kar rahi hoon
+  - kya ye bot hai
+  - ye bot hai kya
+  - kya ye insaan hai
+  - क्या आप रोबोट हो
+  - क्या आप बॉट हो
+  - क्या आप मशीन हो
+  - क्या आप असली एजेंट हो
+  - क्या आप असली इंसान हो
+  - क्या मैं किसी इंसान से बात कर रहा हूँ
+  - क्या मैं मशीन से बात कर रहा हूँ
+  - क्या मैं बॉट से बात कर रहा हूँ
+  - क्या मैं किसी इंसान से बात कर रही हूँ
+  - क्या मैं मशीन से बात कर रही हूँ
+  - क्या मैं बॉट से बात कर रही हूँ
+  - क्या यह बॉट है
+  - क्या यह इंसान है

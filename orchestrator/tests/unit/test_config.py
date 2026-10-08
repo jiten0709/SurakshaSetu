@@ -163,7 +163,7 @@ def test_the_tei_timeout_scale_cannot_shrink_a_budget(monkeypatch: pytest.Monkey
 
 def test_the_output_rail_settings_have_safe_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     settings = load_settings()
-    assert (settings.output_lexicon, settings.verify_sample_rate) == ("2026.09.1", 0.1)
+    assert (settings.output_lexicon, settings.verify_sample_rate) == ("2026.10.1", 0.1)
 
     monkeypatch.setenv("SS_OUTPUT_LEXICON", "2026.10.2")
     monkeypatch.setenv("SS_VERIFY_SAMPLE_RATE", "1")
@@ -202,7 +202,7 @@ def test_pilot_requires_the_internal_token_and_role_keys(monkeypatch: pytest.Mon
 
 def test_the_runtime_settings_have_safe_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     settings = load_settings()
-    assert settings.prompt_bundle == "pb-2026.10.6"
+    assert settings.prompt_bundle == "pb-2026.10.8"
     assert (settings.session_ttl_days, settings.session_lock_ttl_s) == (30, 30)
     assert settings.idempotency_ttl_s == 86_400
     assert settings.rate_limits == {60: 20, 3600: 200}

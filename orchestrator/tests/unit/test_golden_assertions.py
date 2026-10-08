@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml
 from pydantic import ValidationError
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "golden"))
@@ -18,14 +19,17 @@ from harness import (  # noqa: E402
     Sent,
     Transcript,
     Turn,
+    amounts,
     check,
     load_conversations,
+    load_redteam,
+    observe,
     sha256_text,
 )
 
 from surakshasetu.crypto.jcs import sha256_hex  # noqa: E402
 
-PINS = {"prompt_bundle": "pb-2026.10.6", "rules": "2026.09.1"}
+PINS = {"prompt_bundle": "pb-2026.10.8", "rules": "2026.09.1"}
 
 
 def body(text: str = "Hi", state: str = "S0", turn_id: str = "t1", **message: Any) -> bytes:
@@ -84,7 +88,7 @@ def transcript(*turns: dict[str, Any], **update: Any) -> Transcript:
     raw = body()
     t = Transcript(
         conversation=conversation,
-        active_bundle="pb-2026.10.6",
+        active_bundle="pb-2026.10.8",
         consent_valid_from_start=False,
         initial_pins=PINS,
         sent=[Sent(0, 200, raw, customer_text="hello")],
@@ -364,7 +368,7 @@ def test_raw_pii_is_in_no_header_redacted_text_log_or_briefing() -> None:
 
 
 def test_released_numbers_come_from_engine_values_or_cited_evidence() -> None:
-    parts = [{"id": "why_it_fits", "text": "cover of 5,00,000 over 30 years"}]
+    parts = [{"id": "why_it_fits", "text": "cover of 5,00,000 over 30 years [Source: PW]"}]
     raw = body(parts=parts)
     t = transcript(sent=[Sent(0, 200, raw)], events=events(raw))
     assert any(f.startswith("numbers") for f in check(t))
@@ -400,7 +404,12 @@ def test_an_engine_amount_may_read_as_a_filled_placeholder_and_s3_template_parts
         {"id": "sources", "text": "Policy Wording, version v2, effective 1 Sep 2026"},
     ]
     raw = body(parts=fixed)
-    assert check(transcript(sent=[Sent(0, 200, raw)], events=events(raw))) == []
+    t = transcript(sent=[Sent(0, 200, raw)], events=events(raw))
+    t.events.insert(
+        1, Event(9, "ENGINE_DECISION", {"service": "ranking"}, PINS, {"sa": "37500000"})
+    )
+    t.consent_valid_from_start, t.chain_checked = True, 4
+    assert check(t) == []  # Step 23: the card's amount is an engine value
 
 
 def handed_off(*, ack: str | None = "s" * 64, valid_until: str = "2099-01-01") -> Transcript:
@@ -676,3 +685,165 @@ def test_the_step_22_suites_cover_side_queries_objections_timers_and_every_matri
     root = Path(__file__).resolve().parents[3] / "content" / "golden" / "conversations" / "matrix"
     cells = {p.stem for p in root.glob("*.yaml")}
     assert cells == {f"{r}__{s}" for r in MATRIX_ROWS for s in ("s0", "s1", "s2", "s3")}
+
+
+# --- Step 23: the evaluation's checks and records -----------------------------------------------
+def s3_render(card: str = "Cover ₹3,75,00,000, premium ₹42,000 a year", **message: Any) -> bytes:
+    parts = [
+        {"id": "option_card:999N001V02", "text": card},
+        {"id": "disclosures:999N001V02", "text": "Disclosures\nBody one.\nBody two."},
+    ]
+    shown = [{"uin": "999N001V02", "set_sha256": "ab" * 32}]
+    return body(state="S3", parts=parts, disclosures=shown, **message)
+
+
+def rendered(raw: bytes, *, engine: dict[str, Any] | None = None) -> Transcript:
+    t = transcript(
+        sent=[Sent(0, 200, raw)],
+        events=events(raw),
+        registry={"999N001V02": "ab" * 32},
+        registry_items={("999N001V02", "en-IN"): ["Body one.", "Body two."]},
+    )
+    payload = engine if engine is not None else {"sa": "37500000", "premium": "42000"}
+    move = t.events[1]  # already in the released state: no S3 entry for I2 to check
+    t.events[1] = Event(move.seq, move.event_type, move.header | {"from_state": "S3"}, PINS)
+    t.events.insert(1, Event(9, "ENGINE_DECISION", {"service": "ranking"}, PINS, payload))
+    t.consent_valid_from_start, t.chain_checked = True, 4
+    return t
+
+
+def test_card_amounts_must_be_engine_values() -> None:
+    assert check(rendered(s3_render())) == []
+    failures = check(rendered(s3_render(), engine={"sa": "37500000", "premium": "41000"}))
+    assert failures == [
+        "premium: turn 0 part option_card:999N001V02 shows ₹42,000, not an engine value"
+    ]
+
+
+def test_card_amounts_are_not_checked_once_the_key_is_destroyed() -> None:
+    t = rendered(s3_render(), engine={"premium": "1"})
+    t.events[1] = Event(9, "ENGINE_DECISION", {"service": "ranking"}, PINS, None)
+    assert not any(f.startswith("premium") for f in check(t))
+    assert observe(t)["premiums"]["checked"] is False
+
+
+def test_an_option_shown_without_its_disclosure_set_fails_completeness() -> None:
+    raw = body(
+        state="S3",
+        parts=[{"id": "option_card:999N001V02", "text": "Cover ₹3,75,00,000"}],
+        disclosures=[],
+    )
+    assert any("shown without its disclosure set" in f for f in check(rendered(raw)))
+    t = rendered(s3_render())
+    t.registry_items = {("999N001V02", "en-IN"): ["Body one.", "Body three."]}
+    assert any("are not the registry's bodies" in f for f in check(t))
+    assert observe(t)["s3"] == {"renders": 1, "complete": 0}
+    assert observe(rendered(s3_render()))["s3"] == {"renders": 1, "complete": 1}
+
+
+def test_a_factual_sentence_without_a_citation_fails_coverage() -> None:
+    answer = "The free-look period lets you return the policy. It is explained here [Source: R §3]."
+    parts = [{"id": "generated:answer", "text": answer}]
+    raw = body(state="S1", parts=parts)
+    t = rendered(raw)
+    t.evidence = {"reg:x:3:abc": "DUMMY. R §3"}
+    assert check(t) == ["citation: turn 0 side_query states a fact without a citation"]
+    cited = "The free-look period lets you return the policy [Source: R §3]."
+    t2 = rendered(body(state="S1", parts=[{"id": "generated:answer", "text": cited}]))
+    t2.evidence = t.evidence
+    assert check(t2) == []
+    assert [c["cited"] for c in observe(t)["citations"]] == [False]
+
+
+def test_the_deterministic_card_is_not_model_text() -> None:
+    card = "Here is how this plan meets your premium needs."
+    t = rendered(body(state="S3", parts=[{"id": "why_it_fits", "text": card}]))
+    assert any(f.startswith("citation") for f in check(t))
+    t.cards = {card}
+    assert not any(f.startswith("citation") for f in check(t))
+
+
+def test_input_scripts_belong_to_text_turns() -> None:
+    with pytest.raises(ValidationError, match="text turns only"):
+        Turn.model_validate({"action": {"type": "START"}, "script": {"nlu-extract": [{}]}})
+    Turn.model_validate({"action": {"type": "START"}, "script": {"gen-recommend": ["x"]}})
+
+
+def test_fault_turns_are_not_latency_samples() -> None:
+    assert Turn.model_validate({"text": "x", "domain_down": ["getPincode"]}).faulted
+    assert Turn.model_validate({"text": "x", "script": {"gen-converse": [{"status": 503}]}}).faulted
+    assert not Turn.model_validate({"text": "x", "script": {"gen-converse": ["ok"]}}).faulted
+
+
+def test_a_record_holds_counts_ids_and_timings_never_text() -> None:
+    raw = body("I am 34 and my PAN is ABCDE1234F", state="S1", turn_id="t9")
+    t = transcript(sent=[Sent(0, 200, raw, customer_text="I am 34", latency_ms=812.5)])
+    t.events = events(raw)
+    t.events[0] = Event(1, "TURN_INPUT", {"turn_id": "t9", "language": "en"}, PINS, None, "S0")
+    record = observe(t)
+    assert record["turns"] == [
+        {
+            "turn": 0,
+            "own": True,
+            "state": "S1",
+            "from_state": "S0",
+            "language": "en",
+            "bundle": "pb-2026.10.8",
+            "latency_ms": 812.5,
+            "sample": True,
+            "side_query": False,
+            "generated": False,
+        }
+    ]
+    assert record["audit"] == {"chain_ok": True, "delivered": 1, "committed_ok": 1}
+    dumped = json.dumps(record)
+    assert "34" not in dumped.replace("812.5", "") and "ABCDE" not in dumped
+
+
+def test_red_team_files_load_strictly(tmp_path: Path) -> None:
+    attack = {"category": "fake_system", "language": "en", "stopper": "input"}
+    convo = {"id": "rt-x", "description": "d", "turns": [{"text": "hi", "attack": attack}]}
+    (tmp_path / "fake.yaml").write_text(
+        yaml.safe_dump({"description": "d", "is_dummy": True, "conversations": [convo]})
+    )
+    (loaded,) = load_redteam(tmp_path, tmp_path)
+    assert (loaded.suite, loaded.turns[0].attack.category) == ("fake", "fake_system")  # type: ignore[union-attr]
+    plain = {"id": "rt-y", "description": "d", "turns": [{"text": "hi"}]}
+    (tmp_path / "fake.yaml").write_text(
+        yaml.safe_dump({"description": "d", "is_dummy": True, "conversations": [plain]})
+    )
+    with pytest.raises(ValueError, match="without an attack turn"):
+        load_redteam(tmp_path, tmp_path)
+    (tmp_path / "fake.yaml").write_text("conversations: [")
+    with pytest.raises(ValueError, match="fake.yaml"):
+        load_redteam(tmp_path, tmp_path)
+    with pytest.raises(FileNotFoundError):
+        load_redteam(tmp_path / "missing", tmp_path)
+
+
+def test_the_catalogs_cover_range_is_a_source_for_the_comparison() -> None:
+    """The comparison shows each plan's cover range from the catalog, not from an engine."""
+    parts = [{"id": "comparison", "text": "| Cover | ₹25,00,000 to ₹10,00,00,000 |"}]
+    t = rendered(body(state="S3", parts=parts))
+    assert len([f for f in check(t) if f.startswith("premium")]) == 2
+    t.catalog_amounts = amounts(["2500000", "100000000"])
+    assert not any(f.startswith("premium") for f in check(t))
+
+
+def test_a_blocked_release_is_not_held_to_the_side_query_resume() -> None:
+    """Step 23: rail 8's block replaces the whole reply with the fixed fallback (no parts)."""
+    raw = body(state="S2", parts=[])
+    t = transcript(sent=[Sent(0, 200, raw)], events=events(raw))
+    release = t.events[2]
+    t.events[2] = Event(release.seq, "RESPONSE_RELEASED", release.header | {"faq": "answered"},
+                        PINS, release.payload)  # fmt: skip
+    t.events[1] = Event(2, "STATE_TRANSITION", t.events[1].header | {"from_state": "S2"}, PINS)
+    assert not any(f.startswith("side query") for f in check(t))
+
+
+def test_a_broken_conversation_file_fails_loudly_naming_itself(tmp_path: Path) -> None:
+    suite = tmp_path / "suite"
+    suite.mkdir()
+    (suite / "bad.yaml").write_text("id: x-bad\ndescription: a: b\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="bad.yaml"):
+        load_conversations(tmp_path, tmp_path)

@@ -1,0 +1,33 @@
+# Prompt bundle manifest (TDD §3.4, §4.5). The loader refuses the bundle unless the files below are
+# exactly the files present, each with this SHA-256 of its bytes. Released content is immutable:
+# change anything and it becomes a new version. DUMMY content: compliance replaces it before pilot,
+# and the loader refuses a DUMMY bundle in pilot or prod.
+version: pb-2026.10.8
+is_dummy: true
+insurer: DUMMY Insurer
+# Two-person sign-off (TDD §4.5). Staff identities go only into CONFIG_RELEASE's encrypted payload.
+approved_by:
+  - {role: compliance, by: DUMMY-compliance, at: 2026-10-06}
+  - {role: product_owner, by: DUMMY-product-owner, at: 2026-10-06}
+# TDD §1.5's envelope budgets, in tokens, and the rolling summary's cadence in turns.
+budgets: {constitution: 1500, state: 500, facts: 600, summary: 400, recent_turns: 1500, evidence: 3000, user_turn: 500}
+summary_every_turns: 6
+files:
+  l0/constitution.txt: c549ee1163e37a46c9051bca3dd04931d66b043945082563612473700412b465
+  l1/S1.txt: 18b8835cfc7039e88ff92d8821b6fa72008f5f5167b19415db4c0f721117cdc2
+  l1/S2.txt: 422bd6707a4bc8b212b7d48f1cd9a801b09a6706492ace0d9124a372b1628d5f
+  l1/S3.txt: a99974b9468e934f7d99b6f5424333e4761605ffc4389e691cab82febcfff34d
+  l1/side-query.txt: 12f1c66ecd93f652df6119d23926b09c66b6d9143b2cf5cac93bf52ed8e81b95
+  l1/summarise.txt: 6507a0fae009eed560f3efdfe32b8f8257b45813bd07ed52bc2a1f07aa7c1617
+  lexicons/consent_affirmation.yaml: d6d56f71a5cead26b4b18c139efa88d62df70f1787d33b0fa99a500b098dcb93
+  lexicons/identity_question.yaml: 5e88586f8fe1dfb0c17d942e2f874850d84b30d87e4cdf91b7ffdcf4c147d800
+  lexicons/needs.yaml: 42e78a0cca02123d3ad11a4e6fd320ca76ecf67b57d1de1dd2532dea90251bf7
+  lexicons/s3.yaml: 38607f090f773860f739494ceca2c7eb24c5534636fe3090801ae232a1051501
+  lexicons/screening.yaml: 279cbc4961ff80cb08ac21b36a862793137bcf7b31b9f80a3f4db10c2475594a
+  lexicons/side_query.yaml: 5953db1447e4176211f2300d5d18a86fe7ef017e2b8bd3407324f4075eebf93b
+  templates/en-IN/recommendation.yaml: ef8b58d59a36dec792b061914895083b972733b3b3b74ece2670431e27aca29c
+  templates/en-IN/scripts.yaml: 31f9e29a7935e3abbcdb4cf2bf5142d6cedb8d53252c3b3c6aa84a2986602681
+  templates/en-IN/slots.yaml: a821f6e436d1ecd480360e8874988133988a79fef4aca5cb4aa2bcf49d49ec32
+  templates/hi-IN/recommendation.yaml: 41ae272df201fc0384c5661577202429e9c8860bc9948486422a21290c9ca1a1
+  templates/hi-IN/scripts.yaml: c0617e34fc4a5b4272fb083e477427dac40a37066ccd099c00403030a0dd68a4
+  templates/hi-IN/slots.yaml: ca4eefb363fb8df177eb4245c34874febcb75b0b87b684f3cc8fbca50cd76b20

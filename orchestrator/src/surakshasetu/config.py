@@ -102,7 +102,7 @@ class Settings(BaseSettings):
     # Output rails (Step 14). The lexicon pack under content/lexicon/ (picked at deploy time, not a
     # session pin; each lexicon verdict records it), and the share of gen-converse (S1-S2) turns
     # whose cited sentences go to verify-claims. gen-recommend (S3, side-queries) always does.
-    output_lexicon: str = Field(default="2026.09.1", pattern=r"^\d{4}\.\d{2}\.\d+$")
+    output_lexicon: str = Field(default="2026.10.1", pattern=r"^\d{4}\.\d{2}\.\d+$")
     verify_sample_rate: float = Field(default=0.1, ge=0, le=1)
     # Transition rows (Step 15; surakshasetu.fsm.rows.Thresholds): the S2 -> S3 sufficiency gate
     # (TDD §3.7), the S3 -> S2 re-discovery loops before Human Escalation (TDD §3.8), and the
@@ -114,7 +114,7 @@ class Settings(BaseSettings):
     # session TTL (TDD §4.4, D7 open); the single-writer lock and idempotency TTLs (TDD §7.2); turn
     # rate limits per subject as {window seconds: max turns}; the side-query stack depth (TDD §2.6);
     # injection hits before HE_INJECTION (TDD §3.9); the app_rw pool size per process.
-    prompt_bundle: str = Field(default="pb-2026.10.6", pattern=r"^pb-\d{4}\.\d{2}\.\d+$")
+    prompt_bundle: str = Field(default="pb-2026.10.8", pattern=r"^pb-\d{4}\.\d{2}\.\d+$")
     session_ttl_days: int = Field(default=30, ge=1)
     session_lock_ttl_s: int = Field(default=30, ge=1)
     idempotency_ttl_s: int = Field(default=86_400, ge=1)
@@ -136,6 +136,10 @@ class Settings(BaseSettings):
         default_factory=lambda: dict.fromkeys(("S0", "S1", "QUOTE_ONLY", "S2", "S3"), 600)
     )
     timer_interval_s: int = Field(default=60, ge=1)
+    # Evaluation (Step 23): each chat route's primary model, filled in when D2 provisions routes. A
+    # call served by another model is a fallback (TDD §5.2 fallback <= 2%); empty, the live gate
+    # reports the rate as unmeasured and fails. Eval only, never read by a turn.
+    eval_primary_models: dict[str, str] = Field(default_factory=dict)
     # Cross-cutting handlers (Step 17). Erasure hard-deletes live conv and checkpoint rows as
     # erasure_rw, never app_rw. A subject key is destroyed when the longest applicable retention
     # ends (TDD §4.4): the audit hot store's proposed 13 months, as days that always cover 13

@@ -1,0 +1,216 @@
+# Labelled slot utterances (TDD §5.2 slot extraction; Step 23): DUMMY but realistic, en / hi / hi-Latn.
+# gold is the value a careful human records, in the stored shape (ages int; S2 money a digit string,
+# "0" for none, null when declined; Quote-Only cover an int; tobacco a bool, null declined;
+# dependants [{relation, age}]; liabilities [{kind, outstanding_inr, years_left}]); {} when the turn
+# gives no usable value. Never relabel to pass a metric: disputes go to reports/label-disputes.md.
+description: Loans by kind, outstanding amount and years left; no loans is []; a loan without its amount
+  or term is not usable.
+is_dummy: true
+items:
+- id: sl-loan-en-001
+  language: en
+  state: S2
+  pending_slot: liabilities
+  text: home loan of 35 lakh, 18 years left
+  gold:
+    liabilities:
+    - kind: home
+      outstanding_inr: '3500000'
+      years_left: 18
+- id: sl-loan-en-002
+  language: en
+  state: S2
+  pending_slot: liabilities
+  text: car loan 6 lakh, 4 years
+  gold:
+    liabilities:
+    - kind: vehicle
+      outstanding_inr: '600000'
+      years_left: 4
+- id: sl-loan-en-003
+  language: en
+  state: S2
+  pending_slot: liabilities
+  text: no loans
+  gold:
+    liabilities: []
+- id: sl-loan-en-004
+  language: en
+  state: S2
+  pending_slot: liabilities
+  text: education loan of 8 lakh with 5 years left
+  gold:
+    liabilities:
+    - kind: education
+      outstanding_inr: '800000'
+      years_left: 5
+- id: sl-loan-en-005
+  language: en
+  state: S2
+  pending_slot: liabilities
+  text: personal loan 2 lakh, 2 years to go
+  gold:
+    liabilities:
+    - kind: personal
+      outstanding_inr: '200000'
+      years_left: 2
+- id: sl-loan-en-006
+  language: en
+  state: S2
+  pending_slot: liabilities
+  text: a business loan of 20 lakh for 7 years
+  gold:
+    liabilities:
+    - kind: business
+      outstanding_inr: '2000000'
+      years_left: 7
+- id: sl-loan-en-007
+  language: en
+  state: S2
+  pending_slot: liabilities
+  text: home loan 50 lakh for 20 years and a car loan 5 lakh for 3 years
+  gold:
+    liabilities:
+    - kind: home
+      outstanding_inr: '5000000'
+      years_left: 20
+    - kind: vehicle
+      outstanding_inr: '500000'
+      years_left: 3
+- id: sl-loan-en-008
+  language: en
+  state: S2
+  pending_slot: liabilities
+  text: I have a home loan
+  gold: {}
+- id: sl-loan-en-009
+  language: en
+  state: S2
+  pending_slot: liabilities
+  text: none
+  gold:
+    liabilities: []
+- id: sl-loan-hi-010
+  language: hi
+  state: S2
+  pending_slot: liabilities
+  text: होम लोन 40 लाख, 15 साल बाकी
+  gold:
+    liabilities:
+    - kind: home
+      outstanding_inr: '4000000'
+      years_left: 15
+- id: sl-loan-hi-011
+  language: hi
+  state: S2
+  pending_slot: liabilities
+  text: कोई लोन नहीं
+  gold:
+    liabilities: []
+- id: sl-loan-hi-012
+  language: hi
+  state: S2
+  pending_slot: liabilities
+  text: कार लोन 4 लाख, 3 साल
+  gold:
+    liabilities:
+    - kind: vehicle
+      outstanding_inr: '400000'
+      years_left: 3
+- id: sl-loan-hi-013
+  language: hi
+  state: S2
+  pending_slot: liabilities
+  text: पर्सनल लोन 1 लाख, 1 साल
+  gold:
+    liabilities:
+    - kind: personal
+      outstanding_inr: '100000'
+      years_left: 1
+- id: sl-loan-hi-014
+  language: hi
+  state: S2
+  pending_slot: liabilities
+  text: शिक्षा ऋण 6 लाख, 6 साल
+  gold:
+    liabilities:
+    - kind: education
+      outstanding_inr: '600000'
+      years_left: 6
+- id: sl-loan-hi-015
+  language: hi
+  state: S2
+  pending_slot: liabilities
+  text: घर का लोन 25 लाख, 12 साल बाकी हैं
+  gold:
+    liabilities:
+    - kind: home
+      outstanding_inr: '2500000'
+      years_left: 12
+- id: sl-loan-hilatn-016
+  language: hi-Latn
+  state: S2
+  pending_slot: liabilities
+  text: home loan 30 lakh hai, 20 saal baaki
+  gold:
+    liabilities:
+    - kind: home
+      outstanding_inr: '3000000'
+      years_left: 20
+- id: sl-loan-hilatn-017
+  language: hi-Latn
+  state: S2
+  pending_slot: liabilities
+  text: koi loan nahi
+  gold:
+    liabilities: []
+- id: sl-loan-hilatn-018
+  language: hi-Latn
+  state: S2
+  pending_slot: liabilities
+  text: car loan 7 lakh 5 saal
+  gold:
+    liabilities:
+    - kind: vehicle
+      outstanding_inr: '700000'
+      years_left: 5
+- id: sl-loan-hilatn-019
+  language: hi-Latn
+  state: S2
+  pending_slot: liabilities
+  text: bike loan 80 hazaar, 2 saal
+  gold:
+    liabilities:
+    - kind: vehicle
+      outstanding_inr: '80000'
+      years_left: 2
+- id: sl-loan-hilatn-020
+  language: hi-Latn
+  state: S2
+  pending_slot: liabilities
+  text: personal loan 3 lakh, 3 saal
+  gold:
+    liabilities:
+    - kind: personal
+      outstanding_inr: '300000'
+      years_left: 3
+- id: sl-loan-hilatn-021
+  language: hi-Latn
+  state: S2
+  pending_slot: liabilities
+  text: business loan 15 lakh, 5 saal
+  gold:
+    liabilities:
+    - kind: business
+      outstanding_inr: '1500000'
+      years_left: 5
+- id: sl-loan-hilatn-022
+  language: hi-Latn
+  state: S2
+  pending_slot: liabilities
+  text: ghar ka loan 45 lakh, 18 saal
+  gold:
+    liabilities:
+    - kind: home
+      outstanding_inr: '4500000'
+      years_left: 18

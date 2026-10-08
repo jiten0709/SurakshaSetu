@@ -23,7 +23,7 @@ from surakshasetu.config import Settings
 from surakshasetu.rails.normalise import normalise
 from surakshasetu.rails.output import load_pack
 
-VERSION = "pb-2026.10.6"
+VERSION = "pb-2026.10.8"
 DMN = PROMPT_BUNDLES.parents[1] / "domain-services" / "src" / "main" / "resources" / "dmn"
 
 # TDD §3.4's L0, copied here byte for byte: tests never read docs/.
