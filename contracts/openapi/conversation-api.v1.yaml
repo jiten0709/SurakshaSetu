@@ -1,0 +1,846 @@
+openapi: 3.1.0
+info:
+  title: SurakshaSetu Conversation API
+  version: 1.0.0
+  description: |
+    The public contract between a chat client (web or app) and the conversation tier. It is
+    hand-written: the routes return the released turn as RFC 8785 (JCS) bytes, which FastAPI cannot
+    type, so this file is the source of truth for clients. `orchestrator/tests/contract_support.py`
+    validates the real API against it (the golden conversations, `make e2e-scripted` and
+    `make eval`, and the unit tests), and `tests/unit/test_conversation_contract.py` fails when the
+    code grows an action type, a part namespace, an SSE event or a state this file lacks.
+    It describes what the API sends today; fields a client might want are change requests.
+
+    ## Conventions
+    - **Ids** are UUIDs (UUIDv7). **Money** is a decimal string of rupees, never a JSON number.
+    - **Auth**: `POST /v1/sessions` returns a `session_token`; every other operation needs it as
+      `Authorization: Bearer <session_token>`. An unknown session, a wrong token and an erased
+      session are the same 401: the caller learns nothing.
+    - **Turns**: send exactly one of `text` and `action` per turn. The chat opens with the
+      `START` action (the greeting is the first turn); any first message also gets the greeting.
+      One turn runs at a time per session (409 `SESSION_BUSY`), and turns are rate-limited per
+      customer (429 `RATE_LIMITED`). The request body is at most 16 KiB (413).
+    - **Idempotency**: every turn carries an `Idempotency-Key` (a UUID). A retry with the same key
+      returns the byte-identical body of the turn already released, and runs nothing again. A
+      reused key with a different body also replays the first response.
+    - **The released turn** is the whole message, released after its audit record commits, never
+      token-streamed. `parts` split `text` into its sources: approved templates, registry
+      disclosures, the consent notice, the privacy FAQ, generated sentences and the
+      recommendation's composed sections. `quick_replies` are the structured choices a client
+      offers; sending one is sending its `action`.
+    - **Actions**: the types below are every action the API reads or offers. The API accepts any
+      `^[A-Z][A-Z0-9_]{1,63}$` type and an omitted `payload` (as `{}`); a type the current state
+      does not take is ignored and the open prompt is put again. Clients send only the types here,
+      with their payload.
+    - **Errors** are `application/problem+json` with `type` (`about:blank`), `title` (the HTTP
+      reason phrase), `status` and a machine-readable `code`. A problem never echoes the request:
+      a turn body is customer text.
+    - **Correlation**: an optional `X-Request-ID` request header (`[A-Za-z0-9._-]{1,64}`) is echoed
+      on the response; anything else is replaced by a fresh id.
+
+    ## Problem codes
+    | Status | code | When |
+    | --- | --- | --- |
+    | 400 | `BAD_REQUEST` | A malformed or invalid request: the body, a session id that is not a UUID, or a missing or non-UUID `Idempotency-Key` on a turn. |
+    | 401 | `UNAUTHORIZED` | No session token, a wrong one, an unknown session, or a session already erased. |
+    | 404 | `NOT_FOUND` | No such route. |
+    | 405 | `METHOD_NOT_ALLOWED` | The route exists, the method does not. |
+    | 409 | `SESSION_BUSY` | Another turn of this session is running. Retry with the same key. |
+    | 410 | `SESSION_EXPIRED` | The session passed its time to live. |
+    | 413 | `REQUEST_ENTITY_TOO_LARGE` | The request body is over 16 KiB. |
+    | 429 | `RATE_LIMITED` | Too many turns from this customer in a window. |
+    | 500 | `INTERNAL_SERVER_ERROR` | A defect; nothing was released. |
+    | 502 | `BAD_GATEWAY` | Session creation only: the domain tier refused a reference read. |
+    | 503 | `SERVICE_UNAVAILABLE` | A dependency is down before the turn committed; nothing was released, and a retry with the same key is safe. |
+
+    ## Events
+    `GET /v1/sessions/{session_id}/events` is a server-sent event stream: `event: <name>` and
+    `data: <JSON>` per event. `turn.status` reports a running turn's stage; `turn.released`
+    carries the whole released turn (the same body the turn's response returns), after its commit.
+    Nothing is replayed: a client that connects late reads the turn's HTTP response. The event
+    names and their data schemas are in the stream's `x-events`.
+servers:
+  - url: http://127.0.0.1:8000
+security:
+  - sessionToken: []
+tags:
+  - name: sessions
+
+paths:
+  /v1/sessions:
+    post:
+      tags: [sessions]
+      operationId: createSession
+      summary: Open a session. Its version pins are fixed for its life.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CreateSessionRequest'}
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CreatedSession'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '413': {$ref: '#/components/responses/TooLarge'}
+        '500': {$ref: '#/components/responses/InternalError'}
+        '502': {$ref: '#/components/responses/BadGateway'}
+        '503': {$ref: '#/components/responses/Unavailable'}
+
+  /v1/sessions/{session_id}:
+    delete:
+      tags: [sessions]
+      operationId: deleteSession
+      summary: Erase the session (consent withdrawal, I5).
+      description: >-
+        The same turn as the `ERASE` action: the consent is withdrawn and the session's data
+        erased. The body is the released confirmation. Afterwards the session is gone, so a
+        repeat is 401. The Idempotency-Key is optional here.
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema: {type: string, format: uuid}
+      responses:
+        '200': {$ref: '#/components/responses/Released'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '409': {$ref: '#/components/responses/SessionBusy'}
+        '410': {$ref: '#/components/responses/SessionExpired'}
+        '413': {$ref: '#/components/responses/TooLarge'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+        '500': {$ref: '#/components/responses/InternalError'}
+        '503': {$ref: '#/components/responses/Unavailable'}
+
+  /v1/sessions/{session_id}/turns:
+    post:
+      tags: [sessions]
+      operationId: postTurn
+      summary: Send one customer turn (text or a structured action); returns the released turn.
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/TurnRequest'}
+      responses:
+        '200': {$ref: '#/components/responses/Released'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '409': {$ref: '#/components/responses/SessionBusy'}
+        '410': {$ref: '#/components/responses/SessionExpired'}
+        '413': {$ref: '#/components/responses/TooLarge'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+        '500': {$ref: '#/components/responses/InternalError'}
+        '503': {$ref: '#/components/responses/Unavailable'}
+
+  /v1/sessions/{session_id}/events:
+    get:
+      tags: [sessions]
+      operationId: streamEvents
+      summary: The session's server-sent events while turns run.
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+      responses:
+        '200':
+          description: >-
+            A text/event-stream that stays open. Each event is `event: <name>` and `data: <JSON>`;
+            `x-events` maps each name to its data schema.
+          content:
+            text/event-stream:
+              schema: {type: string}
+              x-events:
+                turn.status: {$ref: '#/components/schemas/TurnStatusEvent'}
+                turn.released: {$ref: '#/components/schemas/TurnResponse'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '410': {$ref: '#/components/responses/SessionExpired'}
+        '500': {$ref: '#/components/responses/InternalError'}
+        '503': {$ref: '#/components/responses/Unavailable'}
+
+components:
+  securitySchemes:
+    sessionToken:
+      type: http
+      scheme: bearer
+      description: The `session_token` returned by `POST /v1/sessions`.
+
+  parameters:
+    SessionId:
+      name: session_id
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: A UUID per turn. A retry with the same key replays the released turn.
+      schema: {type: string, format: uuid}
+
+  responses:
+    Released:
+      description: The released turn, as RFC 8785 (JCS) bytes.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/TurnResponse'}
+    BadRequest:
+      description: A malformed or invalid request. Nothing of the request is echoed.
+      content:
+        application/problem+json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/Problem'
+              - properties: {status: {const: 400}, code: {const: BAD_REQUEST}}
+    Unauthorized:
+      description: No token, a wrong one, an unknown or an erased session.
+      content:
+        application/problem+json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/Problem'
+              - properties: {status: {const: 401}, code: {const: UNAUTHORIZED}}
+    SessionBusy:
+      description: Another turn of this session is running.
+      content:
+        application/problem+json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/Problem'
+              - properties: {status: {const: 409}, code: {const: SESSION_BUSY}}
+    SessionExpired:
+      description: The session passed its time to live.
+      content:
+        application/problem+json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/Problem'
+              - properties: {status: {const: 410}, code: {const: SESSION_EXPIRED}}
+    TooLarge:
+      description: The request body is over 16 KiB.
+      content:
+        application/problem+json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/Problem'
+              - properties: {status: {const: 413}, code: {const: REQUEST_ENTITY_TOO_LARGE}}
+    RateLimited:
+      description: Too many turns from this customer in a window.
+      content:
+        application/problem+json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/Problem'
+              - properties: {status: {const: 429}, code: {const: RATE_LIMITED}}
+    InternalError:
+      description: A defect. Nothing was released.
+      content:
+        application/problem+json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/Problem'
+              - properties: {status: {const: 500}, code: {const: INTERNAL_SERVER_ERROR}}
+    BadGateway:
+      description: The domain tier refused a reference read.
+      content:
+        application/problem+json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/Problem'
+              - properties: {status: {const: 502}, code: {const: BAD_GATEWAY}}
+    Unavailable:
+      description: A dependency is down. Nothing was released; a retry with the same key is safe.
+      content:
+        application/problem+json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/Problem'
+              - properties: {status: {const: 503}, code: {const: SERVICE_UNAVAILABLE}}
+
+  schemas:
+    # --- Shared -----------------------------------------------------------------------------
+    Problem:
+      type: object
+      additionalProperties: false
+      required: [type, title, status, code]
+      properties:
+        type: {type: string, const: 'about:blank'}
+        title: {type: string, description: The HTTP reason phrase.}
+        status: {type: integer}
+        code:
+          type: string
+          description: Machine-readable; the table in the API description says when each is sent.
+          enum:
+            - BAD_REQUEST
+            - UNAUTHORIZED
+            - NOT_FOUND
+            - METHOD_NOT_ALLOWED
+            - SESSION_BUSY
+            - SESSION_EXPIRED
+            - REQUEST_ENTITY_TOO_LARGE
+            - RATE_LIMITED
+            - INTERNAL_SERVER_ERROR
+            - BAD_GATEWAY
+            - SERVICE_UNAVAILABLE
+    Money:
+      type: string
+      description: Rupees as a decimal string.
+      pattern: '^\d+(\.\d{1,2})?$'
+    Sha256Hex:
+      type: string
+      pattern: '^[0-9a-f]{64}$'
+    Uin:
+      type: string
+      description: IRDAI unique identification number, e.g. 999N001V02 (product) or 999A007V01 (rider).
+      pattern: '^[0-9]{3}[A-Z][0-9]{3}V[0-9]{2}$'
+    Locale:
+      type: string
+      enum: [en-IN, hi-IN]
+    PptOption:
+      type: string
+      description: Premium-paying term option.
+      enum: [regular, limited_10, single]
+    DocumentKind:
+      type: string
+      enum: [CIS, BI, POLICY_WORDING]
+    FsmState:
+      type: string
+      description: >-
+        The conversation state after the turn. HUMAN_ESCALATION, EXIT, EXIT_ADVISORY,
+        DATA_ERASURE and HANDOFF are closed: the session takes no further journey.
+      enum:
+        - S0
+        - S1
+        - QUOTE_ONLY
+        - S2
+        - S3
+        - HUMAN_ESCALATION
+        - PAUSE
+        - EXIT
+        - EXIT_ADVISORY
+        - DATA_ERASURE
+        - HANDOFF
+
+    # --- Sessions ---------------------------------------------------------------------------
+    CreateSessionRequest:
+      type: object
+      additionalProperties: false
+      required: [channel, locale]
+      properties:
+        channel: {type: string, enum: [web, app]}
+        locale: {$ref: '#/components/schemas/Locale'}
+    CreatedSession:
+      type: object
+      additionalProperties: false
+      required: [session_id, session_token, events_url]
+      properties:
+        session_id: {type: string, format: uuid}
+        session_token:
+          type: string
+          minLength: 1
+          description: The session's bearer token. Shown once; the server keeps only its hash.
+        events_url:
+          type: string
+          description: The session's event stream, relative to the API base.
+          pattern: '^/v1/sessions/[0-9a-f-]{36}/events$'
+
+    # --- Turn requests ----------------------------------------------------------------------
+    TurnRequest:
+      description: Exactly one of `text` and `action`.
+      oneOf:
+        - $ref: '#/components/schemas/TextTurn'
+        - $ref: '#/components/schemas/ActionTurn'
+    TextTurn:
+      type: object
+      additionalProperties: false
+      required: [text]
+      properties:
+        text: {type: string, minLength: 1, description: What the customer typed.}
+    ActionTurn:
+      type: object
+      additionalProperties: false
+      required: [action]
+      properties:
+        action: {$ref: '#/components/schemas/Action'}
+
+    Action:
+      description: >-
+        A structured action: what a quick reply or a form sends. The state that takes each type is
+        named on its schema.
+      oneOf:
+        - $ref: '#/components/schemas/SimpleAction'
+        - $ref: '#/components/schemas/NoticeLanguageAction'
+        - $ref: '#/components/schemas/LanguageAction'
+        - $ref: '#/components/schemas/ConsentSubmitAction'
+        - $ref: '#/components/schemas/IntentAction'
+        - $ref: '#/components/schemas/SlotAction'
+        - $ref: '#/components/schemas/ReaskAction'
+        - $ref: '#/components/schemas/ConfirmAction'
+        - $ref: '#/components/schemas/FactAction'
+        - $ref: '#/components/schemas/PeriodAction'
+        - $ref: '#/components/schemas/ElectAction'
+        - $ref: '#/components/schemas/ApplyAction'
+        - $ref: '#/components/schemas/CheaperAction'
+        - $ref: '#/components/schemas/DisclosureAckAction'
+        - $ref: '#/components/schemas/AdvisorContactAction'
+      discriminator:
+        propertyName: type
+        mapping:
+          START: '#/components/schemas/SimpleAction'
+          RETRY: '#/components/schemas/SimpleAction'
+          CONTINUE: '#/components/schemas/SimpleAction'
+          HUMAN_REQUEST: '#/components/schemas/SimpleAction'
+          ERASE: '#/components/schemas/SimpleAction'
+          OPT_IN: '#/components/schemas/SimpleAction'
+          SATISFIED: '#/components/schemas/SimpleAction'
+          REVISE: '#/components/schemas/SimpleAction'
+          SAVE: '#/components/schemas/SimpleAction'
+          REJECT_ALL: '#/components/schemas/SimpleAction'
+          END: '#/components/schemas/SimpleAction'
+          NOTICE_LANGUAGE: '#/components/schemas/NoticeLanguageAction'
+          LANGUAGE: '#/components/schemas/LanguageAction'
+          CONSENT_SUBMIT: '#/components/schemas/ConsentSubmitAction'
+          INTENT: '#/components/schemas/IntentAction'
+          SLOT: '#/components/schemas/SlotAction'
+          REASK: '#/components/schemas/ReaskAction'
+          CONFIRM: '#/components/schemas/ConfirmAction'
+          FACT: '#/components/schemas/FactAction'
+          PERIOD: '#/components/schemas/PeriodAction'
+          ELECT: '#/components/schemas/ElectAction'
+          APPLY: '#/components/schemas/ApplyAction'
+          CHEAPER: '#/components/schemas/CheaperAction'
+          DISCLOSURE_ACK: '#/components/schemas/DisclosureAckAction'
+          ADVISOR_CONTACT: '#/components/schemas/AdvisorContactAction'
+    EmptyPayload:
+      type: object
+      additionalProperties: false
+    SimpleAction:
+      description: |
+        Actions without a payload.
+        - `START`: open the chat (S0): the greeting, the AI disclosure, the notice and the consent form.
+        - `RETRY`: try again after a dependency outage (any state).
+        - `CONTINUE`: carry on with the open prompt (any state).
+        - `HUMAN_REQUEST`: ask for a person (any state after S0; Human Escalation).
+        - `ERASE`: withdraw consent and erase the session (any state; as `DELETE /v1/sessions/{id}`).
+        - `OPT_IN`, `SATISFIED`: after a Quote-Only quote, get advice or stop there.
+        - `REVISE`, `SAVE`, `REJECT_ALL`: S3's choices (`SAVE` elsewhere asks for time and pauses).
+        - `END`: end the conversation (S1, Quote-Only, S2, S3).
+      type: object
+      additionalProperties: false
+      required: [type, payload]
+      properties:
+        type:
+          type: string
+          enum:
+            - START
+            - RETRY
+            - CONTINUE
+            - HUMAN_REQUEST
+            - ERASE
+            - OPT_IN
+            - SATISFIED
+            - REVISE
+            - SAVE
+            - REJECT_ALL
+            - END
+        payload: {$ref: '#/components/schemas/EmptyPayload'}
+    NoticeLanguageAction:
+      description: S0. Show the consent notice in another language.
+      type: object
+      additionalProperties: false
+      required: [type, payload]
+      properties:
+        type: {type: string, const: NOTICE_LANGUAGE}
+        payload:
+          type: object
+          additionalProperties: false
+          required: [language]
+          properties:
+            language: {$ref: '#/components/schemas/Locale'}
+    LanguageAction:
+      description: Any state. Continue the conversation in another language.
+      type: object
+      additionalProperties: false
+      required: [type, payload]
+      properties:
+        type: {type: string, const: LANGUAGE}
+        payload:
+          type: object
+          additionalProperties: false
+          required: [locale]
+          properties:
+            locale: {$ref: '#/components/schemas/Locale'}
+    ConsentSubmitAction:
+      description: >-
+        S0. The consent form: every purpose ticked or not, the 18+ box, and the notice the form
+        named (`form.notice_version` and `form.notice_sha256`).
+      type: object
+      additionalProperties: false
+      required: [type, payload]
+      properties:
+        type: {type: string, const: CONSENT_SUBMIT}
+        payload:
+          type: object
+          additionalProperties: false
+          required: [purposes, age_18_plus, notice_version, notice_sha256]
+          properties:
+            purposes:
+              type: object
+              additionalProperties: false
+              required: [P1, P2, P3]
+              properties:
+                P1: {type: boolean, description: Needs assessment and recommendation (required to go on).}
+                P2: {type: boolean, description: A licensed advisor may contact the customer.}
+                P3: {type: boolean, description: Product updates.}
+            age_18_plus: {type: boolean}
+            notice_version: {type: string, minLength: 1, maxLength: 64}
+            notice_sha256: {$ref: '#/components/schemas/Sha256Hex'}
+    IntentAction:
+      description: S0. One of the four intent quick replies.
+      type: object
+      additionalProperties: false
+      required: [type, payload]
+      properties:
+        type: {type: string, const: INTENT}
+        payload:
+          type: object
+          additionalProperties: false
+          required: [intent]
+          properties:
+            intent: {type: string, enum: [new_purchase, specific_plan, existing_policy, general_faq]}
+    SlotAction:
+      description: >-
+        S1, Quote-Only, S2. An answer to the open question, as its quick reply offered it (S2's
+        goals may come as a ranked list).
+      type: object
+      additionalProperties: false
+      required: [type, payload]
+      properties:
+        type: {type: string, const: SLOT}
+        payload:
+          type: object
+          additionalProperties: false
+          required: [slot, value]
+          properties:
+            slot: {type: string}
+            value:
+              type: [string, integer, boolean, array]
+              description: The value the quick reply carries.
+    ReaskAction:
+      description: S1, Quote-Only, S2. Ask a question again, to correct its answer.
+      type: object
+      additionalProperties: false
+      required: [type, payload]
+      properties:
+        type: {type: string, const: REASK}
+        payload:
+          type: object
+          additionalProperties: false
+          required: [slot]
+          properties:
+            slot: {type: string}
+    ConfirmAction:
+      description: S1, Quote-Only, S2. Yes or no to a read-back, a summary or an offer.
+      type: object
+      additionalProperties: false
+      required: [type, payload]
+      properties:
+        type: {type: string, const: CONFIRM}
+        payload:
+          type: object
+          additionalProperties: false
+          required: [confirmed]
+          properties:
+            confirmed: {type: boolean}
+    FactAction:
+      description: >-
+        After a side question. The customer's answer to a fact the answer proposed (the tax
+        regime).
+      type: object
+      additionalProperties: false
+      required: [type, payload]
+      properties:
+        type: {type: string, const: FACT}
+        payload:
+          type: object
+          additionalProperties: false
+          required: [slot, value, confirmed]
+          properties:
+            slot: {type: string, const: tax_regime}
+            value: {type: string, enum: [old, new]}
+            confirmed: {type: boolean}
+    PeriodAction:
+      description: S2. Whether an amount said with "k" was a month or a year.
+      type: object
+      additionalProperties: false
+      required: [type, payload]
+      properties:
+        type: {type: string, const: PERIOD}
+        payload:
+          type: object
+          additionalProperties: false
+          required: [period]
+          properties:
+            period: {type: string, enum: [month, year]}
+    ElectAction:
+      description: S2. Go on to options with a partial profile, or answer more questions.
+      type: object
+      additionalProperties: false
+      required: [type, payload]
+      properties:
+        type: {type: string, const: ELECT}
+        payload:
+          type: object
+          additionalProperties: false
+          required: [elected]
+          properties:
+            elected: {type: boolean}
+    ApplyAction:
+      description: >-
+        S3. Choose a plan to apply for: as offered (only `uin`), or with the customer's own cover,
+        term, premium-paying term or riders (priced for exactly that). Without `uin` and with
+        several options, the options are offered again.
+      type: object
+      additionalProperties: false
+      required: [type, payload]
+      properties:
+        type: {type: string, const: APPLY}
+        payload:
+          type: object
+          additionalProperties: false
+          properties:
+            uin: {$ref: '#/components/schemas/Uin'}
+            sum_assured_inr: {$ref: '#/components/schemas/Money'}
+            term_years: {type: integer}
+            ppt: {$ref: '#/components/schemas/PptOption'}
+            rider_uins:
+              type: array
+              items: {$ref: '#/components/schemas/Uin'}
+    CheaperAction:
+      description: S3. Lower-premium alternatives for one option.
+      type: object
+      additionalProperties: false
+      required: [type, payload]
+      properties:
+        type: {type: string, const: CHEAPER}
+        payload:
+          type: object
+          additionalProperties: false
+          required: [uin]
+          properties:
+            uin: {$ref: '#/components/schemas/Uin'}
+    DisclosureAckAction:
+      description: >-
+        S3. The customer acknowledges the disclosures and documents shown for the chosen plan.
+        Send the payload of the quick reply exactly as received: the hashes bind the
+        acknowledgment to what was shown.
+      type: object
+      additionalProperties: false
+      required: [type, payload]
+      properties:
+        type: {type: string, const: DISCLOSURE_ACK}
+        payload:
+          type: object
+          additionalProperties: false
+          required: [uin, registry_version, disclosure_set_sha256, document_sha256]
+          properties:
+            uin: {$ref: '#/components/schemas/Uin'}
+            registry_version: {type: string}
+            disclosure_set_sha256: {$ref: '#/components/schemas/Sha256Hex'}
+            document_sha256: {$ref: '#/components/schemas/DocumentHashes'}
+    AdvisorContactAction:
+      description: Human Escalation. Grant (or not) the P2 purpose, so an advisor may contact the customer.
+      type: object
+      additionalProperties: false
+      required: [type, payload]
+      properties:
+        type: {type: string, const: ADVISOR_CONTACT}
+        payload:
+          type: object
+          additionalProperties: false
+          required: [granted]
+          properties:
+            granted: {type: boolean}
+
+    # --- The released turn ------------------------------------------------------------------
+    TurnResponse:
+      type: object
+      additionalProperties: false
+      required: [turn_id, state, message, documents]
+      properties:
+        turn_id: {type: string, format: uuid, description: The customer turn this answers.}
+        state: {$ref: '#/components/schemas/FsmState'}
+        message: {$ref: '#/components/schemas/Message'}
+        documents:
+          type: array
+          description: Per plan shown, the newest version of each document (CIS, policy wording, BI).
+          items: {$ref: '#/components/schemas/DocumentsShown'}
+    Message:
+      type: object
+      additionalProperties: false
+      required: [text, parts, citations, sources, disclosures, cta, form, quick_replies]
+      description: >-
+        A release blocked by the output rails is the release-blocked template and the advisor
+        offer in `text`, with every list empty and `form` null.
+      properties:
+        text: {type: string, description: The whole reply; the parts' texts joined by blank lines.}
+        parts:
+          type: array
+          items: {$ref: '#/components/schemas/Part'}
+        citations:
+          type: array
+          description: Each evidence ([E#]) or engine ([R#]) handle cited, and what it refers to.
+          items: {$ref: '#/components/schemas/Citation'}
+        sources:
+          type: array
+          description: One per cited chunk, in first-cited order.
+          items: {$ref: '#/components/schemas/Source'}
+        disclosures:
+          type: array
+          description: Per plan presented, the hash of the registry disclosure set shown (I4).
+          items: {$ref: '#/components/schemas/DisclosureShown'}
+        cta:
+          type: 'null'
+          description: >-
+            Always null. The call to action is sent as the `cta` part and the quick replies.
+        form:
+          description: S0's consent form while the consent prompt is open; otherwise null.
+          anyOf:
+            - $ref: '#/components/schemas/ConsentForm'
+            - type: 'null'
+        quick_replies:
+          type: array
+          items: {$ref: '#/components/schemas/QuickReply'}
+    Part:
+      type: object
+      additionalProperties: false
+      required: [id, text]
+      properties:
+        id: {$ref: '#/components/schemas/PartId'}
+        text: {type: string}
+    PartId:
+      description: Where a part's text comes from. Each branch's title names a namespace.
+      anyOf:
+        - title: template
+          description: >-
+            An approved template of the session's prompt bundle: a script name, a slot question
+            (its reason-line id, RL-S1-… or RL-S2-…), or a recommendation template.
+          type: string
+          pattern: '^template:([a-z][a-z0-9_]*|RL-S[12]-[A-Z0-9-]+)$'
+        - title: registry
+          description: A Disclosure Registry body, verbatim.
+          type: string
+          pattern: '^registry:DISC-[A-Z0-9-]+$'
+        - title: notice
+          description: The consent notice body in force, verbatim (its version).
+          type: string
+          pattern: '^notice:[A-Za-z0-9._-]+$'
+        - title: faq
+          description: An approved privacy FAQ answer (the FAQ's version and the entry id).
+          type: string
+          pattern: '^faq:[A-Za-z0-9._-]+:[A-Za-z0-9_-]+$'
+        - title: generated
+          description: >-
+            Generated text that passed the output rails: one sentence before a question
+            (narrative) or a cited side-question answer (answer).
+          type: string
+          enum: ['generated:narrative', 'generated:answer']
+        - title: option_card
+          description: S3. One ranked plan's card.
+          type: string
+          pattern: '^option_card:[0-9]{3}[A-Z][0-9]{3}V[0-9]{2}$'
+        - title: disclosures
+          description: S3. One ranked plan's registry disclosure set, verbatim.
+          type: string
+          pattern: '^disclosures:[0-9]{3}[A-Z][0-9]{3}V[0-9]{2}$'
+        - title: composer
+          description: >-
+            S3's composed sections: the needs recap, the comparison (two or more plans), why it
+            fits (cited), the call to action, and the sources list.
+          type: string
+          enum: [needs_recap, comparison, why_it_fits, cta, sources]
+    Citation:
+      type: object
+      additionalProperties: false
+      required: [handle, ref]
+      properties:
+        handle: {type: string, pattern: '^[ER][1-9][0-9]*$'}
+        ref: {type: string, minLength: 1, description: The evidence chunk id, or the engine rule.}
+    Source:
+      type: object
+      additionalProperties: false
+      required: [title, section, version, effective_from, uri]
+      properties:
+        title: {type: string}
+        section: {type: string}
+        version: {type: string}
+        effective_from: {type: string, format: date}
+        uri: {type: string, description: Where the source document lives (a repository path in the DUMMY corpus).}
+    DisclosureShown:
+      type: object
+      additionalProperties: false
+      required: [uin, set_sha256]
+      properties:
+        uin: {$ref: '#/components/schemas/Uin'}
+        set_sha256: {$ref: '#/components/schemas/Sha256Hex'}
+    DocumentHashes:
+      type: object
+      description: Document kind -> the SHA-256 of the version shown.
+      propertyNames: {$ref: '#/components/schemas/DocumentKind'}
+      additionalProperties: {$ref: '#/components/schemas/Sha256Hex'}
+    DocumentsShown:
+      type: object
+      additionalProperties: false
+      required: [uin, documents]
+      properties:
+        uin: {$ref: '#/components/schemas/Uin'}
+        documents: {$ref: '#/components/schemas/DocumentHashes'}
+    ConsentForm:
+      type: object
+      additionalProperties: false
+      required: [type, notice_version, notice_sha256, language, purposes, adult, submit]
+      description: Rendered as a form; it is submitted as the `CONSENT_SUBMIT` action.
+      properties:
+        type: {type: string, const: CONSENT_SUBMIT}
+        notice_version: {type: string}
+        notice_sha256: {$ref: '#/components/schemas/Sha256Hex'}
+        language: {$ref: '#/components/schemas/Locale'}
+        purposes:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [id, label, required]
+            properties:
+              id: {type: string, enum: [P1, P2, P3]}
+              label: {type: string}
+              required: {type: boolean}
+        adult:
+          type: object
+          additionalProperties: false
+          required: [label]
+          properties:
+            label: {type: string}
+        submit: {type: string, description: The submit button's label.}
+    QuickReply:
+      type: object
+      additionalProperties: false
+      required: [label, action]
+      properties:
+        label: {type: string}
+        action: {$ref: '#/components/schemas/Action'}
+
+    # --- Events -----------------------------------------------------------------------------
+    TurnStatusEvent:
+      type: object
+      additionalProperties: false
+      required: [turn_id, status]
+      properties:
+        turn_id: {type: string, format: uuid}
+        status: {type: string, enum: [analysing, composing, validating]}

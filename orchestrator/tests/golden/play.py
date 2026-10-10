@@ -28,6 +28,7 @@ from zoneinfo import ZoneInfo
 import httpx
 import psycopg
 import pytest
+from contract_support import event_errors, response_errors
 from fastapi import FastAPI
 from harness import (
     FIXTURE_UIN,
@@ -127,9 +128,35 @@ class Play:
         self.bumped: list[str] = []  # notice versions this conversation added
         self.quick: list[dict[str, Any]] = []  # the last quick replies released (Step 21)
         self.fixture = False  # FIXTURE_UIN was added to the catalog (Step 21)
+        self.index = -1  # the turn being played; -1 while the session is opened (Step 26)
 
     def fail(self, turn: int, message: str) -> None:
         self.failures.append(f"{self.conversation.id} turn {turn}: {message}")
+
+    def contract(self, response: httpx.Response) -> None:
+        """Step 26: every response against the Conversation API contract (paths, never values)."""
+        request = response.request
+        for found in response_errors(
+            request.method,
+            request.url.path,
+            response.status_code,
+            response.headers.get("content-type", ""),
+            response.content,
+        ):
+            self.fail(self.index, f"contract: {found}")
+
+    def watch_events(self) -> None:
+        """Step 26: every event the turns publish (what the events route relays), against the
+        contract. The data goes through JSON as it does through Redis."""
+        gate = self.runtime.gate
+        publish = gate.publish
+
+        async def checked(session_id: UUID, event: str, data: dict[str, Any]) -> None:
+            for found in event_errors(event, json.loads(json.dumps(data))):
+                self.fail(self.index, f"contract: {found}")
+            await publish(session_id, event, data)
+
+        gate.publish = checked  # type: ignore[method-assign]
 
     def one(self, sql: str, *params: Any) -> Any:
         row = self.db.execute(sql, params).fetchone()
@@ -140,6 +167,8 @@ class Play:
         c = self.conversation
         made = await self.api.post("/v1/sessions", json={"channel": c.channel, "locale": c.locale})
         assert made.status_code == 201, f"session not created: {made.status_code} {made.text}"
+        self.contract(made)
+        self.watch_events()
         created = made.json()
         self.session_id, self.token = UUID(created["session_id"]), created["session_token"]
         subject_ref, self.key_ref = self.db.execute(
@@ -318,6 +347,7 @@ class Play:
             body = {"text": turn.text} if turn.text is not None else {"action": self.action(turn)}
             response = await self.api.post(f"{url}/turns", json=body, headers=self.headers(key))
         latency = (time.perf_counter() - started) * 1000  # Step 23: the turn as the client saw it
+        self.contract(response)
         sent = Sent(
             index,
             response.status_code,
@@ -365,6 +395,7 @@ class Play:
         self.bumped.append(version)
 
     async def play(self, index: int, turn: Turn, t: Transcript) -> None:
+        self.index = index
         if turn.kill_switch is not None:
             await self.kill_switch(index, turn)
         if turn.notice_bump:

@@ -9,6 +9,7 @@ from uuid import UUID
 
 import psycopg
 import pytest
+from contract_support import response_errors
 from fastapi.testclient import TestClient
 from runtime_support import FakeGate, settings
 
@@ -130,6 +131,11 @@ def assert_problem(response: Any, status: int, code: str) -> None:
     assert response.status_code == status
     assert response.headers["content-type"] == "application/problem+json"
     assert response.json()["code"] == code
+    request = response.request  # Step 26: the public routes' problems are the contract's
+    if not request.url.path.startswith("/internal/"):
+        content_type = response.headers["content-type"]
+        body = response.content
+        assert response_errors(request.method, request.url.path, status, content_type, body) == []
 
 
 # --- auth -----------------------------------------------------------------------------------------

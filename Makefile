@@ -3,6 +3,7 @@ COMPOSE := docker compose -f infra/compose.yaml --profile core
 PYTEST_MARKERS := not stack and not golden and not redteam and not live and not db
 PLACEHOLDERS :=
 SPEC := contracts/openapi/domain-services.v1.yaml
+CONV_SPEC := contracts/openapi/conversation-api.v1.yaml
 MODELS := src/surakshasetu/domain/models.py
 
 # Host-side database steps use the same passwords as compose: infra/.env when present, otherwise
@@ -87,9 +88,11 @@ contracts-lint:
 contracts: contracts-lint
 	cd orchestrator && uv run --locked datamodel-codegen --output $(MODELS)
 
-# Drift check: regenerate to a temp file and diff it against the committed models. Generating
-# to stdout keeps ruff on orchestrator's config wherever the temp file lives.
+# Drift check: lint the Conversation API spec (Step 26; hand-written, nothing is generated from
+# it here), then regenerate the domain models to a temp file and diff them against the committed
+# ones. Generating to stdout keeps ruff on orchestrator's config wherever the temp file lives.
 check-contracts: contracts-lint
+	cd orchestrator && uv run --locked openapi-spec-validator ../$(CONV_SPEC)
 	@cd orchestrator && tmp=$$(mktemp) && trap 'rm -f "$$tmp"' EXIT \
 		&& uv run --locked datamodel-codegen > "$$tmp" && diff -u $(MODELS) "$$tmp" \
 		|| { echo "check-contracts: $(MODELS) differs from $(SPEC); run make contracts" >&2; exit 1; }
