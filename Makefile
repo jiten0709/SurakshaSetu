@@ -1,7 +1,7 @@
 # One entry point for local work and CI. Placeholder targets are filled in by later steps.
 COMPOSE := docker compose -f infra/compose.yaml --profile core
 PYTEST_MARKERS := not stack and not golden and not redteam and not live and not db
-PLACEHOLDERS := verify-release-gate
+PLACEHOLDERS :=
 SPEC := contracts/openapi/domain-services.v1.yaml
 MODELS := src/surakshasetu/domain/models.py
 
@@ -13,6 +13,7 @@ APP_RW_PASSWORD ?= surakshasetu-dev-app-rw
 KEYVAULT_RW_PASSWORD ?= surakshasetu-dev-keyvault-rw
 CATALOG_LOADER_PASSWORD ?= surakshasetu-dev-catalog-loader
 ERASURE_RW_PASSWORD ?= surakshasetu-dev-erasure-rw
+COMPLIANCE_RO_PASSWORD ?= surakshasetu-dev-compliance-ro
 DOMAIN_TOKEN ?= surakshasetu-dev-domain-token
 DOMAIN_INTERNAL_TOKEN ?= surakshasetu-dev-domain-internal-token
 MINIO_ROOT_USER ?= surakshasetu
@@ -37,7 +38,7 @@ TEST_ENV := SS_TEST_PG_DSN_ADMIN="postgresql://postgres:$(POSTGRES_PASSWORD)@127
 	db-migrate seed-catalog contracts contracts-lint contract-test verify-audit gateway-up \
 	gateway-verify kb-ingest kb-verify kb-chunks check-ingest calibrate-retrieval eval-retrieval \
 	bakeoff-embed bakeoff-rerank test-invariants eval eval-live seed-eval e2e-scripted \
-	timers-once serve local-setup $(PLACEHOLDERS)
+	timers-once serve local-setup verify-release-gate dossier $(PLACEHOLDERS)
 
 # Postgres first, then the migrations, so domain-services finds its domain_rw role on a fresh
 # volume. `up --wait` treats an exited one-shot as a failure, so the one-shots run on their own.
@@ -232,8 +233,13 @@ seed-eval:
 # The scripted S0-S3 conversation of TDD §7.4 alone (Step 21): greeting, consent, eligibility, needs,
 # the recommendation with its disclosures, a chosen rider set re-quoted, the acknowledgment and the
 # signed hand-off to the stub application journey. `make eval` runs it too. Same needs as eval.
+# Step 24: this target keeps the session (its audit chain, consent record and subject key stay in the
+# dev database) and writes its id to orchestrator/.cache/e2e-scripted-session, for `make dossier` and
+# local-setup's verify-audit; `make eval` still deletes everything it creates.
+E2E_SESSION := orchestrator/.cache/e2e-scripted-session
 e2e-scripted: db-migrate
-	@cd orchestrator && $(GOLDEN_ENV) uv run --locked pytest -m golden -k scripted-s0-s3
+	@mkdir -p orchestrator/.cache && cd orchestrator && $(GOLDEN_ENV) \
+		SS_GOLDEN_KEEP="$(CURDIR)/$(E2E_SESSION)" uv run --locked pytest -m golden -k scripted-s0-s3
 
 # One look of the inactivity timers (Step 22, TDD §3.9's CC3) against the dev database: every
 # post-consent session idle past its state's timeout (SS_INACTIVITY_TIMEOUTS) is paused by a timer
@@ -252,6 +258,28 @@ verify-audit:
 		SS_PG_DSN_APP="postgresql://app_rw:$(APP_RW_PASSWORD)@127.0.0.1:5432/$(DB)" \
 		uv run --locked python -m surakshasetu.audit.verify --date "$(DATE)"
 
+# The session dossier (Step 24, TDD §4.3): one session's transcript, decisions, disclosures and
+# acknowledgments, consent history and pins, verified against its chain first (a broken chain exits 1
+# and writes nothing). Reads the audit and consent store as compliance_ro and payloads through the key
+# service; writes reports/dossiers/dossier-<id>.{json,html} (gitignored: decrypted personal data).
+# SESSION defaults to the session the last `make e2e-scripted` kept.
+SESSION ?= $(shell cat $(E2E_SESSION) 2>/dev/null)
+dossier:
+	@test -n "$(SESSION)" || { echo "usage: make dossier SESSION=<session id> [DB=surakshasetu]" >&2; exit 2; }
+	@cd orchestrator && \
+		SS_PG_DSN_COMPLIANCE="postgresql://compliance_ro:$(COMPLIANCE_RO_PASSWORD)@127.0.0.1:5432/$(DB)" \
+		SS_PG_DSN_KEYVAULT="postgresql://keyvault_rw:$(KEYVAULT_RW_PASSWORD)@127.0.0.1:5432/$(DB)" \
+		uv run --locked python -m surakshasetu.audit.dossier --session "$(SESSION)" --out ../reports/dossiers
+
+# TDD §7.5 step 6's DUMMY half (Step 24): the scripted S0-S3 conversation replayed with the runtime on
+# env=pilot; every response carrying DUMMY text must be blocked by rail 8's RC-DUMMY, so none reaches a
+# pilot customer. Pilot refuses the DUMMY bundle and privacy FAQ at load, and that refusal is unchanged:
+# only the test loads them as dev (after asserting the refusal). Prints a BLOCK line per turn. Same
+# needs as eval; it deletes what it creates.
+verify-release-gate: db-migrate
+	@cd orchestrator && $(GOLDEN_ENV) uv run --locked pytest -m golden \
+		tests/golden/test_release_gate_pilot.py
+
 # The Conversation API on 127.0.0.1:8000 over the dev database, for a demo with the terminal chat
 # client (`cd orchestrator && uv run python scripts/chat.py`). Needs `make local-setup` (or `make up`,
 # `make gateway-up`, `make seed-catalog` and `make kb-ingest`). Ctrl-C stops it.
@@ -259,12 +287,15 @@ serve:
 	@cd orchestrator && $(APP_ENV) SS_LOG_FORMAT=text \
 		uv run --locked uvicorn surakshasetu.api.app:create_app --factory --port 8000
 
-# TDD §7.5 steps 1-5 in order, each its own target (idempotent; stops at the first failure): the
+# TDD §7.5 steps 1-6 in order, each its own target (idempotent; stops at the first failure): the
 # stack and migrations, the gateway, the catalog with its hashes, the KB through the review gate,
-# the evaluation sets, the invariant properties and the scripted S0-S3 conversation. Step 6 (the
-# audit and archive verification, and the verify-release-gate DUMMY proof) comes with Step 24.
+# the evaluation sets, the invariant properties and the scripted S0-S3 conversation; then step 6
+# (Step 24): every audit chain active today (UTC) verified and the day anchored, and the pilot DUMMY
+# gate. In dev, anchoring today anchors an open day: the anchor row is insert-only, so a later run
+# the same day logs "anchored while open" and still exits 0 (pilot and prod refuse an open day).
 local-setup:
-	@for t in up gateway-up seed-catalog kb-ingest kb-verify seed-eval test-invariants e2e-scripted; do \
+	@for t in up gateway-up seed-catalog kb-ingest kb-verify seed-eval test-invariants e2e-scripted \
+		"verify-audit DATE=$$(date -u +%F)" verify-release-gate; do \
 		echo "== local-setup: $$t"; $(MAKE) --no-print-directory $$t || exit 1; done
 
 $(PLACEHOLDERS):

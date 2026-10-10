@@ -22,6 +22,7 @@ def test_healthz_is_liveness_only() -> None:
         compliance_api_key=SecretStr("pilot-compliance-key"),
         advisor_api_key=SecretStr("pilot-advisor-key"),
         pg_dsn_erasure=SecretStr("postgresql://erasure@unreachable.invalid:5432/x"),
+        pg_dsn_compliance=SecretStr("postgresql://compliance@unreachable.invalid:5432/x"),
         kek_b64=SecretStr("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="),
         pg_dsn_keyvault=SecretStr("postgresql://keyvault@unreachable.invalid:5432/x"),
         minio_endpoint="https://unreachable.invalid:9000",

@@ -18,6 +18,7 @@ REQUIRED_OUTSIDE_DEV = (
     "compliance_api_key",
     "advisor_api_key",
     "pg_dsn_erasure",
+    "pg_dsn_compliance",
     "kek_b64",
     "pg_dsn_keyvault",
     "minio_endpoint",
@@ -150,6 +151,11 @@ class Settings(BaseSettings):
     )
     key_retention_days: int = Field(default=397, ge=1)
     advisor_queue_open: bool = True
+    # The session dossier (Step 24, TDD §4.3) reads the audit and consent hot store as
+    # compliance_ro; payloads come through the key service (pg_dsn_keyvault and the KEK).
+    pg_dsn_compliance: SecretStr = SecretStr(
+        "postgresql://compliance_ro:surakshasetu-dev-compliance-ro@127.0.0.1:5432/surakshasetu"
+    )
     # The hand-off adapter (Step 21, TDD §7.1): the Ed25519 key that signs the intake payload (KMS
     # in prod; the dev default is 32 public bytes, whose public key the stub journey holds), and the
     # application journey's intake endpoint (locally the stubs' receiver).

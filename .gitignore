@@ -240,3 +240,5 @@ agentdb.rvf.lock
 
 # Step 23: evaluation reports are build artifacts (reports/label-disputes.md stays tracked)
 reports/eval-*
+# Step 24: session dossiers hold decrypted personal data (make dossier)
+reports/dossiers/

@@ -82,6 +82,9 @@ CHECKPOINT_TABLES = ("checkpoint_writes", "checkpoint_blobs", "checkpoints")
 # calls would fail closed. Step 22 waits it out.
 GATEWAY_COOLDOWN_S = 3.5
 IST = ZoneInfo("Asia/Kolkata")
+# Step 24: `make e2e-scripted` keeps its session for the dossier and verify-audit: the session's
+# rows stay, and its id is written to this file.
+KEEP = os.environ.get("SS_GOLDEN_KEEP")
 
 
 def admin_dsn() -> str:
@@ -871,9 +874,12 @@ class Play:
 
     # --- cleanup -----------------------------------------------------------------------------
     async def close(self) -> None:
-        """Delete everything the conversation created, so the dev database is left as found."""
+        """Delete everything the conversation created, so the dev database is left as found;
+        with SS_GOLDEN_KEEP, the session's own rows stay and its id goes to that file."""
         try:
-            if self.session_id is not None:
+            if self.session_id is not None and KEEP:
+                await asyncio.to_thread(Path(KEEP).write_text, f"{self.session_id}\n", "utf-8")
+            elif self.session_id is not None:
                 await self.stubs.delete(f"/__script/{self.session_id}")
                 sid, db = self.session_id, self.db
                 db.execute(
@@ -902,7 +908,7 @@ class Play:
                     "DELETE FROM consent.notice_version WHERE notice_version = ANY(%s)",
                     (self.bumped,),
                 )
-            if self.session_id is not None:
+            if self.session_id is not None and not KEEP:
                 await self.stubs.delete(f"/journey/__intake/{self.session_id}")
             if self.switches:
                 self.db.execute("DELETE FROM conv.kill_switch WHERE id = ANY(%s)", (self.switches,))

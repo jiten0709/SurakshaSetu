@@ -32,6 +32,8 @@ AUTH_ENV = {
     "SS_COMPLIANCE_API_KEY": "compliance-key",
     "SS_ADVISOR_API_KEY": "advisor-key",
     "SS_PG_DSN_ERASURE": "postgresql://erasure_rw:x@postgres:5432/surakshasetu",
+    # Step 24: the session dossier's compliance_ro connection.
+    "SS_PG_DSN_COMPLIANCE": "postgresql://compliance_ro:x@postgres:5432/surakshasetu",
     # Step 21: the hand-off adapter's signing key and the application journey.
     "SS_INTAKE_SIGNING_KEY_B64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
     "SS_JOURNEY_URL": "https://journey.internal/intake",
@@ -215,6 +217,7 @@ def test_the_runtime_settings_have_safe_defaults(monkeypatch: pytest.MonkeyPatch
 def test_the_handler_settings_have_safe_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     settings = load_settings()
     assert "erasure_rw" in settings.pg_dsn_erasure.get_secret_value()
+    assert "compliance_ro" in settings.pg_dsn_compliance.get_secret_value()
     assert settings.key_retention_days == 397  # at least 13 calendar months (TDD §4.4)
     assert settings.advisor_queue_open is True
 
