@@ -39,7 +39,8 @@ TEST_ENV := SS_TEST_PG_DSN_ADMIN="postgresql://postgres:$(POSTGRES_PASSWORD)@127
 	db-migrate seed-catalog contracts contracts-lint contract-test verify-audit gateway-up \
 	gateway-verify kb-ingest kb-verify kb-chunks check-ingest calibrate-retrieval eval-retrieval \
 	bakeoff-embed bakeoff-rerank test-invariants eval eval-live seed-eval e2e-scripted \
-	timers-once serve local-setup verify-release-gate dossier app-up $(PLACEHOLDERS)
+	timers-once serve local-setup verify-release-gate dossier app-up ui-deps ui ui-types ui-check \
+	$(PLACEHOLDERS)
 
 # Postgres first, then the migrations, so domain-services finds its domain_rw role on a fresh
 # volume. `up --wait` treats an exited one-shot as a failure, so the one-shots run on their own.
@@ -295,6 +296,32 @@ verify-release-gate: db-migrate
 serve:
 	@cd orchestrator && $(APP_ENV) SS_LOG_FORMAT=text \
 		uv run --locked uvicorn surakshasetu.api.app:create_app --factory --port 8000
+
+# Step 27: the chat UI (frontend/: Vite, React, TypeScript; npm, Node per frontend/.nvmrc). Each
+# target checks Node first (with fnm: `fnm install 24 && fnm use 24`), and runs `npm ci` when
+# package-lock.json is newer than the install. `ui` serves 127.0.0.1:5173 and proxies /v1 to the
+# API on :8000 (`make serve`). `ui-types` regenerates the committed types from the Step 26 spec;
+# ui-check fails when they drift, then typechecks, lints, tests and builds.
+UI_TYPES := src/conversation-api.ts
+UI_TYPEGEN := npm exec --no -- openapi-typescript ../$(CONV_SPEC)
+ui-deps:
+	@node -e 'process.exit(Number(process.versions.node.split(".")[0]) >= 24 ? 0 : 1)' 2>/dev/null \
+		|| { echo "ui: needs Node 24 (frontend/.nvmrc); with fnm: fnm install 24 && fnm use 24" >&2; \
+			exit 1; }
+	@cd frontend && { [ node_modules/.package-lock.json -nt package-lock.json ] || npm ci; }
+
+ui: ui-deps
+	cd frontend && npm run dev
+
+ui-types: ui-deps
+	cd frontend && $(UI_TYPEGEN) -o $(UI_TYPES)
+
+ui-check: ui-deps
+	@cd frontend && tmp=$$(mktemp) && trap 'rm -f "$$tmp"' EXIT \
+		&& $(UI_TYPEGEN) > "$$tmp" && diff -u $(UI_TYPES) "$$tmp" \
+		|| { echo "ui-check: frontend/$(UI_TYPES) differs from $(CONV_SPEC); run make ui-types" >&2; \
+			exit 1; }
+	cd frontend && npm run typecheck && npm run lint && npm test && npm run build
 
 # TDD §7.5 steps 1-6 in order, each its own target (idempotent; stops at the first failure): the
 # stack and migrations, the gateway, the catalog with its hashes, the KB through the review gate,
