@@ -3,8 +3,10 @@ before consent), the timer turn (CC3 -> PAUSE, no customer input, its own key), 
 since it was selected, a busy session, and the settings' bounds."""
 
 import dataclasses
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid5
 
@@ -174,3 +176,29 @@ def test_timeouts_name_engaged_states_only_and_last_a_minute_at_least() -> None:
         Settings(_env_file=None, inactivity_timeouts={"PAUSE": 600})  # type: ignore[call-arg]
     with pytest.raises(ValidationError, match="at least 60"):
         Settings(_env_file=None, inactivity_timeouts={"S1": 30})  # type: ignore[call-arg]
+
+
+def test_the_scheduler_touches_its_heartbeat_after_each_look(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # Step 25: the compose scheduler is healthy while this file is young. A restarted container
+    # keeps the last process's file, so a start removes it and only a completed look writes it.
+    beat = tmp_path / "timers.heartbeat"
+    beat.touch()
+    seen: list[bool] = []
+
+    @asynccontextmanager
+    async def opened(config: Settings) -> AsyncIterator[object]:
+        yield object()
+
+    async def look(runtime: Any, now: datetime, session_ids: Any = None) -> list[bytes]:
+        seen.append(beat.exists())
+        return []
+
+    monkeypatch.setattr(timers, "load_settings", lambda: settings())
+    monkeypatch.setattr(timers, "configure_logging", lambda *args: None)
+    monkeypatch.setattr(timers.Runtime, "open", opened)
+    monkeypatch.setattr(timers, "run_once", look)
+
+    assert timers.main(["--once", "--heartbeat", str(beat)]) == 0
+    assert seen == [False] and beat.exists()

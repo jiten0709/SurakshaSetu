@@ -25,6 +25,10 @@ class RedisGate:
         self._idem_ttl = settings.idempotency_ttl_s
         self._limits = settings.rate_limits
 
+    async def ping(self) -> None:
+        """Readiness (/readyz): raises when valkey does not answer."""
+        await self._redis.ping()
+
     async def acquire(self, session_id: UUID) -> str | None:
         """lock:session:{id}. The token if taken, None if another turn holds it."""
         token = uuid4().hex

@@ -163,6 +163,8 @@ class Gateway:
         self._embed_info_url = f"{settings.tei_embed_url.rstrip('/')}/info"
         self._rerank_url = f"{settings.tei_rerank_url.rstrip('/')}/rerank"
         self._rerank_info_url = f"{settings.tei_rerank_url.rstrip('/')}/info"
+        # The gateway's own liveness, beside its OpenAI-compatible /v1 (unauthenticated).
+        self._health_url = f"{settings.gateway_base_url.rstrip('/').removesuffix('/v1')}/healthz"
         self._api_key = settings.gateway_api_key
         self._embed_dim = settings.embed_dim
         self._query_prefix = settings.embed_query_prefix
@@ -307,6 +309,11 @@ class Gateway:
             latency_ms,
         )
         return [e.embedding for e in data]
+
+    async def healthz(self) -> None:
+        """Readiness (/readyz): raises unless the gateway answers 2xx. No bearer is sent."""
+        response = await self._http.get(self._health_url, timeout=2.0)
+        response.raise_for_status()
 
     async def embed_model(self) -> TeiModel:
         return await self._info(Route.EMBED, self._embed_info_url)

@@ -1,0 +1,6 @@
+# An allowlist: .env, .venv, .cache and the tests never reach the image build.
+*
+!pyproject.toml
+!uv.lock
+!src
+**/__pycache__

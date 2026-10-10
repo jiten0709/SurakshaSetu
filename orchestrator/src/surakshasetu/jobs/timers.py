@@ -12,8 +12,9 @@ goes out. Re-engagement messages are phase 2 (TDD §3.9 allows them only within 
 purposes). A customer turn resumes a paused session (PAUSE.R), which revalidates the pins, the
 products and quotes, the notice version and the consent TTL (graph/handlers/pause.resume).
 
-The compose `scheduler` service that runs this every minute comes with Step 24's orchestrator image
-(decided 2026-10-05).
+The compose `scheduler` service (profile app, `make app-up`; Step 25) runs it in the orchestrator
+image with `--every $SS_TIMER_INTERVAL_S --heartbeat /tmp/timers.heartbeat`: the file is touched
+after each look, and the container's healthcheck reads its age.
 """
 
 import argparse
@@ -22,6 +23,7 @@ import logging
 import sys
 from collections.abc import Iterable, Mapping
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from uuid import UUID
 
 from surakshasetu.config import ConfigError, load_settings
@@ -74,13 +76,17 @@ async def run_once(
     return released
 
 
-async def _loop(once: bool, every: int | None) -> int:
+async def _loop(once: bool, every: int | None, heartbeat: Path | None = None) -> int:
     settings = load_settings()
     configure_logging(settings.log_level, settings.log_dir, settings.log_format)
     interval = every or settings.timer_interval_s
+    if heartbeat is not None:  # a restarted container keeps the last process's heartbeat
+        await asyncio.to_thread(heartbeat.unlink, missing_ok=True)
     async with Runtime.open(settings) as runtime:
         while True:
             await run_once(runtime, datetime.now(UTC))
+            if heartbeat is not None:
+                await asyncio.to_thread(heartbeat.touch)
             if once:
                 return 0
             await asyncio.sleep(interval)
@@ -91,8 +97,11 @@ def main(argv: list[str] | None = None) -> int:
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--once", action="store_true", help="one look, then exit")
     mode.add_argument("--every", type=int, metavar="SECONDS", help="look every SECONDS")
+    parser.add_argument(
+        "--heartbeat", type=Path, metavar="FILE", help="touched after each look (healthcheck)"
+    )
     args = parser.parse_args(argv)
-    return asyncio.run(_loop(args.once, args.every))
+    return asyncio.run(_loop(args.once, args.every, args.heartbeat))
 
 
 if __name__ == "__main__":

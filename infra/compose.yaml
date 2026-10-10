@@ -28,6 +28,34 @@ x-tei: &tei
     # link. Once cached, a start takes seconds and the first passing check ends this period.
     start_period: 60m
 
+# The orchestrator image (Step 25), profile app: `make app-up` after `make up` and `make gateway-up`.
+# The environment is `make serve`'s (the Makefile's APP_ENV) with service hostnames: inside a
+# container every 127.0.0.1 default of the orchestrator's settings would point at itself. Dev
+# settings and dummy defaults, overridden from infra/.env as the other services are.
+x-orchestrator: &orchestrator
+  image: surakshasetu/orchestrator:local
+  profiles: [app]
+  restart: unless-stopped
+  depends_on:
+    postgres: { condition: service_healthy }
+    valkey: { condition: service_healthy }
+  environment:
+    SS_PG_DSN_APP: postgresql://app_rw:${APP_RW_PASSWORD:-surakshasetu-dev-app-rw}@postgres:5432/surakshasetu
+    SS_PG_DSN_KEYVAULT: postgresql://keyvault_rw:${KEYVAULT_RW_PASSWORD:-surakshasetu-dev-keyvault-rw}@postgres:5432/surakshasetu
+    SS_PG_DSN_ERASURE: postgresql://erasure_rw:${ERASURE_RW_PASSWORD:-surakshasetu-dev-erasure-rw}@postgres:5432/surakshasetu
+    SS_REDIS_URL: redis://valkey:6379/0
+    SS_DOMAIN_BASE_URL: http://domain-services:8080
+    SS_DOMAIN_TOKEN: ${DOMAIN_TOKEN:-surakshasetu-dev-domain-token}
+    SS_DOMAIN_INTERNAL_TOKEN: ${DOMAIN_INTERNAL_TOKEN:-surakshasetu-dev-domain-internal-token}
+    # The OmniRoute app key `make gateway-up` imports (the orchestrator's SS_GATEWAY_API_KEY).
+    SS_GATEWAY_BASE_URL: http://omniroute:20128/v1
+    SS_GATEWAY_API_KEY: ${SS_GATEWAY_API_KEY:-surakshasetu-dev-gateway-key}
+    SS_TEI_EMBED_URL: http://tei-embed:80
+    SS_TEI_RERANK_URL: http://tei-rerank:80
+    SS_QDRANT_URL: http://qdrant:6333
+    SS_JOURNEY_URL: http://stubs:8090/journey/intake
+    SS_TIMER_INTERVAL_S: ${SS_TIMER_INTERVAL_S:-60}
+
 services:
   postgres:
     image: postgres:16.15-trixie
@@ -283,6 +311,46 @@ services:
     healthcheck:
       <<: *healthcheck
       test: ["CMD", "node", "healthcheck.mjs"]
+      start_period: 60s
+
+  # The Conversation API (TDD §1.4), the same app `make serve` runs: 127.0.0.1:8000, so stop one
+  # before starting the other. Healthy = GET /healthz (the image's HEALTHCHECK); GET /readyz names
+  # any dependency, bundle or DUMMY-gate check that fails.
+  orchestrator:
+    <<: *orchestrator
+    build:
+      context: ../orchestrator
+      # The runtime's content (prompt bundles, privacy FAQ, KB config, lexicon packs).
+      additional_contexts:
+        content: ../content
+    ports: ["127.0.0.1:8000:8000"]
+
+  # The inactivity timers (Step 22's jobs/timers.py, TDD §3.9's CC3) in the orchestrator's image,
+  # built once by that service. Healthy while the heartbeat it touches after each look is younger
+  # than three intervals.
+  scheduler:
+    <<: *orchestrator
+    depends_on:
+      orchestrator: { condition: service_healthy }
+    command:
+      [
+        "python",
+        "-m",
+        "surakshasetu.jobs.timers",
+        "--every",
+        "${SS_TIMER_INTERVAL_S:-60}",
+        "--heartbeat",
+        "/tmp/timers.heartbeat",
+      ]
+    healthcheck:
+      <<: *healthcheck
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import os, sys, time; sys.exit(time.time() - os.path.getmtime('/tmp/timers.heartbeat') > 3 * int(os.environ['SS_TIMER_INTERVAL_S']))",
+        ]
       start_period: 60s
 
 volumes:

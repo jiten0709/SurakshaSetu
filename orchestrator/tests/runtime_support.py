@@ -323,7 +323,8 @@ def priced(body: dict[str, Any], valid_until: str = "2026-11-03") -> dict[str, A
     base = cover * 16 // 10_000
     return {
         "decision_id": "0199a1b2-0000-7000-8000-0000000004a0",
-        "quote_id": f"Q-2026-10-04-{abs(hash(json.dumps(body, sort_keys=True))) % 10_000:04d}",
+        # sha256, not hash(): str hashes vary per process, and a random id can hold a log sentinel.
+        "quote_id": f"Q-2026-10-04-{int(sha256_hex(body), 16) % 10_000:04d}",
         "uin": body["uin"],
         "sum_assured_inr": str(cover),
         "term_years": body["term_years"],
@@ -651,6 +652,9 @@ class FakeGate:
     def _check(self) -> None:
         if self.down:
             raise RedisConnectionError("valkey down")
+
+    async def ping(self) -> None:
+        self._check()
 
     async def acquire(self, session_id: UUID) -> str | None:
         self._check()

@@ -1,8 +1,9 @@
 """Conversation API application factory."""
 
+import asyncio
 import logging
 import re
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from contextlib import asynccontextmanager
 from http import HTTPStatus
 from importlib.metadata import version
@@ -17,10 +18,15 @@ from starlette.exceptions import HTTPException
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from surakshasetu.api.routes import router
+from surakshasetu.compose.bundle import LOCALES
 from surakshasetu.config import Settings, load_settings
 from surakshasetu.domain.client import DomainError
+from surakshasetu.graph import side_query
+from surakshasetu.graph.nodes import pinned_bundle
 from surakshasetu.graph.runtime import ProblemError, Runtime
 from surakshasetu.logging import configure_logging, request_id_ctx
+from surakshasetu.rails.output import dummy
+from surakshasetu.store import conv as store
 
 logger = logging.getLogger(__name__)
 
@@ -28,9 +34,12 @@ VERSION = version("surakshasetu")
 # The caller's X-Request-ID is untrusted: anything else gets a fresh id, so it can't inject lines.
 _REQUEST_ID = re.compile(r"[A-Za-z0-9._-]{1,64}")
 BODY_LIMIT = 16 * 1024
+# Each dependency check's budget in /readyz.
+READY_S = 2.0
+DEPENDENCIES = ("database", "redis", "domain", "omniroute")
 
 
-def problem(status: int, code: str | None = None) -> JSONResponse:
+def problem(status: int, code: str | None = None, **extra: object) -> JSONResponse:
     """RFC 9457, as the domain tier answers: the contract `code`, never exception text."""
     return JSONResponse(
         {
@@ -38,10 +47,62 @@ def problem(status: int, code: str | None = None) -> JSONResponse:
             "title": HTTPStatus(status).phrase,
             "status": status,
             "code": code or HTTPStatus(status).name,
+            **extra,
         },
         status_code=status,
         media_type="application/problem+json",
     )
+
+
+async def readiness(app: FastAPI) -> list[str]:
+    """The names of the failing checks, in a fixed order: the dependencies a turn needs, the
+    pinned bundle as a turn loads it, and the DUMMY gate. Never a value: no URL, DSN, token or
+    error text reaches the result or the log."""
+    settings: Settings = app.state.settings
+    runtime: Runtime | None = getattr(app.state, "runtime", None)
+    switches: set[tuple[str, str]] = set()
+
+    def database(rt: Runtime) -> None:
+        nonlocal switches
+        # The pool's own timeout bounds the wait: a cancelled getconn would leak its connection.
+        with rt.pool.connection(timeout=READY_S) as conn:
+            switches = store.active_kill_switches(conn)
+
+    async def bounded(check: Awaitable[object]) -> None:
+        async with asyncio.timeout(READY_S):
+            await check
+
+    results: Sequence[object] = [RuntimeError("no runtime")] * len(DEPENDENCIES)
+    if runtime is not None:
+        results = await asyncio.gather(
+            asyncio.to_thread(database, runtime),
+            bounded(runtime.gate.ping()),
+            runtime.domain.get_versions(),  # its own 150 ms budget
+            bounded(runtime.gateway.healthz()),
+            return_exceptions=True,
+        )
+    failing = {
+        name: result
+        for name, result in zip(DEPENDENCIES, results, strict=True)
+        if isinstance(result, BaseException)
+    }
+    env, version = settings.env, settings.prompt_bundle
+    try:  # what the load node does for a session pinned to the active bundle
+        pinned_bundle(version, version, ("prompt_bundle", version) in switches, env)
+    except Exception as exc:
+        failing["bundle"] = exc
+    try:  # pilot and prod release no DUMMY text (Step 24): rail 8 blocks it, the FAQ refuses it
+        if env in ("pilot", "prod") and dummy("DUMMY", env).action != "block":
+            raise RuntimeError("RC-DUMMY does not block")
+        for locale in LOCALES:
+            side_query.privacy_faq(locale, env)
+    except Exception as exc:
+        failing["dummy_gate"] = exc
+    for name, error in failing.items():
+        logger.debug("readiness %s failed: %s", name, type(error).__name__)
+    if failing:
+        logger.warning("not ready: %s", ", ".join(failing))
+    return list(failing)
 
 
 class BodyLimit:
@@ -136,6 +197,14 @@ def create_app(settings: Settings | None = None, runtime: Runtime | None = None)
     async def healthz() -> dict[str, str]:
         """Liveness only: never touches a dependency."""
         return {"status": "ok", "version": VERSION}
+
+    @app.get("/readyz")
+    async def readyz() -> Response:
+        """Readiness: 200 when every check holds, else 503 naming the failing checks."""
+        failing = await readiness(app)
+        if failing:
+            return problem(503, failing=failing)
+        return JSONResponse({"status": "ready", "version": VERSION})
 
     app.include_router(router)
     logger.info("app ready env=%s version=%s", settings.env, VERSION)

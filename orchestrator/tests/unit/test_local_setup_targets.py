@@ -1,5 +1,6 @@
-"""`make local-setup` runs TDD §7.5 steps 1-6 in order (Step 24). Read from the Makefile's text:
-running make here would start the stack."""
+"""`make local-setup` runs TDD §7.5 steps 1-6 in order (Step 24); it refuses a running stack and
+reruns safely on warm volumes (Step 25). Read from the Makefile's text: running make here would
+start the stack."""
 
 import re
 from pathlib import Path
@@ -15,6 +16,21 @@ STEPS = {
     5: ["test-invariants", "e2e-scripted"],  # the properties, the scripted conversation
     6: ["verify-audit", "verify-release-gate"],  # the chains; no DUMMY text released in pilot
 }
+# Step 25: why each stage reruns safely on a warm database (the volumes of an earlier run).
+IDEMPOTENT = {
+    "up": "compose recreates only what changed; Flyway finds no migration to apply",
+    "gateway-up": "the seed upserts by fixed id and reads every value back",
+    "seed-catalog": "unchanged rows are 0 rows changed; an immutable row refuses a change",
+    "kb-ingest": "a recorded snapshot with the same chunks is a no-op",
+    "kb-verify": "read-only",
+    "seed-eval": "offline",
+    "test-invariants": "pure",
+    "e2e-scripted": "a new session each run, kept for the dossier",
+    "verify-audit": "a same-root anchor is a no-op; today's logs 'anchored while open'",
+    "verify-release-gate": "deletes what it creates",
+}
+# Anything that throws away state: compose down, a volume removal, a dropped or emptied table.
+DESTRUCTIVE = re.compile(r"\$\(COMPOSE\)[^\n]*\bdown\b|-v\b|volume rm|\bDROP\b|\bTRUNCATE\b")
 
 
 def recipe(target: str) -> str:
@@ -30,12 +46,17 @@ def test_every_step_has_its_target() -> None:
     assert "db-migrate" in recipe("up")
 
 
-def test_local_setup_runs_the_steps_in_order_ending_with_step_6() -> None:
+def stages() -> list[str]:
     loop = recipe("local-setup")
     listed = re.search(r"for t in (.*?); do", loop.replace("\\\n", " "), re.DOTALL)
     assert listed, loop
     words = listed.group(1).replace('"', " ").split()
-    names = [word for word in words if re.fullmatch(r"[a-z][a-z0-9-]*", word)]
+    return [word for word in words if re.fullmatch(r"[a-z][a-z0-9-]*", word)]
+
+
+def test_local_setup_runs_the_steps_in_order_ending_with_step_6() -> None:
+    loop = recipe("local-setup")
+    names = stages()
     wanted = [target for targets in STEPS.values() for target in targets]
     assert [n for n in names if n in wanted] == wanted
     assert names[-2:] == ["verify-audit", "verify-release-gate"]
@@ -51,3 +72,19 @@ def test_nothing_is_a_placeholder_any_more() -> None:
 def test_the_scripted_run_keeps_its_session_for_the_dossier() -> None:
     assert "SS_GOLDEN_KEEP" in recipe("e2e-scripted")
     assert "surakshasetu.audit.dossier" in recipe("dossier")
+
+
+def test_local_setup_refuses_a_running_stack_but_not_warm_volumes() -> None:
+    check = recipe("local-setup").split("@for t in")[0]
+
+    # Running containers (every profile local-setup or app-up starts), not volumes, are refused.
+    assert "--profile gateway --profile app ps -q" in check
+    assert "run 'make down' first" in check and "exit 1" in check
+    assert "volume" not in check
+
+
+def test_every_stage_reruns_safely_on_a_warm_database() -> None:
+    assert sorted(stages()) == sorted(IDEMPOTENT)
+    for stage in [*IDEMPOTENT, "local-setup", "db-migrate"]:
+        assert not DESTRUCTIVE.search(recipe(stage)), stage
+    assert DESTRUCTIVE.search(recipe("down"))  # the pattern does see a compose down

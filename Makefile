@@ -38,7 +38,7 @@ TEST_ENV := SS_TEST_PG_DSN_ADMIN="postgresql://postgres:$(POSTGRES_PASSWORD)@127
 	db-migrate seed-catalog contracts contracts-lint contract-test verify-audit gateway-up \
 	gateway-verify kb-ingest kb-verify kb-chunks check-ingest calibrate-retrieval eval-retrieval \
 	bakeoff-embed bakeoff-rerank test-invariants eval eval-live seed-eval e2e-scripted \
-	timers-once serve local-setup verify-release-gate dossier $(PLACEHOLDERS)
+	timers-once serve local-setup verify-release-gate dossier app-up $(PLACEHOLDERS)
 
 # Postgres first, then the migrations, so domain-services finds its domain_rw role on a fresh
 # volume. `up --wait` treats an exited one-shot as a failure, so the one-shots run on their own.
@@ -49,7 +49,13 @@ up:
 	$(COMPOSE) run --rm minio-init
 
 down:
-	$(COMPOSE) --profile gateway down
+	$(COMPOSE) --profile gateway --profile app down
+
+# Step 25: the orchestrator image in compose (profile app): the Conversation API on 127.0.0.1:8000
+# (the port `make serve` uses, so run one of the two) and the `scheduler` running the inactivity
+# timers. Needs `make up`, and `make gateway-up` for GET /readyz to answer 200.
+app-up:
+	$(COMPOSE) --profile app up -d --build --wait orchestrator scheduler
 
 # SurakshaSetu's hardened OmniRoute (profile gateway, 127.0.0.1:20130), in front of the stubs for
 # the chat routes: start it, then apply infra/omniroute/seed.json and read every value back.
@@ -244,7 +250,7 @@ e2e-scripted: db-migrate
 # One look of the inactivity timers (Step 22, TDD §3.9's CC3) against the dev database: every
 # post-consent session idle past its state's timeout (SS_INACTIVITY_TIMEOUTS) is paused by a timer
 # turn, committed and audited like any turn; sessions before consent are never touched (V3). The
-# compose `scheduler` service runs `python -m surakshasetu.jobs.timers --every 60` from Step 24.
+# compose `scheduler` service (profile app, `make app-up`) runs it every SS_TIMER_INTERVAL_S.
 # Needs `make up` (and `make gateway-up` for the pause's output rails).
 timers-once:
 	@cd orchestrator && $(GOLDEN_ENV) uv run --locked python -m surakshasetu.jobs.timers --once
@@ -293,7 +299,11 @@ serve:
 # (Step 24): every audit chain active today (UTC) verified and the day anchored, and the pilot DUMMY
 # gate. In dev, anchoring today anchors an open day: the anchor row is insert-only, so a later run
 # the same day logs "anchored while open" and still exits 0 (pilot and prod refuse an open day).
+# Step 25: it starts the stack itself and refuses one already running (containers from an earlier
+# build or session); stopped volumes are fine, so `make down && make local-setup` reruns warm.
 local-setup:
+	@if [ -n "$$($(COMPOSE) --profile gateway --profile app ps -q)" ]; then \
+		echo "local-setup: the stack is already running; run 'make down' first" >&2; exit 1; fi
 	@for t in up gateway-up seed-catalog kb-ingest kb-verify seed-eval test-invariants e2e-scripted \
 		"verify-audit DATE=$$(date -u +%F)" verify-release-gate; do \
 		echo "== local-setup: $$t"; $(MAKE) --no-print-directory $$t || exit 1; done
