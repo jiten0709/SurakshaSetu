@@ -32,6 +32,11 @@ export function turn(
   };
 }
 
+/** Matches a paragraph whose whole text is exactly `text` (no whitespace folding: verbatim). */
+export function paragraph(text: string) {
+  return (_: string, element: Element | null) => element?.tagName === "P" && element.textContent === text;
+}
+
 export function json(status: number, body: unknown, type = "application/json"): Response {
   return new Response(JSON.stringify(body), { status, headers: { "content-type": type } });
 }

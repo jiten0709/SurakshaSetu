@@ -12,5 +12,6 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     setupFiles: ["src/test-setup.ts"],
+    css: true, // otherwise a stylesheet (even ?raw) reads as "" and the font-stack test sees nothing
   },
 });

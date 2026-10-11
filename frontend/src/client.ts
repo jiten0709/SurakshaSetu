@@ -4,6 +4,8 @@
 import type { components } from "./conversation-api";
 
 type Schemas = components["schemas"];
+export type Action = Schemas["Action"];
+export type ConsentForm = Schemas["ConsentForm"];
 export type FsmState = Schemas["FsmState"];
 export type Locale = Schemas["Locale"];
 export type QuickReply = Schemas["QuickReply"];
