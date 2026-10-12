@@ -19,6 +19,11 @@ import {
 // action, a language switch or the erase.
 
 type Entry = { from: "you"; text: string } | { from: "server"; turn: TurnResponse };
+type Part = TurnResponse["message"]["parts"][number];
+
+/** A reply that presents the S3 options (a recommendation render). */
+const hasCards = (entry: Entry) =>
+  entry.from === "server" && entry.turn.message.parts.some((p) => p.id.startsWith("option_card:"));
 
 interface Trouble {
   message: string;
@@ -255,13 +260,20 @@ export function Chat({ locale: initial = "en-IN", busyRetryMs = 1000 }: { locale
   }, [locale]);
 
   const last = entries.length - 1;
+  // A recommendation rendered again (a language switch, an acknowledgment mismatch, a re-ranking)
+  // leaves the older render in the log, readable but muted; its buttons are off like any old reply's.
+  const lastRender = entries.findLastIndex(hasCards);
   const switchTo = other(locale);
   return (
     <main>
       <h1>SurakshaSetu</h1>
       <ol className="log" role="log" aria-live="polite" aria-label="Conversation">
         {entries.map((entry, i) => (
-          <li key={i} ref={i === last ? newest : undefined} className={entry.from}>
+          <li
+            key={i}
+            ref={i === last ? newest : undefined}
+            className={i < lastRender && hasCards(entry) ? `${entry.from} superseded` : entry.from}
+          >
             <span className="sr-only">{entry.from === "you" ? "You:" : "SurakshaSetu:"}</span>
             {entry.from === "you" ? (
               <p>{entry.text}</p>
@@ -356,16 +368,13 @@ export function Chat({ locale: initial = "en-IN", busyRetryMs = 1000 }: { locale
 
 type OnAction = (action: Action, label: string) => void;
 
-/** A released message: its parts in order (plain text for now), its consent form, its quick replies. */
+/** A released message: its parts in the order sent, its consent form, its quick replies. */
 function Reply({ turn, active, onAction }: { turn: TurnResponse; active: boolean; onAction: OnAction }) {
   const { parts, text, form, quick_replies } = turn.message;
-  // A blocked release has no parts: its text is the whole message.
-  const paragraphs = parts.length ? parts.map((part) => part.text) : [text];
   return (
     <>
-      {paragraphs.map((paragraph, i) => (
-        <p key={i}>{paragraph}</p>
-      ))}
+      {/* A blocked release has no parts: its text is the whole message. */}
+      {parts.length ? parts.map((part, i) => <PartView key={i} part={part} />) : <p>{text}</p>}
       {form && <ConsentForm form={form} active={active} onSubmit={onAction} />}
       {quick_replies.length > 0 && (
         <div className="replies" role="group" aria-label="Choices">
@@ -377,6 +386,83 @@ function Reply({ turn, active, onAction }: { turn: TurnResponse; active: boolean
         </div>
       )}
     </>
+  );
+}
+
+/**
+ * One part, by its id (the spec's namespaces), its text whole and as sent: the S3 sections only gain
+ * structure (a card, a table, a disclosure set, the sources panel), headed by their own first line.
+ * Anything else, an unknown id included, is a plain paragraph. Nothing is reordered or reworded.
+ */
+function PartView({ part: { id, text } }: { part: Part }) {
+  const [head, ...rest] = text.split("\n");
+  const body = rest.length > 0 && <p>{rest.join("\n")}</p>;
+  if (id.startsWith("option_card:")) {
+    return (
+      <article className="card" aria-label={head} data-part={id}>
+        <h2>{head}</h2>
+        {body}
+      </article>
+    );
+  }
+  if (id.startsWith("disclosures:")) {
+    // Legal text: always whole and open, never collapsed, clamped or truncated.
+    return (
+      <section className="disclosures" aria-label={head} data-part={id}>
+        <h2>{head}</h2>
+        {body}
+      </section>
+    );
+  }
+  if (id === "sources" || id === "template:sources") {
+    return (
+      <aside className="sources" aria-label={head} data-part={id}>
+        <h2>{head}</h2>
+        <ol>
+          {rest.map((line, i) => (
+            <li key={i}>{line}</li>
+          ))}
+        </ol>
+      </aside>
+    );
+  }
+  return (id === "comparison" && comparison(id, text)) || <p data-part={id}>{text}</p>;
+}
+
+/** The composer's comparison (a caption line, then a pipe table) as a table; null if it isn't one. */
+function comparison(id: string, text: string) {
+  const [caption, header, rule, ...rows] = text.split("\n");
+  const cells = (row = "") => (row.startsWith("|") && row.endsWith("|") ? row.slice(1, -1).split("|").map((c) => c.trim()) : null);
+  // ponytail: a "|" inside a cell breaks the shape, and the part is then shown as plain text.
+  const head = cells(header);
+  const grid = rows.map(cells);
+  if (!head || rule !== `${"|---".repeat(head.length)}|` || grid.some((r) => r?.length !== head.length)) return null;
+  return (
+    <div className="scroll" data-part={id}>
+      <table>
+        <caption>{caption}</caption>
+        <thead>
+          <tr>
+            <td>{head[0]}</td>
+            {head.slice(1).map((cell, i) => (
+              <th key={i} scope="col">
+                {cell}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {(grid as string[][]).map(([label, ...values], i) => (
+            <tr key={i}>
+              <th scope="row">{label}</th>
+              {values.map((cell, j) => (
+                <td key={j}>{cell}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 

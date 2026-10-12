@@ -101,6 +101,60 @@ h1 {
   margin-bottom: 0;
 }
 
+/* An older recommendation, rendered again since: still readable (AA), its buttons off. */
+.log li.superseded {
+  color: var(--muted);
+}
+
+/* S3: option cards, disclosure sets (legal text: never clipped or collapsed) and the sources. */
+.card,
+.disclosures,
+.sources {
+  margin: 8px 0;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+}
+
+.disclosures {
+  border-left: 4px solid var(--notice-border);
+}
+
+.log h2 {
+  margin: 0 0 4px;
+  font-size: 1rem;
+}
+
+.sources ol {
+  margin: 0;
+  padding-left: 1.5rem;
+}
+
+/* A wide comparison scrolls inside its bubble, never the page. */
+.scroll {
+  margin: 8px 0;
+  overflow-x: auto;
+}
+
+.log table {
+  border-collapse: collapse;
+}
+
+.log caption {
+  padding-bottom: 4px;
+  font-weight: 600;
+  text-align: left;
+}
+
+.log th,
+.log td {
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+
 .replies {
   display: flex;
   flex-wrap: wrap;

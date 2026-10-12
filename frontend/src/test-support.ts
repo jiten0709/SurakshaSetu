@@ -37,6 +37,16 @@ export function paragraph(text: string) {
   return (_: string, element: Element | null) => element?.tagName === "P" && element.textContent === text;
 }
 
+/** The rendered parts of a reply (`data-part`), in DOM order. */
+export function shownParts(reply: Element): HTMLElement[] {
+  return [...reply.querySelectorAll<HTMLElement>("[data-part]")];
+}
+
+/** A card, disclosure set or sources panel read back line by line: heading, paragraphs, list items. */
+export function lines(element: Element): string {
+  return [...element.querySelectorAll("h2, p, li")].map((e) => e.textContent).join("\n");
+}
+
 export function json(status: number, body: unknown, type = "application/json"): Response {
   return new Response(JSON.stringify(body), { status, headers: { "content-type": type } });
 }
