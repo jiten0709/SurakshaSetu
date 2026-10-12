@@ -73,6 +73,7 @@ type Answer = Response | Promise<Response> | Error;
 /**
  * A fake Conversation API behind a mocked `fetch`: POST /v1/sessions answers `created(n)` (or a
  * queued `onCreate` answer), GET …/events an open event stream that `emit` and `push` write to,
+ * GET /internal/… (the dev inspector's audit read, Step 30) whatever `audit` returns on each call,
  * and every other request the next queued `answer`. Each call is recorded (header names lower-case).
  */
 export function fakeApi() {
@@ -81,6 +82,9 @@ export function fakeApi() {
   const creates: Answer[] = [];
   let sessions = 0;
   let push: (chunk: string) => void = () => {};
+  let audit: () => Response = () => {
+    throw new Error("fake API: no audit answer");
+  };
 
   function stream(signal?: AbortSignal | null): Response {
     const encoder = new TextEncoder();
@@ -105,6 +109,7 @@ export function fakeApi() {
     const body = typeof init.body === "string" ? JSON.parse(init.body) : undefined;
     calls.push({ method: init.method ?? "GET", url, headers, body });
     if (url === "/v1/sessions") return creates.length ? next(creates) : json(201, created(++sessions));
+    if (url.startsWith("/internal/")) return audit(); // before /events: the inspector's URL ends with it
     if (url.endsWith("/events")) return stream(init.signal);
     return next(answers);
   });
@@ -115,6 +120,7 @@ export function fakeApi() {
     turns: () => calls.filter((c) => c.url.endsWith("/turns")),
     answer: (...a: Answer[]) => answers.push(...a),
     onCreate: (...a: Answer[]) => creates.push(...a),
+    audit: (answer: () => Response) => (audit = answer),
     push: (chunk: string) => push(chunk),
     emit: (event: string, data: unknown) => push(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`),
   };

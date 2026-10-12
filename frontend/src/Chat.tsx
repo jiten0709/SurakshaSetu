@@ -13,6 +13,7 @@ import {
   type TurnRequest,
   type TurnResponse,
 } from "./client";
+import { Inspector } from "./Inspector";
 
 // The chat screen: a thin client. Everything it shows comes from a released turn or a quick reply
 // it was given, and everything it sends is typed text, a quick reply's or the consent form's
@@ -105,7 +106,9 @@ export function Chat({ locale: initial = "en-IN", busyRetryMs = 1000 }: { locale
   // The session's locale as the server answered it: the form's language, else the last switch it
   // took. The released turn names no locale, so a typed switch after S0 is not seen here.
   const [locale, setLocale] = useState<Locale>(initial);
-  const [live, setLive] = useState(false); // a session is held (the render cannot read the ref)
+  // The session held, by its id only (the render cannot read the ref; the token stays there).
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const live = sessionId !== null;
   const [confirming, setConfirming] = useState(false);
   const dead = problem?.restart === true;
 
@@ -126,7 +129,7 @@ export function Chat({ locale: initial = "en-IN", busyRetryMs = 1000 }: { locale
   function forget() {
     stream.current?.abort();
     session.current = null;
-    setLive(false);
+    setSessionId(null);
   }
 
   async function post(s: Session, request: TurnRequest, key: string): Promise<TurnResponse> {
@@ -161,7 +164,7 @@ export function Chat({ locale: initial = "en-IN", busyRetryMs = 1000 }: { locale
           return;
         }
         session.current = s;
-        setLive(true);
+        setSessionId(s.id);
         listen(s);
       }
       const turn = await post(s, request, key);
@@ -361,6 +364,10 @@ export function Chat({ locale: initial = "en-IN", busyRetryMs = 1000 }: { locale
             </button>
           )}
         </div>
+        {/* Step 30: dev server only (DEV is the constant false in a build, so none of it ships). */}
+        {import.meta.env.DEV && import.meta.env.VITE_INSPECTOR === "1" && (
+          <Inspector key={sessionId ?? "none"} sessionId={sessionId} turns={entries.length} />
+        )}
       </div>
     </main>
   );

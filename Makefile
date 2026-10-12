@@ -40,7 +40,7 @@ TEST_ENV := SS_TEST_PG_DSN_ADMIN="postgresql://postgres:$(POSTGRES_PASSWORD)@127
 	gateway-verify kb-ingest kb-verify kb-chunks check-ingest calibrate-retrieval eval-retrieval \
 	bakeoff-embed bakeoff-rerank test-invariants eval eval-live seed-eval e2e-scripted \
 	timers-once serve local-setup verify-release-gate dossier app-up ui-deps ui ui-types ui-check \
-	$(PLACEHOLDERS)
+	ui-e2e $(PLACEHOLDERS)
 
 # Postgres first, then the migrations, so domain-services finds its domain_rw role on a fresh
 # volume. `up --wait` treats an exited one-shot as a failure, so the one-shots run on their own.
@@ -322,6 +322,18 @@ ui-check: ui-deps
 		|| { echo "ui-check: frontend/$(UI_TYPES) differs from $(CONV_SPEC); run make ui-types" >&2; \
 			exit 1; }
 	cd frontend && npm run typecheck && npm run lint && npm test && npm run build
+
+# Step 30: one browser smoke test (Playwright, Chromium; frontend/e2e/smoke.e2e.ts): the scripted
+# customer from the greeting through S1, S2 and the recommendation to the signed hand-off, in the UI.
+# Needs the API ready on :8000 (`make serve`, after `make local-setup`) and the browser installed
+# once (`cd frontend && npx playwright install chromium`). A running `make ui` is reused, else
+# Playwright starts the dev server. Turns are paced for the API's rate limit (~2 minutes). A failure
+# names the step, never message text. Not part of `make check` or `ui-check`.
+ui-e2e: ui-deps
+	@curl -sf -o /dev/null --max-time 5 http://127.0.0.1:8000/readyz || { echo "ui-e2e: the \
+	Conversation API is not ready on 127.0.0.1:8000; start it with make serve (after make \
+	local-setup)" >&2; exit 1; }
+	cd frontend && npm exec --no -- playwright test
 
 # TDD §7.5 steps 1-6 in order, each its own target (idempotent; stops at the first failure): the
 # stack and migrations, the gateway, the catalog with its hashes, the KB through the review gate,

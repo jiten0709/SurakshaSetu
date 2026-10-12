@@ -2,13 +2,13 @@
 
 An AI-assisted conversational advisor for life and term insurance in India. It guides a customer from consent, through eligibility and needs discovery, to a compliant, explainable plan recommendation.
 
-> **Phase 1, Steps 1–25 of 33 done: the backend is demo-ready.**
+> **Phase 1, Steps 1–30 of 33 done: the demo is complete (backend, packaging and the chat UI).**
 >
-> - **What works:** the whole S0–S3 journey, end to end. That covers consent, eligibility, the Quote-Only path, needs discovery, a ranked and cited recommendation with hash-verified disclosures, and a signed hand-off to the application journey. The cross-cutting handlers (FAQ, objections, human escalation, pause, data erasure) work too.
+> - **What works:** the whole S0–S3 journey, end to end, in the terminal client or the browser (see [Using the UI](#using-the-ui)). That covers consent, eligibility, the Quote-Only path, needs discovery, a ranked and cited recommendation with hash-verified disclosures, and a signed hand-off to the application journey. The cross-cutting handlers (FAQ, objections, human escalation, pause, data erasure) work too.
 > - **Evidence:** `make eval` passes 208 of 208 (207 golden and red-team conversations plus the pilot DUMMY gate), and 0 of 157 attacks succeed. Compliance can render a verified dossier for any session.
 > - **How it runs:** the orchestrator runs on the host or in compose, with readiness checks and an inactivity scheduler.
 > - **Not real yet:** every product, rule, rate and document is DUMMY data, and the language models are local stubs until the hosting decision (D2).
-> - **Next:** Steps 26–30 build the chat UI. Steps 31–33 (WORM audit streaming, observability, retention) are the production layer; see [Release gates](#release-gates-before-any-pilot-traffic).
+> - **Next:** Steps 31–33 (WORM audit streaming, observability, retention) are the production layer, started only on approval; see [Release gates](#release-gates-before-any-pilot-traffic).
 
 ## Core idea
 
@@ -67,9 +67,10 @@ _State flow from the product spec. Phase 1 builds only S0–S3 (green) and hands
 | ------------------ | -------------------------------------------------------------------------------------- |
 | `orchestrator/`    | Conversation tier: Python 3.12, FastAPI and LangGraph                                  |
 | `domain-services/` | Domain tier: Java 21, Spring Boot and DMN rules (eligibility, suitability, consent, catalog) |
+| `frontend/`        | The chat UI: Vite, React and TypeScript, typed from the Conversation API spec          |
 | `tools/stubs/`     | Local stand-ins for the model and external systems                                     |
 | `infra/`           | Docker Compose stack (Postgres, Valkey, Qdrant, MinIO, TEI, OmniRoute, the orchestrator image) and Flyway migrations |
-| `contracts/`       | The OpenAPI contract between the two tiers                                             |
+| `contracts/`       | The OpenAPI contracts: between the two tiers, and the Conversation API for chat clients |
 | `content/`         | Seed data, prompt bundles, lexicons, the privacy FAQ, golden sets and the red-team suite |
 
 ## Quick start
@@ -133,6 +134,25 @@ docker volume rm surakshasetu_pgdata surakshasetu_qdrant surakshasetu_qdrant-sna
 make local-setup
 ```
 
+## Using the UI
+
+The chat UI (`frontend/`) is a thin client of the Conversation API: it shows what the server releases and sends what the customer types or picks, nothing more.
+
+1. **Start the backend:** `make local-setup` once (or `make up && make gateway-up` on a set-up machine), then `make serve` (the API on 127.0.0.1:8000; leave it running).
+2. **Start the UI:** `make ui`, then open http://127.0.0.1:5173. The dev server proxies `/v1` to the API, so the browser talks to one origin.
+   - The UI targets need Node 24 (`frontend/.nvmrc`); with [fnm](https://github.com/Schniz/fnm): `fnm install 24 && fnm use 24`. Each target refuses another major and runs `npm ci` when the lock file changed.
+   - Answer the questions in short words or with the buttons ("34", "411001", "no", "24 lakh"). A reload starts a new conversation: the session token is held in memory only.
+3. **The dev inspector (optional):** a panel under the input with the conversation's state, the transition row and its reason code per turn, read from the audit trail's headers (never its payloads).
+   - Copy `frontend/.env.example` to `frontend/.env.local` (gitignored) and set `SS_COMPLIANCE_API_KEY` to the API's compliance key (the dev default in `orchestrator/src/surakshasetu/config.py`, unless your `orchestrator/.env` sets another).
+   - Run `VITE_INSPECTOR=1 make ui` (or set `VITE_INSPECTOR=1` in `.env.local`).
+   - Only the dev server's proxy reads the key; it never reaches the browser. Without it the panel says "not configured" and the chat works as usual.
+   - It exists only in the dev server: `npm run build` contains none of it (a test builds the bundle and checks).
+4. **The browser smoke test:** `cd frontend && npx playwright install chromium` once, then `make ui-e2e` with `make serve` running.
+   - It drives the scripted customer (TDD §7.4) through Chromium from the greeting to the signed hand-off, about 2 minutes (turns are paced for the API's rate limit), and checks the recommendation at phone width.
+   - A running `make ui` is reused; otherwise it starts the dev server itself. With the API down it stops at once and names `make serve`.
+   - A failure names the step only, never message text. It is not part of `make check`.
+5. **Checks:** `make ui-check` (the types against the spec, tsc, ESLint, the unit tests and the production build); `make ui-types` regenerates the types after a spec change.
+
 ## Make targets
 
 The root `Makefile` is the single entry point; CI runs the same targets. Targets that touch the stack read the role passwords and tokens from `infra/.env` (else the dummy defaults), so run the `db`, `stack` and `golden` suites through make.
@@ -162,6 +182,9 @@ The root `Makefile` is the single entry point; CI runs the same targets. Targets
 | Audit | `verify-audit DATE=YYYY-MM-DD` | Verify every chain active that day and anchor its Merkle root |
 | | `dossier [SESSION=<id>]` | One session's verified compliance dossier (JSON and HTML) |
 | Jobs | `timers-once` | One look of the inactivity timers on the host |
+| UI | `ui` | The chat UI's dev server on 127.0.0.1:5173 (`VITE_INSPECTOR=1` for the dev inspector) |
+| | `ui-types` / `ui-check` | Regenerate the TypeScript types from the Conversation API spec / drift check, typecheck, lint, test and build |
+| | `ui-e2e` | The browser smoke test (Playwright): the scripted customer to the hand-off, against `make serve` |
 
 ## Compose profiles
 
