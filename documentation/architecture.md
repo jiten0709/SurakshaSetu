@@ -12,6 +12,21 @@ Three boundaries matter more than the boxes:
 2. **The decision boundary.** Every decision that involves a number or a rule comes from the Java tier. The model has no tool access to it. The Python tier only calls it from deterministic state-node code, and never before valid consent (I1), apart from two reference reads at session creation.
 3. **The trust boundary around personal data.** Raw customer text exists only (a) in process memory; (b) encrypted under the subject's key in `conv.turn`, `conv.slot_value` and the audit payloads; (c) in the LangGraph checkpoint, which holds the session state and is removed by the erasure hard-delete; and (d) in calls to the self-hosted-only routes (`guard-input`, `nlu-extract`, `verify-claims`, `summarise`). Everything else (logs, audit headers, the generation routes, the advisor briefing) sees redacted or tokenised text.
 
+## Technology stack at a glance
+
+| Layer                   | Choices                                                                                                    | Role                                                                            |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| Conversation tier       | Python, FastAPI, Pydantic v2, LangGraph with a Postgres checkpointer, SSE                                  | Conversation API, one graph run per turn, rails, composer, retrieval, audit     |
+| Domain tier             | Java, Spring Boot, embedded Apache KIE DMN, OpenAPI 3.1                                                    | Consent, catalogue, disclosures, eligibility, suitability, ranking, quotes      |
+| Chat client             | React, Vite, TypeScript (strict), vitest, Playwright                                                       | Thin client that renders server-sent parts                                      |
+| Model path              | OmniRoute (OpenAI-compatible); TEI serving BGE-M3 (embed) and gte-multilingual (rerank)                    | Chat models by route name only; embedding and reranking stay self-hosted        |
+| Retrieval and ingestion | Qdrant (dense + BM25 sparse, RRF fusion); Docling, Dagster                                                 | Cited evidence from review-gated, immutable corpus snapshots                    |
+| Data                    | PostgreSQL, Valkey, MinIO (object lock)                                                                    | System of record; locks, rate limits, pub/sub; WORM audit anchors               |
+| Privacy and integrity   | Presidio and spaCy, AES-256-GCM per-subject keys, RFC 8785 JCS hashing, Ed25519                            | PII redaction, erasure by key destruction, reproducible hashes, signed hand-off |
+| Tooling and quality     | Docker Compose, Flyway, uv, Maven wrapper, npm; pytest, Hypothesis, Schemathesis, Testcontainers, ArchUnit | Local stack, migrations and builds; property, contract and architecture tests   |
+
+Pinned versions, ports and per-component responsibilities are in the [component catalogue](#component-catalogue); what each library is for is in [dependencies and their roles](#dependencies-and-their-roles).
+
 ## Component catalogue
 
 | Component                                | Technology (pinned)                                                        | Port                              | Responsibility                                                                                                                                             |

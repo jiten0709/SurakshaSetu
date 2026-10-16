@@ -258,7 +258,7 @@ class Sentence:
 
 def sentences(text: str) -> list[Sentence]:
     """Split on . ! ? । and newlines; a citation that opens a sentence ("fact. [E3]") belongs to
-    the one before. ponytail: abbreviations ("Rs. 500") split early; the citation rule then asks
+    the one before. abbreviations ("Rs. 500") split early; the citation rule then asks
     for a handle on each half, which fails closed."""
     parts: list[str] = []
     for part in _SENTENCE_END.split(text):

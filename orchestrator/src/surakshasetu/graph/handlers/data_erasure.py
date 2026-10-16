@@ -60,8 +60,6 @@ _DELETES = (
     "DELETE FROM langgraph.checkpoint_blobs WHERE thread_id = %(thread)s",
     "DELETE FROM langgraph.checkpoints WHERE thread_id = %(thread)s",
 )
-# ponytail: a scan of the audit table without an index; a partial index or Step 24's job takes
-# over if erasures become frequent.
 _PENDING = (
     "SELECT e.session_id, e.key_ref, e.pins, e.header->>'consent_id' FROM audit.audit_event e"
     " WHERE e.event_type = 'ERASURE_REQUEST' AND e.header->>'consent_withdrawal' = 'pending'"
@@ -181,7 +179,7 @@ async def sweep(
     - Sessions still marked erased (the delete after the commit failed) are erased.
     - Withdrawals the Consent Service did not record (it was down) are retried. On success,
       CONSENT_WITHDRAWN joins the session's chain. If a minor's key is already destroyed, nothing
-      can be appended, and the consent ledger is the record (ponytail: such a withdrawal is re-sent,
+      can be appended, and the consent ledger is the record (such a withdrawal is re-sent,
       idempotently, at every sweep)."""
     try:
         with erasure.connection() as conn:

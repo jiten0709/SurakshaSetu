@@ -147,8 +147,6 @@ public class CatalogRepository {
         riders);
   }
 
-  // ponytail: two queries per product (riders, documents); fine for a catalog of a few products,
-  // batch them by UIN if the catalog grows.
   private List<Rider> riders(String productUin) {
     return jdbc.sql(
             """

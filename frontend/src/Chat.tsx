@@ -1,4 +1,10 @@
-import { useEffect, useEffectEvent, useRef, useState, type FormEvent } from "react";
+import {
+  useEffect,
+  useEffectEvent,
+  useRef,
+  useState,
+  type FormEvent,
+} from "react";
 import {
   ApiError,
   CLOSED_STATES,
@@ -19,12 +25,15 @@ import { Inspector } from "./Inspector";
 // it was given, and everything it sends is typed text, a quick reply's or the consent form's
 // action, a language switch or the erase.
 
-type Entry = { from: "you"; text: string } | { from: "server"; turn: TurnResponse };
+type Entry =
+  | { from: "you"; text: string }
+  | { from: "server"; turn: TurnResponse };
 type Part = TurnResponse["message"]["parts"][number];
 
 /** A reply that presents the S3 options (a recommendation render). */
 const hasCards = (entry: Entry) =>
-  entry.from === "server" && entry.turn.message.parts.some((p) => p.id.startsWith("option_card:"));
+  entry.from === "server" &&
+  entry.turn.message.parts.some((p) => p.id.startsWith("option_card:"));
 
 interface Trouble {
   message: string;
@@ -38,10 +47,15 @@ const ERASE: TurnRequest = { action: { type: "ERASE", payload: {} } };
 const ERASE_LABEL = "Erase my data";
 
 /** Each locale's name in its own language: the switch offers the other one. */
-const LANGUAGES: Record<Locale, string> = { "en-IN": "English", "hi-IN": "हिंदी" };
-const other = (locale: Locale): Locale => (locale === "en-IN" ? "hi-IN" : "en-IN");
+const LANGUAGES: Record<Locale, string> = {
+  "en-IN": "English",
+  "hi-IN": "हिंदी",
+};
+const other = (locale: Locale): Locale =>
+  locale === "en-IN" ? "hi-IN" : "en-IN";
 
-const erasing = (request: TurnRequest) => "action" in request && request.action.type === "ERASE";
+const erasing = (request: TurnRequest) =>
+  "action" in request && request.action.type === "ERASE";
 
 /** The locale a language action asks for, if the request is one. */
 function asked(request: TurnRequest): Locale | undefined {
@@ -58,26 +72,51 @@ const STATUS: Record<string, string> = {
   validating: "Checking the reply…",
 };
 
-const UNREACHABLE = "We couldn't reach the service. Nothing was lost: press Retry.";
+const UNREACHABLE =
+  "We couldn't reach the service. Nothing was lost: press Retry.";
 const GENERIC = "Something went wrong.";
 
 /** What to tell the customer, and what they can do, per failure (the API's problem codes). */
 function trouble(error: unknown, erase: boolean): Trouble {
   if (!(error instanceof ApiError) || error.kind === "malformed") {
-    return { message: `${GENERIC} Please start a new conversation.`, restart: true };
+    return {
+      message: `${GENERIC} Please start a new conversation.`,
+      restart: true,
+    };
   }
-  if (error.kind === "unreachable") return { message: UNREACHABLE, retry: true };
+  if (error.kind === "unreachable")
+    return { message: UNREACHABLE, retry: true };
   switch (error.code) {
     case "RATE_LIMITED":
-      return { message: "You're sending messages faster than we can answer. Please wait a minute, then press Retry.", retry: true };
+      return {
+        message:
+          "You're sending messages faster than we can answer. Please wait a minute, then press Retry.",
+        retry: true,
+      };
     case "SESSION_BUSY":
-      return { message: "Your previous message is still being answered. Press Retry in a moment.", retry: true };
+      return {
+        message:
+          "Your previous message is still being answered. Press Retry in a moment.",
+        retry: true,
+      };
     case "SESSION_EXPIRED":
-      return { message: "This conversation has expired. Please start a new one.", restart: true };
+      return {
+        message: "This conversation has expired. Please start a new one.",
+        restart: true,
+      };
     case "UNAUTHORIZED":
       // An erase on a session already gone is the spec's repeat (401): its plain result.
-      if (erase) return { message: "This conversation has already been erased.", restart: true, gone: true };
-      return { message: "This conversation is no longer available. Please start a new one.", restart: true };
+      if (erase)
+        return {
+          message: "This conversation has already been erased.",
+          restart: true,
+          gone: true,
+        };
+      return {
+        message:
+          "This conversation is no longer available. Please start a new one.",
+        restart: true,
+      };
     case "SERVICE_UNAVAILABLE":
       return { message: UNREACHABLE, retry: true };
     case "REQUEST_ENTITY_TOO_LARGE":
@@ -87,7 +126,13 @@ function trouble(error: unknown, erase: boolean): Trouble {
   }
 }
 
-export function Chat({ locale: initial = "en-IN", busyRetryMs = 1000 }: { locale?: Locale; busyRetryMs?: number }) {
+export function Chat({
+  locale: initial = "en-IN",
+  busyRetryMs = 1000,
+}: {
+  locale?: Locale;
+  busyRetryMs?: number;
+}) {
   const session = useRef<Session | null>(null); // the token lives here, in memory only
   const stream = useRef<AbortController | null>(null);
   const inFlight = useRef(false); // synchronous, so a double click sends one turn
@@ -118,10 +163,12 @@ export function Chat({ locale: initial = "en-IN", busyRetryMs = 1000 }: { locale
     stream.current = controller;
     const onEvent = (name: string, data: unknown) => {
       if (name !== "turn.status" || !inFlight.current) return;
-      const label = typeof data === "object" && data !== null && "status" in data ? STATUS[String(data.status)] : undefined;
+      const label =
+        typeof data === "object" && data !== null && "status" in data
+          ? STATUS[String(data.status)]
+          : undefined;
       setStatus(label ?? "");
     };
-    // ponytail: best effort with no reconnect; the turn's own response is what counts.
     readEvents(s, onEvent, controller.signal).catch(() => undefined);
   }
 
@@ -132,19 +179,29 @@ export function Chat({ locale: initial = "en-IN", busyRetryMs = 1000 }: { locale
     setSessionId(null);
   }
 
-  async function post(s: Session, request: TurnRequest, key: string): Promise<TurnResponse> {
+  async function post(
+    s: Session,
+    request: TurnRequest,
+    key: string,
+  ): Promise<TurnResponse> {
     // The erase is DELETE /v1/sessions/{id}: the same turn as the ERASE action.
-    const deliver = () => (erasing(request) ? deleteSession(s, key) : sendTurn(s, request, key));
+    const deliver = () =>
+      erasing(request) ? deleteSession(s, key) : sendTurn(s, request, key);
     try {
       return await deliver();
     } catch (error) {
-      if (!(error instanceof ApiError && error.code === "SESSION_BUSY")) throw error;
+      if (!(error instanceof ApiError && error.code === "SESSION_BUSY"))
+        throw error;
       await new Promise((resolve) => setTimeout(resolve, busyRetryMs));
       return deliver(); // another turn held the session: once more, same key
     }
   }
 
-  async function send(request: TurnRequest, key: string = crypto.randomUUID(), echo?: string) {
+  async function send(
+    request: TurnRequest,
+    key: string = crypto.randomUUID(),
+    echo?: string,
+  ) {
     const erase = erasing(request);
     // An erase never opens a session. A queued erase starts in `finally`, in the same tick that
     // frees `inFlight`, so no other turn can start before it.
@@ -152,7 +209,8 @@ export function Chat({ locale: initial = "en-IN", busyRetryMs = 1000 }: { locale
     inFlight.current = true;
     setBusy(true);
     setProblem(null);
-    if (echo !== undefined) setEntries((e) => [...e, { from: "you", text: echo }]);
+    if (echo !== undefined)
+      setEntries((e) => [...e, { from: "you", text: echo }]);
     pending.current = { request, key };
     try {
       let s = session.current;
@@ -160,7 +218,10 @@ export function Chat({ locale: initial = "en-IN", busyRetryMs = 1000 }: { locale
         try {
           s = await createSession(locale);
         } catch {
-          setProblem({ message: "We couldn't start a conversation. Please press Retry.", retry: true });
+          setProblem({
+            message: "We couldn't start a conversation. Please press Retry.",
+            retry: true,
+          });
           return;
         }
         session.current = s;
@@ -171,7 +232,9 @@ export function Chat({ locale: initial = "en-IN", busyRetryMs = 1000 }: { locale
       pending.current = null;
       setEntries((e) => [...e, { from: "server", turn }]);
       setClosed(CLOSED_STATES.has(turn.state));
-      setLocale((current) => turn.message.form?.language ?? asked(request) ?? current);
+      setLocale(
+        (current) => turn.message.form?.language ?? asked(request) ?? current,
+      );
       // The server has deleted the session: after any erase (a closed state keeps its own state
       // name, EXIT.STAY), and whenever a turn enters Data Erasure (a typed withdrawal, a minor).
       if (erase || turn.state === "DATA_ERASURE") forget();
@@ -223,7 +286,8 @@ export function Chat({ locale: initial = "en-IN", busyRetryMs = 1000 }: { locale
   function switchLanguage() {
     const to = other(locale);
     const latest = entries.findLast((e) => e.from === "server");
-    const formOpen = latest?.from === "server" && latest.turn.message.form !== null;
+    const formOpen =
+      latest?.from === "server" && latest.turn.message.form !== null;
     const action: Action = formOpen
       ? { type: "NOTICE_LANGUAGE", payload: { language: to } }
       : { type: "LANGUAGE", payload: { locale: to } };
@@ -270,21 +334,32 @@ export function Chat({ locale: initial = "en-IN", busyRetryMs = 1000 }: { locale
   return (
     <main>
       <h1>SurakshaSetu</h1>
-      <ol className="log" role="log" aria-live="polite" aria-label="Conversation">
+      <ol
+        className="log"
+        role="log"
+        aria-live="polite"
+        aria-label="Conversation">
         {entries.map((entry, i) => (
           <li
             key={i}
             ref={i === last ? newest : undefined}
-            className={i < lastRender && hasCards(entry) ? `${entry.from} superseded` : entry.from}
-          >
-            <span className="sr-only">{entry.from === "you" ? "You:" : "SurakshaSetu:"}</span>
+            className={
+              i < lastRender && hasCards(entry)
+                ? `${entry.from} superseded`
+                : entry.from
+            }>
+            <span className="sr-only">
+              {entry.from === "you" ? "You:" : "SurakshaSetu:"}
+            </span>
             {entry.from === "you" ? (
               <p>{entry.text}</p>
             ) : (
               <Reply
                 turn={entry.turn}
                 active={i === last && !busy && !dead}
-                onAction={(action, label) => void send({ action }, undefined, label)}
+                onAction={(action, label) =>
+                  void send({ action }, undefined, label)
+                }
               />
             )}
           </li>
@@ -326,7 +401,11 @@ export function Chat({ locale: initial = "en-IN", busyRetryMs = 1000 }: { locale
         {closed && !problem && (
           <div className="notice">
             <p>This conversation has ended.</p>
-            <button type="button" ref={restartButton} onClick={restart} disabled={busy}>
+            <button
+              type="button"
+              ref={restartButton}
+              onClick={restart}
+              disabled={busy}>
               New conversation
             </button>
           </div>
@@ -343,7 +422,9 @@ export function Chat({ locale: initial = "en-IN", busyRetryMs = 1000 }: { locale
             disabled={closed || dead}
             autoComplete="off"
           />
-          <button type="submit" disabled={busy || closed || dead || !draft.trim()}>
+          <button
+            type="submit"
+            disabled={busy || closed || dead || !draft.trim()}>
             Send
           </button>
         </form>
@@ -353,20 +434,27 @@ export function Chat({ locale: initial = "en-IN", busyRetryMs = 1000 }: { locale
             className="secondary"
             lang={switchTo}
             onClick={switchLanguage}
-            disabled={busy || !live || closed || dead}
-          >
+            disabled={busy || !live || closed || dead}>
             {LANGUAGES[switchTo]}
           </button>
           {/* Usable in any state and while a turn runs (the erase then waits for it): I5. */}
           {live && (
-            <button type="button" className="secondary" ref={eraseButton} onClick={() => setConfirming(true)}>
+            <button
+              type="button"
+              className="secondary"
+              ref={eraseButton}
+              onClick={() => setConfirming(true)}>
               {ERASE_LABEL}
             </button>
           )}
         </div>
         {/* Step 30: dev server only (DEV is the constant false in a build, so none of it ships). */}
         {import.meta.env.DEV && import.meta.env.VITE_INSPECTOR === "1" && (
-          <Inspector key={sessionId ?? "none"} sessionId={sessionId} turns={entries.length} />
+          <Inspector
+            key={sessionId ?? "none"}
+            sessionId={sessionId}
+            turns={entries.length}
+          />
         )}
       </div>
     </main>
@@ -376,17 +464,33 @@ export function Chat({ locale: initial = "en-IN", busyRetryMs = 1000 }: { locale
 type OnAction = (action: Action, label: string) => void;
 
 /** A released message: its parts in the order sent, its consent form, its quick replies. */
-function Reply({ turn, active, onAction }: { turn: TurnResponse; active: boolean; onAction: OnAction }) {
+function Reply({
+  turn,
+  active,
+  onAction,
+}: {
+  turn: TurnResponse;
+  active: boolean;
+  onAction: OnAction;
+}) {
   const { parts, text, form, quick_replies } = turn.message;
   return (
     <>
       {/* A blocked release has no parts: its text is the whole message. */}
-      {parts.length ? parts.map((part, i) => <PartView key={i} part={part} />) : <p>{text}</p>}
+      {parts.length ? (
+        parts.map((part, i) => <PartView key={i} part={part} />)
+      ) : (
+        <p>{text}</p>
+      )}
       {form && <ConsentForm form={form} active={active} onSubmit={onAction} />}
       {quick_replies.length > 0 && (
         <div className="replies" role="group" aria-label="Choices">
           {quick_replies.map((reply, i) => (
-            <button key={i} type="button" disabled={!active} onClick={() => onAction(reply.action, reply.label)}>
+            <button
+              key={i}
+              type="button"
+              disabled={!active}
+              onClick={() => onAction(reply.action, reply.label)}>
               {reply.label}
             </button>
           ))}
@@ -433,17 +537,32 @@ function PartView({ part: { id, text } }: { part: Part }) {
       </aside>
     );
   }
-  return (id === "comparison" && comparison(id, text)) || <p data-part={id}>{text}</p>;
+  return (
+    (id === "comparison" && comparison(id, text)) || (
+      <p data-part={id}>{text}</p>
+    )
+  );
 }
 
 /** The composer's comparison (a caption line, then a pipe table) as a table; null if it isn't one. */
 function comparison(id: string, text: string) {
   const [caption, header, rule, ...rows] = text.split("\n");
-  const cells = (row = "") => (row.startsWith("|") && row.endsWith("|") ? row.slice(1, -1).split("|").map((c) => c.trim()) : null);
-  // ponytail: a "|" inside a cell breaks the shape, and the part is then shown as plain text.
+  const cells = (row = "") =>
+    row.startsWith("|") && row.endsWith("|")
+      ? row
+          .slice(1, -1)
+          .split("|")
+          .map((c) => c.trim())
+      : null;
+
   const head = cells(header);
   const grid = rows.map(cells);
-  if (!head || rule !== `${"|---".repeat(head.length)}|` || grid.some((r) => r?.length !== head.length)) return null;
+  if (
+    !head ||
+    rule !== `${"|---".repeat(head.length)}|` ||
+    grid.some((r) => r?.length !== head.length)
+  )
+    return null;
   return (
     <div className="scroll" data-part={id}>
       <table>
@@ -479,13 +598,25 @@ function comparison(id: string, text: string) {
  * own echo turns it off for good. No hash and no validation here: the server answers (P1 unticked
  * is a refusal it handles).
  */
-function ConsentForm({ form, active, onSubmit }: { form: Form; active: boolean; onSubmit: OnAction }) {
+function ConsentForm({
+  form,
+  active,
+  onSubmit,
+}: {
+  form: Form;
+  active: boolean;
+  onSubmit: OnAction;
+}) {
   const [ticked, setTicked] = useState<Record<string, boolean>>({});
 
   function submit(event: FormEvent) {
     event.preventDefault();
     if (!active) return;
-    const purposes = { P1: ticked.P1 === true, P2: ticked.P2 === true, P3: ticked.P3 === true };
+    const purposes = {
+      P1: ticked.P1 === true,
+      P2: ticked.P2 === true,
+      P3: ticked.P3 === true,
+    };
     const payload = {
       purposes,
       age_18_plus: ticked.adult === true,

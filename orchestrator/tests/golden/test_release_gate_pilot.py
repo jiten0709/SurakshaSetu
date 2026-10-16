@@ -62,9 +62,6 @@ async def test_the_pilot_profile_blocks_every_dummy_release(
         side_query.privacy_faq(conversation.locale, "pilot")
     assert faq_refused.value.reason == "DUMMY_REFUSED"
 
-    # ponytail: test-only seam patching the loaders' module globals by name; the bundle and FAQ
-    # load as dev, everything else runs as pilot. A new call site of either loader is not patched:
-    # it raises DUMMY_REFUSED and fails this test loudly until it is added here.
     load_bundle, privacy_faq = bundle.load_bundle, side_query.privacy_faq
 
     def bundle_as_dev(version: str, *, env: str, root: Path = bundle.PROMPT_BUNDLES) -> Any:

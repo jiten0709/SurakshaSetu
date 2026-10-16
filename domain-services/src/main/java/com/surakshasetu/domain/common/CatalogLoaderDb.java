@@ -16,8 +16,6 @@ import org.springframework.transaction.support.TransactionTemplate;
 @Component
 public class CatalogLoaderDb {
 
-  // ponytail: unpooled, one connection per call; fine for kill switches and seed runs, pool it
-  // if anything hot ever writes the catalog.
   private final JdbcClient jdbc;
   private final TransactionTemplate tx;
 

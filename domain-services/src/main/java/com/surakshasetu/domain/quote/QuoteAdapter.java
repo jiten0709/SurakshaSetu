@@ -40,9 +40,6 @@ public class QuoteAdapter {
   private final CatalogRepository catalog;
   private final RatingEngine rating;
   private final int validityDays;
-  // ponytail: an in-memory counter per IST day and per instance that restarts at 1, so quote_id is
-  // a readable reference and decision_id the unique key. Use a database sequence if quote ids must
-  // be unique across instances and restarts.
   private LocalDate day = LocalDate.MIN;
   private int seq;
 

@@ -62,8 +62,6 @@ logger = logging.getLogger("surakshasetu.kb.ingest")
 
 REPO = Path(__file__).resolve().parents[3]
 EMBED_BATCH = 16
-# ponytail: sized for CPU TEI on a laptop (a 16-chunk batch takes seconds to tens of seconds); a
-# GPU needs a fraction. Queries keep the route's own budget.
 EMBED_BATCH_TIMEOUT_S = 300.0
 
 # TDD §7.2, plus review.status (Step 12's mandatory filter) and each collection's own filters.

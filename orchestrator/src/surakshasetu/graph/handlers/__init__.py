@@ -152,8 +152,6 @@ def append(turn: "Turn", event_type: EventType, header: Header, payload: dict[st
     )
 
 
-# ponytail: catalog names per process; a product added to the catalog needs a restart to be
-# recognised by name (by UIN it always is). Load per turn if the catalog starts changing live.
 _PRODUCT_NAMES: dict[str, str] = {}
 
 

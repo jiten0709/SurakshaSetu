@@ -138,10 +138,9 @@ export async function readEvents(
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
-  for (;;) {
+  for (; ;) {
     const { done, value } = await reader.read();
     if (done) return;
-    // ponytail: LF framing, as FastAPI's fastapi.sse sends it; CR/CRLF if another server answers.
     buffer += decoder.decode(value, { stream: true });
     const blocks = buffer.split("\n\n");
     buffer = blocks.pop() ?? "";

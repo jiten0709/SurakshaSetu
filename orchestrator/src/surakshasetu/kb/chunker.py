@@ -49,7 +49,6 @@ class _Section:
     children: list["_Section"] = field(default_factory=list)
 
 
-# ponytail: word-and-punctuation count, a proxy for the embedding model's subword tokens.
 def count_tokens(text: str) -> int:
     return len(TOKEN_RE.findall(text))
 

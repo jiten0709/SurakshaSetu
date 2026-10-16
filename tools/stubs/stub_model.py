@@ -31,7 +31,6 @@ COMBOS = {
 }
 STUB_COMBO = {stub: combo for combo, stub in COMBOS.items()}
 
-# ponytail: phrase lists, not a classifier; Step 10 owns the real rails and their tests.
 OVERRIDE_PHRASES = (
     "ignore previous instructions",
     "ignore all previous",
@@ -98,7 +97,7 @@ class ChatRequest(BaseModel):
 
 _queues: dict[tuple[str, str], deque[Scripted]] = {}
 # The last request body each session sent, exactly as received: tests read it to prove the gateway
-# forwards what the adapter sent. ponytail: one body per session until DELETE /__script clears it.
+# forwards what the adapter sent. one body per session until DELETE /__script clears it.
 _last: dict[str, Any] = {}
 
 
