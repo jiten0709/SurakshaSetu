@@ -1,0 +1,38 @@
+%%{init: {"theme":"default","fontFamily":"Arial, Helvetica, sans-serif","htmlLabels":false,"themeVariables":{"fontFamily":"Arial, Helvetica, sans-serif","fontSize":"14px"},"flowchart":{"htmlLabels":false,"wrappingWidth":250},"state":{"nodeSpacing":50,"rankSpacing":50}}}%%
+stateDiagram-v2
+    state "S0 Greeting, consent" as S0
+    state "S1 Eligibility" as S1
+    state "Quote-Only" as QO
+    state "S2 Needs, suitability" as S2
+    state "S3 Recommendation" as S3
+    state "Hand-off (S4 intake)" as HO
+    state "Human Escalation" as HE
+    state "Exit" as EX
+    state "Exit (Advisory)" as XA
+    state "Data Erasure" as DE
+    state "Pause" as PA
+    [*] --> S0
+    S0 --> HE: existing_policy
+    S0 --> EX: consent refused
+    S0 --> QO: consent + specific_plan
+    S0 --> S1: consent + new_purchase
+    S1 --> DE: under 18 (V2)
+    S1 --> HE: NRI, age band, complex proposer
+    S1 --> HE: unanswerable after one re-ask
+    S1 --> EX: not eligible
+    S1 --> QO: eligible + express_path
+    S1 --> S2: eligible
+    QO --> EX: satisfied with quote
+    QO --> S2: opts into advisory
+    QO --> S1: opts into advisory, not yet screened
+    S2 --> HE: red affordability, vulnerable + complex, out of scope (V5)
+    S2 --> XA: over-insurance
+    S2 --> S3: sufficiency met or elected + suitability current
+    S3 --> HE: no eligible option
+    S3 --> EX: declines after re-discovery
+    S3 --> PA: needs time
+    S3 --> S2: all plans rejected
+    S3 --> HE: rejected after the loop limit
+    S3 --> HO: plan chosen + valid quote + disclosures acknowledged (V7)
+    PA --> S3: resume
+    note right of QO : No path to the hand-off (C13)

@@ -1,0 +1,12 @@
+%%{init: {"theme":"default","fontFamily":"Arial, Helvetica, sans-serif","htmlLabels":false,"themeVariables":{"fontFamily":"Arial, Helvetica, sans-serif"},"flowchart":{"htmlLabels":false,"wrappingWidth":250}}}%%
+flowchart TB
+    Q["Customer words<br/>plus RetrievalContext"] --> RW["Rewrite<br/>focus UIN, aliases such as<br/>80C to section 123,<br/>glossary terms for BM25"]
+    RW --> RT["Route (routing.yaml)<br/>first match wins;<br/>I3 gate on kb_product"]
+    RT --> EM["Embed query<br/>BGE-M3"]
+    RT --> BM["BM25 sparse query"]
+    EM & BM --> HS["Hybrid search in Qdrant, RRF<br/>40 per collection, filters:<br/>snapshot pin, in force, approved"]
+    HS --> RR["Rerank, one call<br/>up to 120 candidates,<br/>reads the lexical query"]
+    RR --> SEL["Select: quota domains first,<br/>best 8, trim to 3,000 proxy tokens,<br/>then parent sections"]
+    SEL --> GATE{"Sufficiency gate:<br/>best score at or above the<br/>snapshot threshold, quotas met?"}
+    GATE -->|"yes"| EV["Evidence E1 to En<br/>with precedence and citations"]
+    GATE -->|"no"| AB["Abstain<br/>NO_SUFFICIENT_EVIDENCE<br/>or QUOTA_UNMET"]

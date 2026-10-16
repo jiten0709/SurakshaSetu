@@ -1,0 +1,39 @@
+%%{init: {"theme":"default","fontFamily":"Arial, Helvetica, sans-serif","htmlLabels":false,"themeVariables":{"fontFamily":"Arial, Helvetica, sans-serif"},"flowchart":{"htmlLabels":false,"wrappingWidth":250}}}%%
+flowchart TB
+    subgraph Client["Client"]
+        UI["React chat client<br/>frontend/, :5173 in dev"]
+    end
+    subgraph Conv["Conversation tier (Python 3.12)"]
+        API["FastAPI Conversation API<br/>:8000"]
+        GRAPH["LangGraph turn runtime<br/>FSM, rails, composer, retrieval, audit"]
+        SCHED["Scheduler<br/>inactivity timers"]
+    end
+    subgraph Dom["Domain tier (Java 21, Spring Boot 4.1)"]
+        DS["domain-services :8080<br/>consent, catalogue, disclosures, reference,<br/>eligibility, suitability, ranking, quotes"]
+    end
+    subgraph Models["Model path"]
+        OR["OmniRoute 3.8.50<br/>:20130"]
+        STUB["Stub model :8090<br/>(real models: decision D2)"]
+        TEI1["TEI embed<br/>BGE-M3 :8081"]
+        TEI2["TEI rerank<br/>gte-multilingual :8082"]
+    end
+    subgraph Data["Stores"]
+        PG[("PostgreSQL 16<br/>conv, consent, catalog,<br/>audit, keyvault, langgraph")]
+        RD[("Valkey 9<br/>session lock, rate limit,<br/>idempotency, pub/sub")]
+        QD[("Qdrant<br/>kb_regulatory, kb_product, kb_tax")]
+        MN[("MinIO, object lock<br/>audit-anchors, audit-archive")]
+    end
+    JRN["Application journey<br/>(stub) /journey/intake"]
+
+    UI -->|"JSON + SSE"| API
+    API --> GRAPH
+    SCHED --> GRAPH
+    GRAPH -->|"OpenAPI + service token"| DS
+    GRAPH -->|"six chat routes"| OR --> STUB
+    GRAPH -->|"embed and rerank, direct"| TEI1 & TEI2
+    GRAPH --> QD
+    GRAPH --> PG
+    GRAPH --> RD
+    GRAPH -->|"daily Merkle anchor"| MN
+    DS --> PG
+    GRAPH -->|"Ed25519-signed intake"| JRN

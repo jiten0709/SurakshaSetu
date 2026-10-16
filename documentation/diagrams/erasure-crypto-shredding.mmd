@@ -1,0 +1,10 @@
+%%{init: {"theme":"default","fontFamily":"Arial, Helvetica, sans-serif","htmlLabels":false,"themeVariables":{"fontFamily":"Arial, Helvetica, sans-serif"},"flowchart":{"htmlLabels":false,"wrappingWidth":250}}}%%
+flowchart LR
+    W["Withdrawal or under 18<br/>row CC1 or CC1b"] --> C["Consent Service records<br/>withdrawn_at"]
+    C -->|"domain outage"| P["recorded as pending,<br/>a sweep retries"]
+    W --> E["erase_session as erasure_rw<br/>one transaction: acks, recommendation,<br/>handoff, slots, turns, session,<br/>checkpoint tables"]
+    E --> Q{"minor?"}
+    Q -->|"yes"| D["destroy the subject key now"]
+    Q -->|"no"| S["schedule destruction<br/>now plus SS_KEY_RETENTION_DAYS (397)"]
+    D --> X["audit rows stay:<br/>the chain verifies,<br/>payloads read as erased"]
+    S --> X

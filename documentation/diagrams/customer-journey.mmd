@@ -1,0 +1,13 @@
+%%{init: {"theme":"default","fontFamily":"Arial, Helvetica, sans-serif","htmlLabels":false,"themeVariables":{"fontFamily":"Arial, Helvetica, sans-serif"},"flowchart":{"htmlLabels":false,"wrappingWidth":250}}}%%
+flowchart TB
+    S0["S0<br/>Greeting, AI disclosure,<br/>consent"] -->|"consent + new purchase"| S1["S1<br/>Eligibility"]
+    S0 -->|"consent + specific plan"| QO["Quote-Only"]
+    S1 -->|"eligible"| S2["S2<br/>Needs and<br/>suitability"]
+    S1 -->|"eligible + express path"| QO
+    QO -->|"opts into advice"| S2
+    S2 -->|"suitability current"| S3["S3<br/>Recommendation"]
+    S3 -->|"plan chosen + valid quote<br/>+ acknowledged disclosures"| HO(["Hand-off<br/>signed intake"])
+    S3 -->|"all rejected"| S2
+    S3 -->|"needs time"| PA["Pause"]
+    S0 & S1 & QO & S2 & S3 -.->|"any state"| SUP["Support states:<br/>Human Escalation, Exit,<br/>Exit (Advisory),<br/>Data Erasure"]
+    HO -.-> S4["S4 to S8<br/>(later phases)"]

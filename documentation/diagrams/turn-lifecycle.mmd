@@ -1,0 +1,26 @@
+%%{init: {"theme":"default","fontFamily":"Arial, Helvetica, sans-serif","htmlLabels":false,"themeVariables":{"fontFamily":"Arial, Helvetica, sans-serif"},"sequence":{"wrap":true,"width":180,"messageMargin":30}}}%%
+sequenceDiagram
+    autonumber
+    participant C as Client
+    participant A as API and gate
+    participant R as Valkey
+    participant G as LangGraph run
+    participant D as Domain tier
+    participant M as Models (OmniRoute and TEI)
+    participant P as PostgreSQL
+    C->>A: POST /v1/sessions/{id}/turns with Bearer token and Idempotency-Key
+    A->>R: take session lock and rate-limit bucket
+    A->>G: invoke the graph for this turn
+    G->>P: BEGIN, lock the session row (FOR UPDATE NOWAIT)
+    G->>G: load: replay check, kill switches, hydrate if the checkpoint lags
+    G->>M: input rails and turn analysis (guard-input and nlu-extract in parallel)
+    G->>P: append TURN_INPUT and four GUARD_VERDICT events
+    G->>G: route: withdraw, safety, objection, side-query, or the state node
+    G->>D: decisions and reference reads (eligibility, suitability, ranking, quotes)
+    G->>G: decide: pure fsm.transition, append STATE_TRANSITION
+    G->>M: retrieve (embed, search, rerank) and compose (gen-converse or gen-recommend)
+    G->>G: validate: output rails and release policy
+    G->>P: write conv rows and RESPONSE_RELEASED, then COMMIT (I8)
+    G->>R: idempotency hint, publish turn.released
+    G-->>A: the released body as canonical JSON bytes
+    A-->>C: 200 body, and SSE turn.released

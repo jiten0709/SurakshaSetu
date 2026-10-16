@@ -1,0 +1,18 @@
+%%{init: {"theme":"default","fontFamily":"Arial, Helvetica, sans-serif","htmlLabels":false,"themeVariables":{"fontFamily":"Arial, Helvetica, sans-serif"},"flowchart":{"htmlLabels":false,"wrappingWidth":250}}}%%
+flowchart TB
+    START([Start]) --> load
+    load -->|"replay of a released turn"| FIN([End])
+    load --> input --> route
+    route -->|"timer turn"| timer
+    route -->|"withdraw"| withdraw_consent
+    route -->|"safety signal"| safety
+    route -->|"objection"| objection
+    route -->|"side question"| side_query
+    route -->|"the session's state"| STATE["11 state nodes<br/>S0 S1 QUOTE_ONLY S2 S3<br/>HUMAN_ESCALATION PAUSE EXIT<br/>EXIT_ADVISORY DATA_ERASURE HANDOFF"]
+    timer & withdraw_consent & safety & objection & side_query & STATE --> decide
+    decide -->|"entering S0 S1 QO S2 S3"| ENTER["enter hooks<br/>s0_enter s1_enter quote_only_enter<br/>s2_enter s3_enter"]
+    decide -->|"entering erasure, escalation, pause"| HANDLERS["data_erasure<br/>human_escalation<br/>pause"]
+    decide -->|"otherwise"| compose
+    ENTER --> compose
+    HANDLERS --> compose
+    compose --> validate --> commit --> release --> FIN

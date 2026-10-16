@@ -1,0 +1,8 @@
+%%{init: {"theme":"default","fontFamily":"Arial, Helvetica, sans-serif","htmlLabels":false,"themeVariables":{"fontFamily":"Arial, Helvetica, sans-serif"},"flowchart":{"htmlLabels":false,"wrappingWidth":250}}}%%
+flowchart LR
+    G["genesis prev_hash<br/>32 zero bytes"] --> E1["event seq 1<br/>hash 1 covers header,<br/>pins and ciphertext"]
+    E1 --> E2["event seq 2<br/>hash 2 covers hash 1"]
+    E2 --> EN["event seq n"]
+    EN --> L["last hash before the day ends,<br/>per session"]
+    L --> M["Merkle root over<br/>SHA-256 of session_id and last hash,<br/>sorted by session id"]
+    M --> A["audit-anchors/DATE.json<br/>COMPLIANCE object lock<br/>plus chain_anchor row<br/>plus time-stamp token (stub today)"]

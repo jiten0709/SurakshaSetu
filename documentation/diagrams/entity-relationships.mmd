@@ -1,0 +1,51 @@
+%%{init: {"theme":"default","fontFamily":"Arial, Helvetica, sans-serif","htmlLabels":false,"themeVariables":{"fontFamily":"Arial, Helvetica, sans-serif"},"flowchart":{"htmlLabels":false,"wrappingWidth":250}}}%%
+erDiagram
+    NOTICE_VERSION ||--o{ CONSENT_RECORD : "accepted notice"
+    CONSENT_RECORD ||--|{ PURPOSE_GRANT : "P1 P2 P3 history"
+    CONSENT_RECORD ||--o{ CONV_SESSION : "consent_id"
+    CONSENT_RECORD ||--o{ SLOT_VALUE : "I1 backstop"
+    CONV_SESSION ||--o{ TURN : "seq"
+    CONV_SESSION ||--o{ SLOT_VALUE : "append only"
+    TURN ||--o{ SLOT_VALUE : "source_turn"
+    CONV_SESSION ||--o{ RECOMMENDATION : "shown"
+    RECOMMENDATION ||--o{ DISCLOSURE_ACK : "hash bound"
+    CONV_SESSION ||--o{ HANDOFF : "briefing or intake"
+    PRODUCT ||--o{ DISCLOSURE_SET : "per channel and language"
+    PRODUCT ||--o{ PRODUCT_DOCUMENT : "CIS BI wording"
+    CONV_SESSION ||..o{ AUDIT_EVENT : "session_id, no FK"
+    SUBJECT_KEY ||..o{ CONV_SESSION : "key_ref, no FK"
+    CONV_SESSION {
+        uuid session_id PK
+        uuid subject_ref
+        text key_ref
+        text fsm_state
+        jsonb pins
+        text status
+        bytea token_sha256
+        uuid consent_id FK
+    }
+    SLOT_VALUE {
+        bigserial slot_value_id PK
+        uuid session_id FK
+        text slot
+        bytea value_enc
+        text status
+        uuid consent_id FK
+    }
+    AUDIT_EVENT {
+        uuid event_id PK
+        uuid session_id
+        bigint seq
+        text event_type
+        jsonb header
+        bytea payload_enc
+        bytea prev_hash
+        bytea hash
+    }
+    SUBJECT_KEY {
+        text key_ref PK
+        uuid subject_ref
+        bytea wrapped_dek
+        timestamptz destroy_after
+        timestamptz destroyed_at
+    }
