@@ -1,0 +1,2 @@
+# The image copies nothing: node_modules, .env.local and .cache never reach the build context.
+*

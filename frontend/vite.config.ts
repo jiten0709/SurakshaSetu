@@ -8,15 +8,18 @@ export default defineConfig(({ mode }) => {
   // here, in the dev server, from a gitignored .env.local or the environment; it never reaches the
   // browser or a build. Without it the API answers 401 and the panel says "not configured".
   const key = loadEnv(mode, process.cwd(), "SS_COMPLIANCE_API_KEY").SS_COMPLIANCE_API_KEY;
+  // In the compose `ui` service the API is the `orchestrator` service (UI_API_TARGET); on the host
+  // it is `make serve` on localhost.
+  const api = process.env.UI_API_TARGET ?? "http://127.0.0.1:8000";
   return {
     server: {
       host: "127.0.0.1",
       port: 5173,
       strictPort: true,
       proxy: {
-        "/v1": "http://127.0.0.1:8000",
+        "/v1": api,
         "^/internal/audit/sessions/[0-9a-f-]+/events$": {
-          target: "http://127.0.0.1:8000",
+          target: api,
           headers: key ? { Authorization: `Bearer ${key}` } : {},
         },
       },

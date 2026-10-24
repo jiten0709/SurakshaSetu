@@ -124,10 +124,10 @@ Everything runs on one machine under Docker Compose (`infra/compose.yaml`, proje
 | --------------- | ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `core`          | `make up`                                   | `postgres`, `valkey`, `qdrant`, `minio`, `minio-init` (one-shot, fails unless both buckets have object lock), `flyway` (one-shot), `domain-services`, `tei-embed`, `tei-rerank`, `stubs` |
 | `gateway`       | `make gateway-up`                           | `omniroute`                                                                                                                                                                              |
-| `app`           | `make app-up`                               | `orchestrator` (:8000) and `scheduler` (same image)                                                                                                                                      |
+| `app`           | `make app-up`                               | `orchestrator` (:8000), `scheduler` (same image) and `ui` (:5173, Vite dev server)                                                                                                                                      |
 | `bakeoff`       | `make bakeoff-embed`, `make bakeoff-rerank` | `tei-embed-challenger` (:8083, Qwen3-Embedding-0.6B), `tei-rerank-challenger` (:8084, bge-reranker-v2-m3)                                                                                |
 
-Named volumes: `pgdata`, `qdrant`, `qdrant-snapshots`, `minio`, `tei-models` (about 2.9 GB of pinned model weights), `omniroute-data`. The orchestrator can run on the host (`make serve`) or in compose (`make app-up`), never both, because both bind port 8000. Liveness and readiness are described in [operations](operations.md#health-and-readiness).
+Named volumes: `pgdata`, `qdrant`, `qdrant-snapshots`, `minio`, `tei-models` (about 2.9 GB of pinned model weights), `omniroute-data`, `ui-node-modules` (the UI container's own dependencies). The orchestrator and the UI can run on the host (`make serve`, `make ui`) or in compose (`make app-up`), never both, because they bind ports 8000 and 5173. Liveness and readiness are described in [operations](operations.md#health-and-readiness).
 
 ## Repository layout and code map
 

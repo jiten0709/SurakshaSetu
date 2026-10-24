@@ -88,3 +88,20 @@ def test_every_stage_reruns_safely_on_a_warm_database() -> None:
     for stage in [*IDEMPOTENT, "local-setup", "db-migrate"]:
         assert not DESTRUCTIVE.search(recipe(stage)), stage
     assert DESTRUCTIVE.search(recipe("down"))  # the pattern does see a compose down
+
+
+def test_start_probes_then_starts_the_app() -> None:
+    # Post-Step 30: each stage runs only when its probe (a read of the services) fails.
+    steps = [line.strip() for line in recipe("start").replace("\\\n", " ").splitlines()]
+    assert len(steps) == 4, steps
+    assert steps[0].endswith(" up")
+    assert re.search(r"gateway-verify .*\|\| .*gateway-up$", steps[1])
+    # After an ingest, kb-verify again: a recorded snapshot is a no-op even over an emptied Qdrant.
+    assert re.search(
+        r"kb-verify .*\|\| \{ .*seed-catalog && .*kb-ingest .*&& .*kb-verify; \}$", steps[2]
+    )
+    assert steps[3].endswith(" app-up")
+    # Not a second local-setup: no tests, no verification, nothing destroyed.
+    for stage in ["test-invariants", "e2e-scripted", "verify-audit", "verify-release-gate"]:
+        assert stage not in recipe("start")
+    assert not DESTRUCTIVE.search(recipe("start"))

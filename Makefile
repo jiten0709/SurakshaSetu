@@ -39,7 +39,7 @@ TEST_ENV := SS_TEST_PG_DSN_ADMIN="postgresql://postgres:$(POSTGRES_PASSWORD)@127
 	db-migrate seed-catalog contracts contracts-lint contract-test verify-audit gateway-up \
 	gateway-verify kb-ingest kb-verify kb-chunks check-ingest calibrate-retrieval eval-retrieval \
 	bakeoff-embed bakeoff-rerank test-invariants eval eval-live seed-eval e2e-scripted \
-	timers-once serve local-setup verify-release-gate dossier app-up ui-deps ui ui-types ui-check \
+	timers-once serve local-setup verify-release-gate dossier app-up start ui-deps ui ui-types ui-check \
 	ui-e2e $(PLACEHOLDERS)
 
 # Postgres first, then the migrations, so domain-services finds its domain_rw role on a fresh
@@ -55,9 +55,24 @@ down:
 
 # Step 25: the orchestrator image in compose (profile app): the Conversation API on 127.0.0.1:8000
 # (the port `make serve` uses, so run one of the two) and the `scheduler` running the inactivity
-# timers. Needs `make up`, and `make gateway-up` for GET /readyz to answer 200.
+# timers. Since 2026-10-23 it also starts `ui`, the chat UI's Vite dev server on 127.0.0.1:5173 (the
+# port `make ui` uses: run one of the two). Needs `make up`, and `make gateway-up` for GET /readyz
+# to answer 200. The first start of `ui` runs `npm ci` in its own volume (about a minute).
 app-up:
-	$(COMPOSE) --profile app up -d --build --wait orchestrator scheduler
+	$(COMPOSE) --profile app up -d --build --wait orchestrator scheduler ui
+
+# One command from any machine state to the running demo (API, timers, UI): each stage runs only
+# when its probe finds it missing, so a set-up machine starts in seconds. The probes read the
+# services themselves (the volumes, not stamp files, hold the state). No tests: local-setup is the
+# proof (TDD §7.5).
+start:
+	@$(MAKE) --no-print-directory up
+	@$(MAKE) --no-print-directory gateway-verify >/dev/null 2>&1 \
+		|| $(MAKE) --no-print-directory gateway-up
+	@$(MAKE) --no-print-directory kb-verify >/dev/null 2>&1 \
+		|| { $(MAKE) --no-print-directory seed-catalog && $(MAKE) --no-print-directory kb-ingest \
+			&& $(MAKE) --no-print-directory kb-verify; }
+	@$(MAKE) --no-print-directory app-up
 
 # SurakshaSetu's hardened OmniRoute (profile gateway, 127.0.0.1:20130), in front of the stubs for
 # the chat routes: start it, then apply infra/omniroute/seed.json and read every value back.
@@ -301,7 +316,9 @@ serve:
 # target checks Node first (with fnm: `fnm install 24 && fnm use 24`), and runs `npm ci` when
 # package-lock.json is newer than the install. `ui` serves 127.0.0.1:5173 and proxies /v1 to the
 # API on :8000 (`make serve`). `ui-types` regenerates the committed types from the Step 26 spec;
-# ui-check fails when they drift, then typechecks, lints, tests and builds.
+# ui-check fails when they drift, then typechecks, lints, tests and builds. `make app-up` runs the
+# same dev server in the compose `ui` service (proxying to the `orchestrator` service), so `ui` is
+# the host-side alternative: both want :5173.
 UI_TYPES := src/conversation-api.ts
 UI_TYPEGEN := npm exec --no -- openapi-typescript ../$(CONV_SPEC)
 ui-deps:

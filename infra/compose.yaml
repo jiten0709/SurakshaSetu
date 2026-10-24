@@ -353,6 +353,43 @@ services:
         ]
       start_period: 60s
 
+  # The chat UI's Vite dev server, so `make app-up` needs no `make ui` terminal: 127.0.0.1:5173
+  # (run one of the two; the port is strict). The source is bind-mounted for reload, and the
+  # container's own Linux node_modules lives in a volume (the host's macOS one is hidden). It
+  # reads frontend/.env.local through the mount (the dev inspector's flag and compliance key), so
+  # no credential is set here. `npm ci` runs only when package-lock.json is newer than the volume's
+  # install, the same test as the Makefile's ui-deps; the first start takes about a minute.
+  ui:
+    build:
+      context: ../frontend
+    image: surakshasetu/ui:local
+    profiles: [app]
+    restart: unless-stopped
+    depends_on:
+      orchestrator: { condition: service_healthy }
+    environment:
+      UI_API_TARGET: http://orchestrator:8000
+    command:
+      [
+        "sh",
+        "-c",
+        "[ node_modules/.package-lock.json -nt package-lock.json ] || npm ci; exec npm run dev -- --host 0.0.0.0",
+      ]
+    volumes:
+      - ../frontend:/app
+      - ui-node-modules:/app/node_modules
+    ports: ["127.0.0.1:5173:5173"]
+    healthcheck:
+      <<: *healthcheck
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:5173/').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))",
+        ]
+      start_period: 180s
+
 volumes:
   pgdata:
   qdrant:
@@ -360,3 +397,4 @@ volumes:
   minio:
   tei-models:
   omniroute-data:
+  ui-node-modules:

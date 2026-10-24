@@ -29,13 +29,15 @@ Credentials: compose supplies dummy defaults for every secret; override them in 
 | 5     | `test-invariants`, `e2e-scripted`                  | The FSM property tests; the scripted S0 → S3 conversation ending in HANDOFF (the stub journey logs `verified intake`)                                                                                  |
 | 6     | `verify-audit DATE=<today>`, `verify-release-gate` | Verifies and anchors the audit chains; replays the conversation in pilot mode and requires every DUMMY release to be blocked                                                                           |
 
+`make start` is the everyday command: it runs `up`, then each of `gateway-up` and `seed-catalog` + `kb-ingest` only when its probe (`gateway-verify`, `kb-verify`) fails, then `app-up`. After an ingest it runs `kb-verify` again and stops on a problem. It runs no tests; `local-setup` is the proof. If only the `qdrant` volume was removed while `pgdata` keeps the snapshot rows, ingest is a no-op and that check fails: remove both (see [Cold start](#cold-start)).
+
 To chat with it, follow the [README quick start](../README.md#quick-start).
 
 ### The API in compose
 
-`make app-up` (after `make local-setup`, or `make up` and `make gateway-up`) runs the same API from the orchestrator image (profile `app`) together with the `scheduler`, which pauses post-consent sessions idle past their state's timeout (`SS_TIMER_INTERVAL_S`, default 60 s).
+`make start` (or `make app-up` after `make local-setup`, or `make up` and `make gateway-up`) runs the same API from the orchestrator image (profile `app`) together with the `scheduler`, which pauses post-consent sessions idle past their state's timeout (`SS_TIMER_INTERVAL_S`, default 60 s), and the chat UI's dev server (`ui`, 127.0.0.1:5173; see [Using the UI](#using-the-ui)).
 
-- The API publishes the same port as `make serve` (127.0.0.1:8000), so run one or the other.
+- The API publishes the same port as `make serve` (127.0.0.1:8000), and `ui` the same as `make ui` (127.0.0.1:5173), so run one or the other.
 - Both services take `make serve`'s settings with service hostnames, overridable from `infra/.env`.
 - To see them: `docker compose -f infra/compose.yaml --profile core --profile app ps` (the `app` services depend on `core`, so name both profiles).
 
@@ -47,7 +49,7 @@ To chat with it, follow the [README quick start](../README.md#quick-start).
 make down
 docker volume rm surakshasetu_pgdata surakshasetu_qdrant surakshasetu_qdrant-snapshots \
   surakshasetu_minio surakshasetu_omniroute-data   # keep surakshasetu_tei-models: 2.9 GB of weights
-make local-setup
+make local-setup   # or `make start` to skip the proof and run the app
 ```
 
 A cold start was proved in 3 min 05 s on warm model weights.
@@ -61,18 +63,20 @@ A cold start was proved in 3 min 05 s on warm model weights.
 
 The chat UI (`frontend/`) is a thin client of the Conversation API: it shows what the server releases and sends what the customer types or picks, nothing more.
 
-1. **Start the backend:** `make local-setup` once (or `make up && make gateway-up` on a set-up machine), then `make serve` (the API on 127.0.0.1:8000; leave it running).
-2. **Start the UI:** `make ui`, then open http://127.0.0.1:5173. The dev server proxies `/v1` to the API, so the browser talks to one origin.
+1. **Start everything:** `make start`: the API on 127.0.0.1:8000, the timers and the UI on 127.0.0.1:5173. Open http://127.0.0.1:5173. The dev server proxies `/v1` to the API, so the browser talks to one origin.
+   - The UI runs in the compose service `ui` (`frontend/Dockerfile`: Node and nothing else). `frontend/` is bind-mounted, so an edit reloads the page; its `node_modules` is the container's own, in the volume `ui-node-modules` (the host's is hidden). The first start runs `npm ci` there (about a minute); a later start does it only when `package-lock.json` changed.
+   - Nothing else is needed on the host: no Node, no second terminal.
+2. **Or on the host:** `make serve` for the API and `make ui` for the UI, each in its own terminal, with the `app` services stopped (they share ports 8000 and 5173).
    - The UI targets need Node 24 (`frontend/.nvmrc`); with [fnm](https://github.com/Schniz/fnm): `fnm install 24 && fnm use 24`. Each target refuses another major and runs `npm ci` when the lock file changed.
    - Answer the questions in short words or with the buttons ("34", "411001", "no", "24 lakh"). A reload starts a new conversation: the session token is held in memory only.
 3. **The dev inspector (optional):** a panel under the input with the conversation's state, the transition row and its reason code per turn, read from the audit trail's headers (never its payloads).
    - Copy `frontend/.env.example` to `frontend/.env.local` (gitignored) and set `SS_COMPLIANCE_API_KEY` to the API's compliance key (the dev default in `orchestrator/src/surakshasetu/config.py`, unless your `orchestrator/.env` sets another).
-   - Run `VITE_INSPECTOR=1 make ui` (or set `VITE_INSPECTOR=1` in `.env.local`).
+   - Set `VITE_INSPECTOR=1` in `.env.local` (or run `VITE_INSPECTOR=1 make ui` on the host). The `ui` container reads the same file through the bind mount and keeps no key in compose or in the image; Vite reads it at start, so run `docker compose -f infra/compose.yaml --profile core --profile app restart ui` after editing it.
    - Only the dev server's proxy reads the key; it never reaches the browser. Without it the panel says "not configured" and the chat works as usual.
    - It exists only in the dev server: `npm run build` contains none of it (a test builds the bundle and checks).
 4. **The browser smoke test:** `cd frontend && npx playwright install chromium` once, then `make ui-e2e` with `make serve` running.
    - It drives the scripted customer (TDD §7.4) through Chromium from the greeting to the signed hand-off, about 2 minutes (turns are paced for the API's rate limit), and checks the recommendation at phone width.
-   - A running `make ui` is reused; otherwise it starts the dev server itself. With the API down it stops at once and names `make serve`.
+   - A dev server already on :5173 (the `ui` container or `make ui`) is reused; otherwise it starts one itself. With the API down it stops at once and names `make serve`.
    - A failure names the step only, never message text. It is not part of `make check`.
 5. **Checks:** `make ui-check` (the types against the spec, tsc, ESLint, the unit tests and the production build); `make ui-types` regenerates the types after a spec change.
 
@@ -84,9 +88,10 @@ The root `Makefile` is the single entry point; CI runs the same targets. Targets
 | ---------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
 | Stack      | `up` / `down` / `logs`                      | Start the core profile (Postgres first, then the migrations, then everything else) / stop every profile / follow the logs |
 |            | `gateway-up` / `gateway-verify`             | Start OmniRoute and apply `infra/omniroute/seed.json` / read every seeded value back (exit 1 on drift)                    |
-|            | `app-up`                                    | The orchestrator and the scheduler in compose (profile `app`)                                                             |
+|            | `app-up`                                    | The orchestrator, the scheduler and the chat UI's dev server in compose (profile `app`)                                   |
 |            | `serve`                                     | The Conversation API on the host, 127.0.0.1:8000                                                                          |
 |            | `local-setup`                               | TDD §7.5 steps 1–6, in order, stopping at the first failure                                                               |
+|            | `start`                                     | `up`, then the gateway, catalog and knowledge base only where missing, then `app-up`: one command to the running demo     |
 | Data       | `db-migrate`                                | Flyway on both databases, then the checkpointer's tables                                                                  |
 |            | `seed-catalog`                              | Catalog, disclosure registry, notices and reference masters from `content/seed`                                           |
 |            | `kb-ingest` / `kb-verify` / `kb-chunks`     | The knowledge base through the review gate into Qdrant / check it / list the approved chunk ids                           |
@@ -105,7 +110,7 @@ The root `Makefile` is the single entry point; CI runs the same targets. Targets
 | Audit      | `verify-audit DATE=YYYY-MM-DD`              | Verify every chain active that day and anchor its Merkle root                                                             |
 |            | `dossier [SESSION=<id>]`                    | One session's verified compliance dossier (JSON and HTML)                                                                 |
 | Jobs       | `timers-once`                               | One look of the inactivity timers on the host                                                                             |
-| UI         | `ui`                                        | The chat UI's dev server on 127.0.0.1:5173 (`VITE_INSPECTOR=1` for the dev inspector)                                     |
+| UI         | `ui`                                        | The chat UI's dev server on the host, 127.0.0.1:5173 (`app-up` runs it in compose; `VITE_INSPECTOR=1` for the inspector)  |
 |            | `ui-types` / `ui-check`                     | Regenerate the TypeScript types from the Conversation API spec / drift check, typecheck, lint, test and build             |
 |            | `ui-e2e`                                    | The browser smoke test (Playwright): the scripted customer to the hand-off, against `make serve`                          |
 

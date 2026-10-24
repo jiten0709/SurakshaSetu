@@ -20,19 +20,20 @@ An AI-assisted conversational advisor for life and term insurance in India. It g
 Prerequisites: [uv](https://docs.astral.sh/uv/), Docker, and JDK 21.
 
 ```sh
-make local-setup  # stack, gateway, catalog, knowledge base, eval sets, invariant tests, the scripted
-                  # S0-S3 conversation, audit verification and the pilot DUMMY gate
-                  # (first run: ~40 min of downloads). It refuses a running stack: `make down` first.
-make serve        # the Conversation API on 127.0.0.1:8000 (leave it running)
+make start        # everything, first run included: the stack, gateway, catalog and knowledge base
+                  # (each only if missing; first run: ~40 min of downloads), then the Conversation API
+                  # (127.0.0.1:8000), the timers and the browser UI (127.0.0.1:5173)
 ```
 
-Then, in a second terminal, either chat in the terminal:
+To prove the system end to end (eval sets, invariant tests, the scripted S0-S3 conversation, audit verification and the pilot DUMMY gate), run `make local-setup`; it refuses a running stack, so `make down` first.
+
+Then open the browser UI at http://127.0.0.1:5173 (the first start installs the UI's dependencies inside its container, about a minute), or chat in the terminal:
 
 ```sh
 cd orchestrator && uv run python scripts/chat.py            # --locale hi-IN for Hindi
 ```
 
-(type a number to pick a quick reply, `f` to fill the consent form, `/erase` to delete your data, `/quit` to leave) or open the browser UI with `make ui` at http://127.0.0.1:5173.
+(type a number to pick a quick reply, `f` to fill the consent form, `/erase` to delete your data, `/quit` to leave). To run the API and the UI on the host instead, use `make serve` and `make ui` (each in its own terminal, with `make app-up`'s services stopped: they share ports 8000 and 5173).
 
 ## Documentation
 
