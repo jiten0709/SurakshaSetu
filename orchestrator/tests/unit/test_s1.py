@@ -229,7 +229,7 @@ async def test_a_value_below_the_floor_is_dropped_and_counts_toward_the_streak()
 
     assert t.slot_rows == []
     assert t.next is not None and t.next.counters["low_confidence_streak"] == 1
-    assert ids(t) == ["template:format_hint", "template:RL-S1-AGE"]
+    assert ids(t) == ["template:format_hint"]  # a clarification, not the question again
 
 
 @pytest.mark.asyncio
@@ -498,8 +498,15 @@ async def test_off_topic_gets_a_one_line_redirect_and_the_question_again() -> No
 async def test_invalid_input_gets_the_hint_then_the_advisor_offer_at_the_limit() -> None:
     first = s1_turn("blah", prompt="s1.ask:pincode")
     await run(first)
-    assert ids(first) == ["template:format_hint", "template:RL-S1-PINCODE"]
+    assert ids(first) == ["template:format_hint"]  # the hint asks it differently: no repeat
     assert first.released is not None and SLOTS["RL-S1-PINCODE"].hint in first.released.text
+    assert SLOTS["RL-S1-PINCODE"].question not in first.released.text
+    assert first.next is not None and first.next.last_prompt_id == "s1.ask:pincode"
+    assert first.quick_replies == []  # the pincode question offers no choices either way
+
+    again = s1_turn("411001", prompt=first.next.last_prompt_id)
+    await run(again)
+    assert again.slot_rows and again.slot_rows[0].slot == "pincode"
 
     third = s1_turn("blah", prompt="s1.ask:pincode", counters={"invalid_input": 2})
     await run(third)

@@ -61,6 +61,32 @@ SELF_HARM_PHRASES = (
     "khudkushi",
 )
 FRIENDLY = "Thanks, that helps me understand what you are looking for."
+# gen-converse's lead sentence before each S1/S2 question, keyed by words of the NEXT_SLOT question
+# the L1 carries: one line per question, so no two replies in a row open the same way. Each must
+# pass the output rails as plain text: no digit, number word, product/regulatory/tax term, promise.
+BRIDGES = (
+    ("how old are you", "Let's start with a little about you."),
+    ("what is your gender", "A quick detail about you next."),
+    ("resident of india", "Next, a quick check on where you're based."),
+    ("pincode", "Now a quick check on your area."),
+    ("tobacco", "This next question matters, so an honest answer really helps."),
+    ("occupation", "Now a little about the work you do."),
+    ("health screening", "I appreciate you bearing with these checks."),
+    ("for your own life", "Let's make sure I understand who the cover is for."),
+    ("how old is the person", "Good to know who you'd like to protect."),
+    ("how are you related", "And a little about how you're connected."),
+    ("business purpose", "And a quick check on what the cover is for."),
+    ("what should this cover do", "Let's talk about what matters most to you."),
+    ("annual income", "Next, a little about what you earn."),
+    ("salaried, self-employed", "And a little about how you earn your living."),
+    ("depends on you", "Now a little about the people who count on you."),
+    ("any loans", "Next, anything you're still paying off."),
+    ("life cover do you already have", "Let's see what you already have in place."),
+    ("employer give you", "And anything your workplace provides."),
+    ("in premiums", "And what you already spend on your current policies."),
+    ("set aside savings", "Almost there: anything you've put aside for your family."),
+    ("premium budget", "And what would feel comfortable for you to spend."),
+)
 SUMMARY = "The customer is exploring life cover and has answered the questions asked so far."
 TURN_ANALYSIS = {"intents": [], "slots": [], "side_query": None, "language": "en"}
 HANDLE = re.compile(r'(?:\[|id=")([RE]\d+)(?:\]|")')
@@ -185,7 +211,9 @@ def _default(combo: str, messages: list[Message]) -> str:
         return json.dumps({"verdict": "not_entailed" if "UNSUPPORTED" in text else "entailed"})
     if combo == "gen-recommend":
         return _narrative(" ".join(m.content or "" for m in messages)) or FRIENDLY
-    return FRIENDLY
+    system = next((m.content or "" for m in messages if m.role == "system"), "")
+    next_slot = system.rpartition("NEXT_SLOT:")[2].casefold()
+    return next((line for key, line in BRIDGES if key in next_slot), FRIENDLY)
 
 
 def _narrative(prompt: str) -> str:

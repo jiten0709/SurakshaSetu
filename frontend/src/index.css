@@ -223,6 +223,20 @@ button.secondary {
   background: transparent;
 }
 
+/* A picked toggle (a choice that may be combined) reads as chosen; Continue sends the picks. */
+.replies button[aria-pressed="true"] {
+  background: var(--you-bg);
+}
+
+.replies button[aria-pressed="true"]::before {
+  content: "✓ ";
+}
+
+.replies button.continue {
+  color: var(--accent-fg);
+  background: var(--accent);
+}
+
 .consent {
   display: grid;
   gap: 8px;

@@ -14,9 +14,9 @@ turns:
   - action: {type: SLOT, payload: {slot: residency, value: resident}}
     expect: {templates: [RL-S1-PINCODE]}
   - text: somewhere near the station
-    expect: {templates: [format_hint, RL-S1-PINCODE], counters: {invalid_input: 1}}
+    expect: {templates: [format_hint], counters: {invalid_input: 1}}
   - text: the one by the market
-    expect: {templates: [format_hint, RL-S1-PINCODE], counters: {invalid_input: 2}}
+    expect: {templates: [format_hint], counters: {invalid_input: 2}}
   - text: I don't know it
     expect: {templates: [advisor_offer], counters: {invalid_input: 0}}
   - action: {type: HUMAN_REQUEST}

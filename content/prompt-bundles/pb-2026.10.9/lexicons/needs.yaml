@@ -1,0 +1,84 @@
+# Step 20 (TDD §3.7 edge cases): phrases matched as whole words anywhere in the turn, after NFKC,
+# case-folding and collapsing spaces (as screening.yaml). They back up nlu-extract's intents
+# (EXPRESS_PATH, FINANCIAL_DISTRESS, COMPREHENSION_DIFFICULTY, OBJECTION_GUARANTEE,
+# OBJECTION_COMPETITOR). Customer words only: nothing here is ever shown. Owner: compliance; every
+# list awaits its review.
+
+# "Just tell me the best plan": the three-question short path is offered.
+short_path:
+  - just tell me the best plan
+  - tell me the best plan
+  - just give me a plan
+  - just suggest a plan
+  - skip the questions
+  - too many questions
+  - seedha plan batao
+  - bas plan batao
+  - sawal mat poocho
+  - सीधे प्लान बताओ
+
+# Stated financial distress (job loss, bereavement, debt): slow down, drop sales language, offer to
+# pause or an advisor; financial_distress feeds the vulnerability rules.
+distress:
+  - lost my job
+  - lost the job
+  - job loss
+  - laid off
+  - unemployed
+  - no job
+  - passed away
+  - died recently
+  - bereavement
+  - in debt
+  - deep debt
+  - can't pay my loans
+  - cannot pay my loans
+  - can't pay my emi
+  - naukri chali gayi
+  - naukri chuth gayi
+  - karz mein
+  - नौकरी चली गई
+  - कर्ज में
+
+# Repeated comprehension difficulty: the question again, more simply; counted for the vulnerability
+# rules.
+comprehension:
+  - i don't understand
+  - i do not understand
+  - didn't understand
+  - did not understand
+  - what do you mean
+  - what does that mean
+  - i'm confused
+  - i am confused
+  - samajh nahi aaya
+  - samajh nahi aya
+  - samjha nahi
+  - समझ नहीं आया
+
+# Wants "guaranteed high returns": no promise.
+guarantee:
+  - guaranteed return
+  - guaranteed returns
+  - guaranteed high return
+  - guaranteed high returns
+  - assured return
+  - assured returns
+  - pakka return
+  - guaranteed munafa
+  - गारंटी रिटर्न
+
+# Asks about another insurer's plan: decline the comparison, own products only.
+competitor:
+  - another insurer
+  - other insurer
+  - other insurers
+  - another company's plan
+  - other company's plan
+  - lic
+  - hdfc life
+  - icici prudential
+  - sbi life
+  - max life
+  - tata aia
+  - bajaj allianz

@@ -1,6 +1,7 @@
 import json
 import re
 from collections.abc import Iterator
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -216,3 +217,44 @@ def test_same_request_same_bytes() -> None:
 
     assert first.content == second.content
     assert first.json()["usage"] == {"prompt_tokens": 1, "completion_tokens": 4, "total_tokens": 5}
+
+
+# The bundle's own S1/S2 questions (the newest bundle), as the L1 carries them after NEXT_SLOT.
+BUNDLES = Path(__file__).resolve().parents[3] / "content" / "prompt-bundles"
+NEWEST = max(BUNDLES.glob("pb-*"), key=lambda p: [int(n) for n in re.findall(r"\d+", p.name)])
+SLOTS = (NEWEST / "templates" / "en-IN" / "slots.yaml").read_text(encoding="utf-8")
+QUESTIONS = [
+    f"{q} {r}"
+    for q, r in re.findall(r'^  question: "(.*)"\n  reason: "(.*)"$', SLOTS, re.MULTILINE)
+]
+# What the output rails would refuse in an uncited sentence (output lexicon: numbers, factual
+# terms, promises).
+UNSAFE = re.compile(
+    r"\d|\b(two|three|ten|hundred|lakh|crore|half|double|twice|premiums?|riders?|claims?|tax"
+    r"|underwriting|exclusions?|nominee|guarantee[ds]?|assured|best|hurry|risk[- ]free)\b",
+    re.IGNORECASE,
+)
+
+
+def converse(next_slot: str) -> str:
+    system = f"STATE S2: needs discovery.\nNEXT_SLOT: {next_slot}"
+    body = {
+        "model": "gen-converse",
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": "<user_input>I run my own business</user_input>"},
+        ],
+    }
+    response = client.post("/v1/chat/completions", json=body)
+    return str(response.json()["choices"][0]["message"]["content"])
+
+
+def test_every_question_gets_its_own_bridge_so_no_two_replies_open_alike() -> None:
+    assert len(QUESTIONS) >= 20, NEWEST
+    bridges = [converse(q) for q in QUESTIONS]
+    assert stub_model.FRIENDLY not in bridges
+    assert len(set(bridges)) == len(bridges)
+
+
+def test_a_bridge_carries_no_number_factual_term_or_promise() -> None:
+    assert [line for _, line in stub_model.BRIDGES if UNSAFE.search(line)] == []

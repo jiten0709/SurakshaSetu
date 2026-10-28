@@ -203,6 +203,7 @@ async def test_the_first_question_is_goals_with_its_reason_and_one_empathetic_se
     assert t.released.text == f"{FRIENDLY}\n\n{goals.question} {goals.reason}"
     assert t.next is not None and t.next.last_prompt_id == "s2.ask:goals"
     assert [r["label"] for r in t.quick_replies] == list(SCRIPTS.labels.goals.values())
+    assert all(r["multiple"] is True for r in t.quick_replies)  # toggles, sent as one list
     assert "gen-converse" in models.routes
     assert transition(t) == ("S2.STAY", FsmState.S2)
 
@@ -298,7 +299,7 @@ async def test_a_dependant_without_an_age_gets_the_format_hint() -> None:
     t = s2_turn("my wife and my son", prompt="s2.ask:dependants")
     await run(t)
     assert rows(t) == {}
-    assert ids(t) == ["template:format_hint", "template:RL-S2-DEPENDANTS"]
+    assert ids(t) == ["template:format_hint"]
     assert SLOTS["RL-S2-DEPENDANTS"].hint in (t.released.text if t.released else "")
 
 
@@ -332,6 +333,43 @@ async def test_none_is_zero_and_needs_no_read_back(stored: dict[str, tuple[str, 
     await run(t)
     assert rows(t) == {"existing_cover_inr": ("0", "proposed")}
     assert ids(t)[-1] == "template:RL-S2-EMPLOYER-COVER"
+
+
+@pytest.mark.parametrize(
+    ("slot", "said", "value"),
+    [
+        ("existing_cover_inr", "i dont have any life cover. i am looking to buy one", "0"),
+        ("existing_cover_inr", "I haven't bought one yet", "0"),
+        ("existing_cover_inr", "no life cover", "0"),
+        ("existing_annual_premium_inr", "i don't pay any", "0"),
+        ("dependants", "nobody depends on me", []),
+        ("dependants", "I don't have anyone who relies on me", []),
+        ("liabilities", "I don't have any loans", []),
+        ("liabilities", "koi loan nahi", []),
+        ("liabilities", "कोई लोन नहीं", []),
+    ],
+)
+def test_none_said_in_a_sentence_is_understood(slot: str, said: str, value: Any) -> None:
+    answer = s2.understand_value(slot, said, said)
+    assert isinstance(answer, s2.Answer) and answer.value == value and not answer.declined
+
+
+@pytest.mark.parametrize(
+    ("slot", "said"),
+    [
+        ("existing_cover_inr", "not sure"),
+        ("existing_cover_inr", "I don't have any idea"),
+        ("existing_cover_inr", "I don't know which one"),
+        ("dependants", "my parents, no kids"),  # names someone: never read as no one
+    ],
+)
+def test_an_unclear_answer_is_not_read_as_none(slot: str, said: str) -> None:
+    assert s2.understand_value(slot, said, said) is None
+
+
+def test_an_amount_wins_over_none_words() -> None:
+    answer = s2.understand_value("existing_cover_inr", "none except 10 lakh from work", "")
+    assert isinstance(answer, s2.Answer) and answer.value == "1000000" and answer.derived
 
 
 @pytest.mark.asyncio
@@ -641,7 +679,7 @@ async def test_distress_reaches_the_needs_for_the_vulnerability_rules(
 async def test_comprehension_difficulty_is_counted_and_the_question_put_more_simply() -> None:
     t = s2_turn("I don't understand", prompt="s2.ask:dependants")
     await run(t)
-    assert ids(t) == ["template:rephrase", "template:RL-S2-DEPENDANTS"]
+    assert ids(t) == ["template:rephrase"]  # put more simply, in place of the question
     assert t.next is not None and t.next.counters["comprehension_difficulty"] == 1
     assert t.released is not None and SLOTS["RL-S2-DEPENDANTS"].hint in t.released.text
 

@@ -1,0 +1,71 @@
+# Step 19 (TDD §3.6 edge cases and the Quote-Only rows): phrases matched as whole words anywhere in
+# the turn, after NFKC, case-folding and collapsing spaces (as identity_question.yaml). Owners:
+# underwriting (health_terms), compliance (concealment, apply). Every list awaits their review.
+
+# A health condition named in the turn. In a question ("Will I be rejected because of diabetes?") it
+# gets the underwriting note; in a statement, the empathetic acknowledgement. No diagnosis is stored.
+health_terms:
+  - diabetes
+  - diabetic
+  - sugar
+  - blood pressure
+  - hypertension
+  - bp
+  - cancer
+  - tumour
+  - tumor
+  - heart disease
+  - heart attack
+  - heart problem
+  - stroke
+  - asthma
+  - thyroid
+  - kidney
+  - liver
+  - hiv
+  - tuberculosis
+  - epilepsy
+  - मधुमेह
+  - शुगर
+  - कैंसर
+  - दिल की बीमारी
+  - sugar ki bimari
+  - bp ki problem
+
+# A request to hide a material fact ("Don't tell them I smoke"): the neutral non-disclosure note,
+# and no help with it.
+concealment:
+  - don't tell
+  - dont tell
+  - do not tell
+  - don't mention
+  - dont mention
+  - do not mention
+  - hide it
+  - hide this
+  - keep it secret
+  - keep it between us
+  - mat batana
+  - mat bataiye
+  - mat batao
+  - मत बताना
+  - मत बताइए
+  - छुपा लो
+
+# A request to apply or buy in Quote-Only: the C13 hard block (suitability first).
+apply:
+  - apply
+  - apply now
+  - application
+  - buy now
+  - buy this
+  - buy it
+  - buy the plan
+  - buy this plan
+  - sign me up
+  - purchase
+  - apply karna
+  - kharidna hai
+  - khareedna hai
+  - आवेदन
+  - खरीदना

@@ -29,7 +29,7 @@ from harness import (  # noqa: E402
 
 from surakshasetu.crypto.jcs import sha256_hex  # noqa: E402
 
-PINS = {"prompt_bundle": "pb-2026.10.8", "rules": "2026.09.1"}
+PINS = {"prompt_bundle": "pb-2026.10.9", "rules": "2026.09.1"}
 
 
 def body(text: str = "Hi", state: str = "S0", turn_id: str = "t1", **message: Any) -> bytes:
@@ -88,7 +88,7 @@ def transcript(*turns: dict[str, Any], **update: Any) -> Transcript:
     raw = body()
     t = Transcript(
         conversation=conversation,
-        active_bundle="pb-2026.10.8",
+        active_bundle="pb-2026.10.9",
         consent_valid_from_start=False,
         initial_pins=PINS,
         sent=[Sent(0, 200, raw, customer_text="hello")],
@@ -788,7 +788,7 @@ def test_a_record_holds_counts_ids_and_timings_never_text() -> None:
             "state": "S1",
             "from_state": "S0",
             "language": "en",
-            "bundle": "pb-2026.10.8",
+            "bundle": "pb-2026.10.9",
             "latency_ms": 812.5,
             "sample": True,
             "side_query": False,

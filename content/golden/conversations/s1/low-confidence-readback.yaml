@@ -13,7 +13,7 @@ turns:
     script:
       nlu-extract:
         - {intents: [SLOT_ANSWER], slots: [{slot: age_years, value: 30, confidence: 0.4, evidence_span: thirty}]}
-    expect: {templates: [format_hint, RL-S1-AGE], slot_rows: 0, counters: {low_confidence_streak: 1}}
+    expect: {templates: [format_hint], slot_rows: 0, counters: {low_confidence_streak: 1}}
   - text: I'm 34 I think
     script:
       nlu-extract:

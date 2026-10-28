@@ -152,6 +152,15 @@ NONE = frozenset(
         "no loan", "no cover", "not any", "koi nahi", "kuch nahi", "कोई नहीं", "कुछ नहीं",
     }
 )  # fmt: skip
+# None said in a sentence: "I don't have any life cover", "haven't bought one yet", "no loans",
+# "koi loan nahi". Read only from a message that names no amount: digits always win.
+_NEG = r"(?:do ?n['’]?t|do not|did ?n['’]?t|did not|have ?n['’]?t|have not|has ?n['’]?t|never)"
+_VERB = r"(?:have|has|own|hold|got|get|buy|bought|take|taken|took)"
+_NONE_SAID = re.compile(
+    rf"\b{_NEG}(?: {_VERB})?(?: \w+)? (?:any(?:one|body)?|one)\b(?! (?:idea|clue))"
+    r"|\bno (?:(?:life )?(?:cover|insurance|policy|policies)|loans?|savings|one)\b"
+    r"|\b(?:not yet|nothing|nobody|none|nil|zero)\b|\bkoi(?: \w+)? nahin?\b|कोई(?: \S+)? नहीं|कुछ नहीं"
+)
 _MONTH = re.compile(r"\b(?:month|monthly|months|per month|mahina|mahine|महीना|महीने)\b", re.I)
 _YEAR = re.compile(r"\b(?:year|yearly|annual|annually|per annum|pa|lpa|saal|साल)\b", re.I)
 _K = re.compile(r"(\d+(?:\.\d+)?)\s*k\b", re.I)
@@ -190,12 +199,16 @@ def _folded(text: str) -> str:
     return phrase(devanagari_digits_to_ascii(text))
 
 
+def _none(folded: str) -> bool:
+    return folded in NONE or (not re.search(r"\d", folded) and bool(_NONE_SAID.search(folded)))
+
+
 def _money(text: str, *, flow: bool) -> Answer | Period | None:
     folded = _folded(text)
     yes_no = parse_yes_no(folded)
     if yes_no == "declined":
         return Answer(None, declined=True)
-    if folded in NONE or yes_no == "no":
+    if _none(folded) or yes_no == "no":
         return Answer("0")
     said_ = devanagari_digits_to_ascii(text)
     month, year = bool(_MONTH.search(said_)), bool(_YEAR.search(said_))
@@ -255,7 +268,9 @@ def _dependants(raw: Any, text: str) -> Answer | None:
     yes_no = parse_yes_no(folded)
     if yes_no == "declined":
         return Answer(None, declined=True)
-    if folded in NONE or yes_no == "no":
+    words = re.findall(r"[a-z\-]+", folded)
+    named = any(w in RELATIONS or w.rstrip("s") in RELATIONS for w in words)
+    if yes_no == "no" or (_none(folded) and not named):  # "no kids, just my parents" names someone
         return Answer([])
     found: list[dict[str, Any]] = []
     relation: str | None = None
@@ -293,7 +308,7 @@ def _liabilities(raw: Any, text: str) -> Answer | None:
     yes_no = parse_yes_no(folded)
     if yes_no == "declined":
         return Answer(None, declined=True)
-    if folded in NONE or yes_no == "no":
+    if _none(folded) or yes_no == "no":
         return Answer([])
     kind = next(
         (k for k, words in LOAN_KINDS if any(re.search(rf"\b{w}\b", folded) for w in words)),
@@ -508,11 +523,17 @@ class Needs(Screen):
             return False
         return await super().next()
 
-    def ask(self, attr: RequiredAttribute, quick: list[dict[str, Any]] | None = None) -> None:
-        if self.rephrased:
+    def ask(
+        self,
+        attr: RequiredAttribute,
+        quick: list[dict[str, Any]] | None = None,
+        *,
+        instead: tuple[str, str] | None = None,
+    ) -> None:
+        if self.rephrased and instead is None:  # put more simply, in place of the question
             hint = self.template(attr).hint or ""
-            self.lead_once("rephrase", f"{scripts(self.turn).rephrase} {hint}".strip())
-        super().ask(attr, quick)
+            instead = ("rephrase", f"{scripts(self.turn).rephrase} {hint}".strip())
+        super().ask(attr, quick, instead=instead)
         if self.distress():
             self.turn.phrase = None  # no generated sentence once distress is stated
 
@@ -523,8 +544,8 @@ class Needs(Screen):
         def offer(value: Any, label: str) -> dict[str, Any]:
             return quick_reply(label, "SLOT", {"slot": slot, "value": value})
 
-        if slot == "goals":
-            return [offer(goal, label) for goal, label in labels.goals.items()]
+        if slot == "goals":  # toggles: the client sends the picked goals as one ranked list
+            return [{**offer(g, label), "multiple": True} for g, label in labels.goals.items()]
         if slot == "income_type":
             return [offer(value, label) for value, label in n.income_types.items()]
         if slot == "dependants":

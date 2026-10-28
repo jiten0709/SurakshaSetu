@@ -202,6 +202,14 @@ def test_the_states_and_session_choices_are_the_specs() -> None:
     assert SCHEMAS["Locale"]["enum"] == list(typing.get_args(locale))
 
 
+def test_a_goal_toggle_and_the_list_it_sends_match_the_contract() -> None:
+    action = {"type": "SLOT", "payload": {"slot": "goals", "value": "savings"}}
+    toggle = {"label": "Savings", "action": action, "multiple": True}
+    assert errors(schema("QuickReply"), toggle) == []
+    picked = {"type": "SLOT", "payload": {"slot": "goals", "value": ["savings", "retirement"]}}
+    assert errors(schema("Action"), picked) == []
+
+
 # --- the validator --------------------------------------------------------------------------------
 SENTINEL = "my PAN is ABCDE1234F"
 

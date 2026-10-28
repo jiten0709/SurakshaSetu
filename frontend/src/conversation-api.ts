@@ -415,6 +415,8 @@ export interface components {
         QuickReply: {
             label: string;
             action: components["schemas"]["Action"];
+            /** @description Present (true) on one question's choices that may be combined (S2's goals): each is a toggle that sends nothing, and the client sends one SLOT action whose value is the list of the toggled replies' values, in the order they were picked (the order ranks them). Absent on every other quick reply. */
+            multiple?: boolean;
         };
         TurnStatusEvent: {
             /** Format: uuid */

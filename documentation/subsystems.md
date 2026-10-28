@@ -33,7 +33,7 @@ How each major part behaves, in the order a turn meets them: retrieval, composit
 
 ## Composition, guardrails and the release policy
 
-**Prompt architecture (TDD §3.4).** A _prompt bundle_ (`content/prompt-bundles/pb-2026.10.8/`) is hash-locked content:
+**Prompt architecture (TDD §3.4).** A _prompt bundle_ (`content/prompt-bundles/pb-2026.10.9/`) is hash-locked content:
 
 | Part                                                          | Content                                                                                                                                                                                                                                          |
 | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -43,7 +43,7 @@ How each major part behaves, in the order a turn meets them: retrieval, composit
 | `templates/{en-IN,hi-IN}/{slots,scripts,recommendation}.yaml` | Pydantic-validated (`extra=forbid`): 21 slot questions keyed by the DMN reason-line ids, 116 script keys, the S3 layout                                                                                                                          |
 | `lexicons/*.yaml`                                             | Closed phrase lists used by deterministic code (consent affirmation, identity question, screening, needs, S3, side-query)                                                                                                                        |
 
-`load_bundle` refuses an unknown or malformed version, an invalid manifest, a missing, unlisted or changed file, invalid templates, an over-budget L0/L1, and a `DUMMY` bundle in pilot or prod. Once a database has recorded a bundle's `CONFIG_RELEASE`, any change is a new version; nine versions exist (`pb-2026.09.1`, `pb-2026.10.1` … `pb-2026.10.8`) and every older one has been retired by a kill switch.
+`load_bundle` refuses an unknown or malformed version, an invalid manifest, a missing, unlisted or changed file, invalid templates, an over-budget L0/L1, and a `DUMMY` bundle in pilot or prod. Once a database has recorded a bundle's `CONFIG_RELEASE`, any change is a new version; ten versions exist (`pb-2026.09.1`, `pb-2026.10.1` … `pb-2026.10.9`); every one before `pb-2026.10.8` has been retired by a kill switch, and 10.8 still loads for the sessions pinned to it.
 
 **The envelope** (`compose/envelope.py`) is exactly two messages: _system_ = L0 + L1, and _user_ = `<session_facts>`, `<summary>`, `<recent_turns>`, `ENGINE_RESULT:` blocks (`<engine id="R1">`), `EVIDENCE:` blocks (`<evidence id="E1" label precedence parent>`) and the turn's `<user_input>`. Every tagged text is HTML-escaped. `SessionFacts` carries language, answered-slot names and relation/liability kinds, **never numbers or identifiers**. Each message is scanned with the redaction rail; any hit means `PII_IN_ENVELOPE` and no envelope, so the turn takes the template path. Only a clean envelope carries the `RedactionAttestation` the gateway demands.
 
@@ -200,3 +200,4 @@ Each bundle added required fields, so older ones stop loading (`FILE_MISSING`) a
 | `pb-2026.10.5`                 | 27 S3 scripts, `S3Labels` and the `s3` lexicon                                                                                 |
 | `pb-2026.10.6`                 | 11 cross-cutting scripts and the `side_query` lexicon                                                                          |
 | `pb-2026.10.7`, `pb-2026.10.8` | `identity_question` widened to 165 phrases after the red-team found real gaps ("are you a real agent", "bot or a real person") |
+| `pb-2026.10.9` | Warmer S1/S2 L1 (acknowledge the answer, vary the opening); every slot hint a clarifying question, sent in place of the question on a re-ask (tobacco and health hints unchanged) |

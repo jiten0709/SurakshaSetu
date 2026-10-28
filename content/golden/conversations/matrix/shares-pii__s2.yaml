@@ -4,4 +4,4 @@ description: >-
 prelude: to-s2
 turns:
   - text: you can charge my card 4111 1111 1111 1111 for the premium
-    expect: {state: S2, templates: [pii_reminder, format_hint, RL-S2-GOALS]}
+    expect: {state: S2, templates: [pii_reminder, format_hint]}

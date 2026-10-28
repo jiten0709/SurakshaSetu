@@ -23,7 +23,8 @@ import { Inspector } from "./Inspector";
 
 // The chat screen: a thin client. Everything it shows comes from a released turn or a quick reply
 // it was given, and everything it sends is typed text, a quick reply's or the consent form's
-// action, a language switch or the erase.
+// action, a language switch or the erase; toggled choices (QuickReply.multiple) go as one SLOT
+// action listing their own values, in the order picked.
 
 type Entry =
   | { from: "you"; text: string }
@@ -45,6 +46,7 @@ interface Trouble {
 const START: TurnRequest = { action: { type: "START", payload: {} } };
 const ERASE: TurnRequest = { action: { type: "ERASE", payload: {} } };
 const ERASE_LABEL = "Erase my data";
+const CONTINUE_LABEL = "Continue";
 
 /** Each locale's name in its own language: the switch offers the other one. */
 const LANGUAGES: Record<Locale, string> = {
@@ -474,6 +476,26 @@ function Reply({
   onAction: OnAction;
 }) {
   const { parts, text, form, quick_replies } = turn.message;
+  // Choices the server marks `multiple` are toggles: picked in order, sent together as one SLOT
+  // action whose value lists their values (the spec's QuickReply.multiple).
+  const [picked, setPicked] = useState<number[]>([]);
+  const toggle = (i: number) =>
+    setPicked((p) => (p.includes(i) ? p.filter((j) => j !== i) : [...p, i]));
+  const sendPicked = () => {
+    const chosen = picked.flatMap((i) => quick_replies[i] ?? []);
+    const slots = chosen.flatMap(({ action }) =>
+      action.type === "SLOT" ? [action.payload] : [],
+    );
+    const [first] = slots;
+    if (!first) return;
+    onAction(
+      {
+        type: "SLOT",
+        payload: { slot: first.slot, value: slots.map((s) => s.value) },
+      },
+      chosen.map((r) => r.label).join(", "),
+    );
+  };
   return (
     <>
       {/* A blocked release has no parts: its text is the whole message. */}
@@ -485,15 +507,35 @@ function Reply({
       {form && <ConsentForm form={form} active={active} onSubmit={onAction} />}
       {quick_replies.length > 0 && (
         <div className="replies" role="group" aria-label="Choices">
-          {quick_replies.map((reply, i) => (
+          {quick_replies.map((reply, i) =>
+            reply.multiple ? (
+              <button
+                key={i}
+                type="button"
+                aria-pressed={picked.includes(i)}
+                disabled={!active}
+                onClick={() => toggle(i)}>
+                {reply.label}
+              </button>
+            ) : (
+              <button
+                key={i}
+                type="button"
+                disabled={!active}
+                onClick={() => onAction(reply.action, reply.label)}>
+                {reply.label}
+              </button>
+            ),
+          )}
+          {picked.length > 0 && (
             <button
-              key={i}
               type="button"
+              className="continue"
               disabled={!active}
-              onClick={() => onAction(reply.action, reply.label)}>
-              {reply.label}
+              onClick={sendPicked}>
+              {CONTINUE_LABEL}
             </button>
-          ))}
+          )}
         </div>
       )}
     </>

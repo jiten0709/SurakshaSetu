@@ -1,0 +1,89 @@
+# hi-IN: every body is a DUMMY placeholder until an approved translation exists (A6). Generated
+# from en-IN with the prefix below; the structure and {fields} match en-IN exactly.
+
+needs_recap: |-
+  DUMMY: [hi translation pending approval] Your needs, as you confirmed them
+  Goals: {goals}
+  Cover you may need: {need}. Recommended cover: {cover} for {term} years.
+  Assumptions: cover to age {cover_to_age}, {dependency_years} years of dependency, existing cover counted {existing_cover}, income growth of {growth} a year and a discount rate of {discount} a year.
+partial_profile: 'DUMMY: [hi translation pending approval] These options are based on a partial profile: some questions were not answered.'
+option_card: |-
+  DUMMY: [hi translation pending approval] Option {rank}: {name} ({uin})
+  Cover: {cover}
+  Policy term: {term} years
+  Premium-paying term: {ppt} years
+  Riders: {riders}
+  {premium}
+  Protection gap against your recommended cover: {gap}
+  Documents: {documents}
+premium: 'DUMMY: [hi translation pending approval] Indicative premium: {amount} a year, including GST. Quote {quote_id}, valid until {valid_until}. The final premium is set after underwriting.'
+premium_single: 'DUMMY: [hi translation pending approval] Indicative single premium: {amount}, including GST. Quote {quote_id}, valid until {valid_until}. The final premium is set after underwriting.'
+premium_withheld: 'DUMMY: [hi translation pending approval] Premium not shown: it is worked out during application and underwriting.'
+document: 'DUMMY: [hi translation pending approval] {label} {version} ({uri})'
+comparison:
+  heading: 'DUMMY: [hi translation pending approval] How the options compare'
+  attributes:
+    TERM:
+    - category
+    - entry_age
+    - maturity_age
+    - cover_range
+    - term_range
+    - ppt_options
+    - benefit_payment
+    - riders
+    TERM_ROP:
+    - category
+    - entry_age
+    - maturity_age
+    - cover_range
+    - term_range
+    - ppt_options
+    - benefit_payment
+    - riders
+    NON_PAR_SAVINGS:
+    - category
+    - entry_age
+    - maturity_age
+    - cover_range
+    - term_range
+    - ppt_options
+    - benefit_payment
+    - riders
+    PAR:
+    - category
+    - entry_age
+    - maturity_age
+    - cover_range
+    - term_range
+    - ppt_options
+    - benefit_payment
+    - riders
+    ULIP:
+    - category
+    - entry_age
+    - maturity_age
+    - cover_range
+    - term_range
+    - ppt_options
+    - benefit_payment
+    - riders
+  rows:
+    category: 'DUMMY: [hi translation pending approval] Plan type'
+    entry_age: 'DUMMY: [hi translation pending approval] Entry age (years)'
+    maturity_age: 'DUMMY: [hi translation pending approval] Maximum age at maturity (years)'
+    cover_range: 'DUMMY: [hi translation pending approval] Cover range'
+    term_range: 'DUMMY: [hi translation pending approval] Policy term (years)'
+    ppt_options: 'DUMMY: [hi translation pending approval] Premium-paying options'
+    benefit_payment: 'DUMMY: [hi translation pending approval] Benefit payment options'
+    riders: 'DUMMY: [hi translation pending approval] Riders available'
+deterministic_card: 'DUMMY: [hi translation pending approval] These options and amounts come from our rules and rating engine. A licensed advisor can explain how each one fits your needs.'
+disclosures_heading: 'DUMMY: [hi translation pending approval] Important information about {name} ({uin})'
+cta:
+  heading: 'DUMMY: [hi translation pending approval] What would you like to do next?'
+  apply: 'DUMMY: [hi translation pending approval] Apply for one of these plans'
+  advisor: 'DUMMY: [hi translation pending approval] Talk to a licensed advisor'
+  revise: 'DUMMY: [hi translation pending approval] Change my answers'
+  save: 'DUMMY: [hi translation pending approval] Save for later'
+sources_heading: 'DUMMY: [hi translation pending approval] Sources'
+source_line: 'DUMMY: [hi translation pending approval] {title}, {section}, version {version}, effective {effective_from}: {uri}'

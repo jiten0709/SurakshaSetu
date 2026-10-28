@@ -7,6 +7,6 @@ turns:
   - action: {type: SLOT, payload: {slot: goals, value: income_protection}}
     expect: {templates: [RL-S2-INCOME]}
   - text: a decent amount
-    expect: {templates: [format_hint, RL-S2-INCOME], counters: {invalid_input: 1}}
+    expect: {templates: [format_hint], counters: {invalid_input: 1}}
   - text: 12 LPA
     expect: {templates: [readback], contains: ["Just to check: ₹12,00,000 a year. Is that right?"], slots: {annual_income_inr: proposed}}

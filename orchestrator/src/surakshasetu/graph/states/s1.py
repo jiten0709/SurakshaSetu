@@ -545,8 +545,7 @@ class Screen:
             logger.info("invalid input limit on %s: advisor offered", attr.attribute)
             return True
         hint = self.template(attr).hint or ""
-        self.lead.append(("format_hint", texts.format_hint.format(hint=hint).rstrip()))
-        self.ask(attr)
+        self.ask(attr, instead=("format_hint", texts.format_hint.format(hint=hint).rstrip()))
         return True
 
     def _count_invalid(self, *, reset: bool = False) -> int:
@@ -589,13 +588,21 @@ class Screen:
         self.turn.quick_replies = [*quick, *self.replies]
         self.turn.form = None
 
-    def ask(self, attr: RequiredAttribute, quick: list[dict[str, Any]] | None = None) -> None:
+    def ask(
+        self,
+        attr: RequiredAttribute,
+        quick: list[dict[str, Any]] | None = None,
+        *,
+        instead: tuple[str, str] | None = None,
+    ) -> None:
+        """Put the question, or `instead` a clarification of it (a re-ask: the question is already
+        on screen), with the same open slot and choices."""
         slot = self.template(attr)
         self.session.pending_slot = attr.attribute
         self.session.last_prompt_id = f"{self.prefix}.ask:{attr.attribute}"
-        part = (attr.reason_line_id, f"{slot.question} {slot.reason}")
+        part = instead or (attr.reason_line_id, f"{slot.question} {slot.reason}")
         self.reply([part], self.choices(attr.attribute) if quick is None else quick)
-        if (l1 := PHRASED.get(self.prefix)) and not self.lead:  # a plain question: one sentence
+        if instead is None and (l1 := PHRASED.get(self.prefix)) and not self.lead:  # one sentence
             self.turn.phrase = (l1, attr.reason_line_id, tuple(sorted(self.known)))
 
     def choices(self, slot: str) -> list[dict[str, Any]]:

@@ -17,23 +17,63 @@ An AI-assisted conversational advisor for life and term insurance in India. It g
 
 ## Quick start
 
-Prerequisites: [uv](https://docs.astral.sh/uv/), Docker, and JDK 21.
+### 1. Install the prerequisites
+
+| Tool | Why it's needed |
+| --- | --- |
+| [Docker](https://docs.docker.com/get-docker/) | Runs the whole stack: Postgres, Qdrant, MinIO, the model servers, the gateway, the API and the UI. Give the Docker VM at least 8 GB of memory. |
+| [uv](https://docs.astral.sh/uv/) | Runs the Python setup steps on your machine (migrations, gateway seeding, knowledge-base ingest). |
+| JDK 21 | Builds the domain services (eligibility, suitability, quotes, ranking). |
+
+You don't need Node on your machine: the browser UI runs in its own container.
+
+### 2. Start everything
 
 ```sh
-make start        # everything, first run included: the stack, gateway, catalog and knowledge base
-                  # (each only if missing; first run: ~40 min of downloads), then the Conversation API
-                  # (127.0.0.1:8000), the timers and the browser UI (127.0.0.1:5173)
+make start
 ```
 
-To prove the system end to end (eval sets, invariant tests, the scripted S0-S3 conversation, audit verification and the pilot DUMMY gate), run `make local-setup`; it refuses a running stack, so `make down` first.
+This one command takes the machine from any state to a running demo. It starts the stack, then seeds the gateway, catalog and knowledge base only if they are missing, then starts the API, the timers and the UI.
 
-Then open the browser UI at http://127.0.0.1:5173 (the first start installs the UI's dependencies inside its container, about a minute), or chat in the terminal:
+- **First run:** about 40 minutes, mostly downloads (container images and about 2.9 GB of model weights).
+- **Later runs:** seconds to a minute or so, because nothing is reseeded.
+
+### 3. Chat in the browser
+
+Open **http://127.0.0.1:5173**. The first start installs the UI's dependencies inside its container, which takes about a minute.
+
+The models are local stubs, so stick to the quick-reply buttons and short answers such as `34`, `411001`, `no` or `12 lakh`.
+
+### 4. Or chat in the terminal
 
 ```sh
-cd orchestrator && uv run python scripts/chat.py            # --locale hi-IN for Hindi
+cd orchestrator && uv run python scripts/chat.py      # add --locale hi-IN for Hindi
 ```
 
-(type a number to pick a quick reply, `f` to fill the consent form, `/erase` to delete your data, `/quit` to leave). To run the API and the UI on the host instead, use `make serve` and `make ui` (each in its own terminal, with `make app-up`'s services stopped: they share ports 8000 and 5173).
+| Type | To |
+| --- | --- |
+| a number | pick a quick reply |
+| `f` | fill in the consent form |
+| `/erase` | delete your data |
+| `/quit` | leave |
+
+### 5. Prove it works (optional)
+
+```sh
+make down && make local-setup
+```
+
+This runs the full verification from TDD §7.5: the evaluation sets, the invariant property tests, the scripted S0 → S3 conversation ending in a signed hand-off, audit-chain verification and the pilot `DUMMY` release gate. It refuses to run while the stack is up, so `make down` comes first. Run `make start` again afterwards to bring the app back.
+
+### 6. Stop
+
+```sh
+make down
+```
+
+This stops every container and keeps your data in the Docker volumes, so the next `make start` is quick.
+
+> **Developing the API or UI?** Run them on your machine instead with `make serve` and `make ui`, each in its own terminal. Stop the compose services first (`make down`, then `make up && make gateway-up`), because they use the same ports, 8000 and 5173.
 
 ## Documentation
 
