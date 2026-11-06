@@ -538,6 +538,7 @@ async def test_a_wrong_read_back_asks_which_detail_then_that_question(
     chosen = s1_turn(action={"type": "REASK", "payload": {"slot": "pincode"}}, prompt="s1.fix")
     await run(chosen)
     assert ids(chosen)[-1] == "template:RL-S1-PINCODE"
+    assert chosen.phrase is None  # Fix 2: a detail the customer chose, so no generated lead
 
 
 # --- dependency down, I1, V4 ----------------------------------------------------------------------
@@ -617,3 +618,112 @@ async def test_no_slot_value_reaches_the_logs(
     ):
         await run(t)
     assert "411014" not in caplog.text and "47" not in caplog.text and "Pune" not in caplog.text
+
+
+# --- Fix 2 (2026-10-29): the audited conversation's answers --------------------------------------
+@pytest.mark.parametrize(
+    ("said", "value", "derived"),
+    [
+        ("indian", "resident", True),
+        ("I live in India", "resident", True),
+        ("resdent", "resident", True),  # a misspelling: read back at once
+        ("Resident in India", "resident", False),
+        ("non resident indian", "nri", False),
+        ("I am not a resident", None, False),  # a negation never answers with one word
+        ("indian living in dubai", None, False),  # "indian" only as the whole answer
+    ],
+)
+def test_residency_said_another_way(said: str, value: str | None, derived: bool) -> None:
+    answer = s1._choice("residency", said)
+    if value is None:
+        assert answer is None
+    else:
+        assert answer == s1.Answer(value, derived=derived)
+
+
+@pytest.mark.asyncio
+async def test_indian_is_read_as_resident_and_read_back_at_once() -> None:
+    t = s1_turn("indian", prompt="s1.ask:residency")
+    await run(t)
+    assert rows(t) == {"residency": ("resident", "proposed")}
+    assert t.released is not None and t.released.text == "To confirm: resident in India. Correct?"
+    assert t.next is not None and t.next.last_prompt_id == "s1.confirm:residency"
+
+
+@pytest.mark.asyncio
+async def test_an_occupation_read_from_one_word_shows_both_the_words_and_the_label() -> None:
+    t = s1_turn("i am a ai engineer", prompt="s1.ask:occupation_code")
+    await run(t)
+    assert rows(t) == {"occupation_code": ("OCC-SWE-03", "proposed")}
+    assert t.released is not None and t.released.text == (
+        'You said "i am a ai engineer". The closest match in our list is Software engineer.'
+        " Is that right?"
+    )
+    assert t.next is not None and t.next.last_prompt_id == "s1.confirm:occupation_code"
+
+    no = s1_turn("no", prompt="s1.confirm:occupation_code")
+    await run(no)
+    assert ids(no)[-1] == "template:RL-S1-OCCUPATION"  # the question again
+
+
+@pytest.mark.asyncio
+async def test_a_whole_answer_that_names_the_occupation_is_not_read_back(
+    stored: dict[str, tuple[str, Any]],
+) -> None:
+    for slot in ("age_years", "residency", "pincode", "tobacco_12m"):
+        stored[slot] = ("proposed", TDD[slot])
+    t = s1_turn("salaried", prompt="s1.ask:occupation_code")
+    await run(t)
+    assert rows(t) == {"occupation_code": ("OCC-OFFICE-01", "proposed")}
+    assert ids(t)[-1] == "template:RL-S1-HEALTH"
+
+
+@pytest.mark.asyncio
+async def test_an_echoed_occupation_with_personal_data_is_never_released() -> None:
+    # RC-LEAK: the echo is the customer's redacted words, and an email in them is not this
+    # session's approved text, so the release blocks (fails closed) instead of repeating it.
+    t = s1_turn("teacher, mail me at ravi.k@example.com", prompt="s1.ask:occupation_code")
+    await run(t)
+    assert t.released is not None and t.released.kind == "blocked"
+    assert "ravi.k@example.com" not in t.released.text
+
+
+@pytest.mark.asyncio
+async def test_the_occupation_words_never_reach_the_log(caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level(logging.DEBUG, logger="surakshasetu")
+    t = s1_turn("i am a zqxsentinel engineer", prompt="s1.ask:occupation_code")
+    await run(t)
+    assert t.released is not None and "zqxsentinel" in t.released.text
+    assert "zqxsentinel" not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_prefer_not_to_say_on_tobacco_says_what_follows(
+    stored: dict[str, tuple[str, Any]],
+) -> None:
+    for slot in ("age_years", "residency", "pincode"):
+        stored[slot] = ("proposed", TDD[slot])
+    action = {"type": "SLOT", "payload": {"slot": "tobacco_12m", "value": "declined"}}
+    t = s1_turn(action=action, prompt="s1.ask:tobacco_12m")
+    await run(t)
+    assert rows(t) == {"tobacco_12m": (None, "declined")}
+    assert ids(t) == ["template:declined_note", "template:RL-S1-OCCUPATION"]
+    assert t.released is not None and t.released.text.startswith(
+        "That's fine. Without this answer I can still show plans that fit, but not their premiums"
+    )
+    assert t.phrase is None  # the note leads: no generated sentence before it
+
+
+@pytest.mark.asyncio
+async def test_the_re_ask_opening_changes_each_time() -> None:
+    hint = SLOTS["RL-S1-PINCODE"].hint
+    first = s1_turn("blah", prompt="s1.ask:pincode")
+    await run(first)
+    assert first.released is not None
+    assert first.released.text == f"Let me put that another way. {hint}"
+    assert first.next is not None and first.next.counters["format_hint"] == 1
+
+    second = s1_turn("blah", prompt="s1.ask:pincode", counters=first.next.counters)
+    await run(second)
+    assert second.released is not None
+    assert second.released.text == f"Sorry, I didn't catch that. {hint}"

@@ -1,0 +1,48 @@
+id: s2-cover-to-age
+description: >-
+  Fix 2: the summary's cover-to age (the params default, 60) can be changed. "No, change something"
+  offers it after the asked details; an age at or below the customer's own is asked again; the
+  stated age is sent as cover_to_age, so the engine sizes a 24-year term and a new summary is
+  confirmed and bound (I2) before S3.
+prelude: to-s2
+turns:
+  - text: income protection and loan cover
+    expect: {templates: [RL-S2-INCOME]}
+  - text: 24 lakh
+    expect: {templates: [readback]}
+  - text: "yes"
+    expect: {templates: [RL-S2-INCOME-TYPE]}
+  - action: {type: SLOT, payload: {slot: income_type, value: salaried}}
+    expect: {templates: [RL-S2-DEPENDANTS]}
+  - text: my wife is 32, my son is 7 and my daughter is 4
+    expect: {templates: [RL-S2-LIABILITIES]}
+  - text: home loan of 35 lakh, 18 years left
+    expect: {templates: [readback]}
+  - text: "yes"
+    expect: {templates: [RL-S2-EXISTING-COVER]}
+  - text: none
+    expect: {templates: [RL-S2-EMPLOYER-COVER]}
+  - text: none
+    expect: {templates: [RL-S2-EXISTING-PREMIUM]}
+  - text: none
+    expect: {templates: [RL-S2-ASSETS]}
+  - action: {type: SLOT, payload: {slot: earmarked_assets_inr, value: declined}}
+    expect: {templates: [RL-S2-BUDGET]}
+  - text: 30,000 a year
+    expect: {templates: [readback]}
+  - text: "yes"
+    expect: {templates: [needs_summary, summary_question], contains: ["Assumptions: cover to age 60"]}
+  - text: "no"
+    expect: {templates: [readback_fix]}
+  - action: {type: REASK, payload: {slot: cover_to_age}}
+    expect: {templates: [RL-S2-COVER-TO-AGE], contains: ["Until what age should the cover last?"]}
+  - text: "30"
+    expect: {templates: [format_hint], contains: ["for example 58 or 65"]}
+  - text: I plan to retire at 58
+    expect:
+      templates: [needs_summary, summary_question]
+      contains: ["Cover to age: 58", "Assumptions: cover to age 58"]
+      slots: {cover_to_age: proposed}
+      engine: {service: suitability, outcome: FIT, result: {term_years: 24}}
+  - text: "yes"
+    expect: {state: S3, row: S2.2}

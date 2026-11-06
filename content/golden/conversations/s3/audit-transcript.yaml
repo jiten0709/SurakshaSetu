@@ -1,0 +1,95 @@
+id: s3-audit-transcript
+description: >-
+  Fix 2: the audited demo conversation (2026-10-29), turn for turn, from the consent form to the
+  recommendation. "indian" is read as resident and read back; "i am a ai engineer" is confirmed
+  showing both the customer's words and the master's label; the health question is visible, and
+  its "yes" after a fix gets the acknowledgement; the three dependants are read with their own ages
+  and read back; "no such thing" is no employer cover; a "yes" to the savings question asks how
+  much; the declined budget's line says how affordability was judged. With the child-education
+  corpus counted, the recommended cover is ₹65 lakh (it was ₹45 lakh with the dependants mis-read),
+  and S3 shows the options with premiums (a health "yes" flags MEDICAL_UW, not PREMIUM_WITHHELD)
+  and the four actions.
+turns:
+  - action: {type: START}
+    expect: {state: S0, templates: [greeting], form: true}
+  - action: {type: CONSENT_SUBMIT, payload: {purposes: {P1: true, P2: false, P3: false}, age_18_plus: true}}
+    expect: {state: S0, templates: [intent_ask], consent: {purposes: [P1]}}
+  - action: {type: INTENT, payload: {intent: new_purchase}}
+    expect: {state: S1, row: S0.4, templates: [RL-S1-AGE]}
+  - text: i am 40
+    expect: {templates: [RL-S1-RESIDENCY]}
+  - text: indian
+    expect: {templates: [readback], contains: ["To confirm: resident in India. Correct?"], slots: {residency: proposed}}
+  - text: "yes"
+    expect: {templates: [RL-S1-PINCODE]}
+  - text: "400001"
+    expect: {templates: [RL-S1-TOBACCO]}
+  - action: {type: SLOT, payload: {slot: tobacco_12m, value: "no"}}
+    expect: {templates: [RL-S1-OCCUPATION]}
+  - text: i am a ai engineer
+    expect:
+      templates: [readback]
+      contains: ['You said "i am a ai engineer". The closest match in our list is Software engineer. Is that right?']
+      slots: {occupation_code: proposed}
+  - text: "yes"
+    expect: {templates: [RL-S1-HEALTH], contains: ["Have you ever been diagnosed with or treated for a serious illness"]}
+  - action: {type: SLOT, payload: {slot: health_flags, value: "no"}}
+    expect: {templates: [RL-S1-PROPOSER]}
+  - action: {type: SLOT, payload: {slot: proposer.is_life_assured, value: "yes"}}
+    expect: {templates: [readback], contains: ["Software engineer", "no to the health question"]}
+  - action: {type: CONFIRM, payload: {confirmed: false}}
+    expect: {templates: [readback_fix]}
+  - action: {type: REASK, payload: {slot: health_flags}}
+    expect: {templates: [RL-S1-HEALTH]}
+  - action: {type: SLOT, payload: {slot: health_flags, value: "yes"}}
+    expect:
+      templates: [medical_ack, readback]
+      contains: ["the insurer's underwriters ask about your health when you apply", "yes to the health question"]
+      slots: {health_flags: corrected}
+  - action: {type: CONFIRM, payload: {confirmed: true}}
+    expect: {state: S2, row: S1.4, templates: [screening_done, RL-S2-GOALS], engine: {service: eligibility, outcome: ELIGIBLE, flags: [MEDICAL_UW]}}
+  - action: {type: SLOT, payload: {slot: goals, value: [income_protection, retirement, child_education]}}
+    expect: {templates: [RL-S2-INCOME]}
+  - text: 5lpa
+    expect: {templates: [readback], contains: ["Just to check: ₹5,00,000 a year. Is that right?"]}
+  - action: {type: CONFIRM, payload: {confirmed: true}}
+    expect: {templates: [RL-S2-INCOME-TYPE]}
+  - action: {type: SLOT, payload: {slot: income_type, value: salaried}}
+    expect: {templates: [RL-S2-DEPENDANTS]}
+  - text: my 35 year old wife, and two children who are 12 and 20 years old
+    expect:
+      templates: [readback]
+      contains: ["To confirm: spouse (35), child (12), child (20). Correct?"]
+      slots: {dependants: proposed}
+  - text: "yes"
+    expect: {templates: [RL-S2-LIABILITIES]}
+  - action: {type: SLOT, payload: {slot: liabilities, value: none}}
+    expect: {templates: [RL-S2-EXISTING-COVER]}
+  - text: none
+    expect: {templates: [RL-S2-EMPLOYER-COVER]}
+  - text: no such thing
+    expect: {templates: [RL-S2-EXISTING-PREMIUM], slots: {employer_cover_inr: proposed}}
+  - text: i dont have any policy
+    expect: {templates: [RL-S2-ASSETS]}
+  - text: "yes"
+    expect: {templates: [amount_ask]}
+  - text: approximately 15 lakhs
+    expect: {templates: [readback], contains: ["Just to check: ₹15,00,000. Is that right?"]}
+  - action: {type: CONFIRM, payload: {confirmed: true}}
+    expect: {templates: [RL-S2-BUDGET]}
+  - action: {type: SLOT, payload: {slot: premium_budget_inr_pa, value: declined}}
+    expect:
+      templates: [needs_summary, summary_question]
+      contains:
+        - "Dependants: spouse (35), child (12), child (20)"
+        - "Employer group cover: none"
+        - "Money set aside: ₹15,00,000"
+        - "Premium budget: not shared, so I compared the likely premium for this cover with your income: it is within the range usually considered comfortable"
+      engine: {service: suitability, outcome: FIT, result: {affordability: green, recommended_cover_inr: "6500000", term_years: 20}}
+  - action: {type: CONFIRM, payload: {confirmed: true}}
+    expect:
+      state: S3
+      row: S2.2
+      contains: ["Recommended cover: ₹65,00,000 for 20 years.", "Indicative premium:"]
+      lacks: ["Premium not shown"]
+      actions: [APPLY, HUMAN_REQUEST, REVISE, SAVE]

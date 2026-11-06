@@ -196,7 +196,7 @@ async def _understand(state: str, slot: str, raw: Any, evidence: str, domain: Do
         answer: Any = s2.understand_value(slot, raw, evidence)
     else:  # s1.understand only reaches turn.domain (pincode master, occupation search)
         answer = await s1.understand(SimpleNamespace(domain=domain), slot, raw, evidence)
-    if answer is None or isinstance(answer, list | s2.Period):
+    if answer is None or isinstance(answer, list | s2.Period | s2.AmountNeeded | s2.AgesNeeded):
         return _NONE  # unusable, several occupations to choose from, or a period still to ask
     return answer.value
 

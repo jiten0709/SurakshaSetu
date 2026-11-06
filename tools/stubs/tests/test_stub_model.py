@@ -256,5 +256,10 @@ def test_every_question_gets_its_own_bridge_so_no_two_replies_open_alike() -> No
     assert len(set(bridges)) == len(bridges)
 
 
+def test_no_two_bridges_open_with_the_same_two_words() -> None:
+    openings = [" ".join(line.casefold().split()[:2]) for _, line in stub_model.BRIDGES]
+    assert len(set(openings)) == len(openings)
+
+
 def test_a_bridge_carries_no_number_factual_term_or_promise() -> None:
     assert [line for _, line in stub_model.BRIDGES if UNSAFE.search(line)] == []

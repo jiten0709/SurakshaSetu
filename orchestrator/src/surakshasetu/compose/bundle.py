@@ -195,6 +195,8 @@ class NeedsLabels(_Strict):
     see_options: str
     short_yes: str
     short_no: str
+    # Fix 2: a declined budget's summary line, by the engine's affordability band (no amount).
+    affordability: dict[Literal["green", "amber"], str] = {}
 
     @model_validator(mode="after")
     def _every_fact_named(self) -> Self:
@@ -373,6 +375,14 @@ class Scripts(_Strict):
     objection_repeat: str
     pii_reminder: str
     side: SideQueryLabels
+    # Fix 2 (pb-2026.10.10 on): optional, so pb-2026.10.9 still loads (its sessions keep its
+    # wording, I7); each feature is off when its text is absent.
+    format_hint_leads: list[str] = []  # opening lines for format_hint's hint, taken in turn
+    occupation_mapped: str | None = None  # '{said}' read as the master's '{label}': confirm
+    amount_ask: str | None = None  # "yes" to a money question: how much
+    dependants_ages: str | None = None  # relations named without ages: "{who}"
+    declined_notes: dict[str, str] = {}  # S1 slot -> what "prefer not to say" means for it
+    cover_to_age: SlotTemplate | None = None  # the summary's changeable cover-to age
 
 
 Attribute = Literal[

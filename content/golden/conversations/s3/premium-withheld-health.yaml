@@ -20,7 +20,7 @@ turns:
   - text: salaried
     expect: {templates: [RL-S1-HEALTH]}
   - action: {type: SLOT, payload: {slot: health_flags, value: declined}}
-    expect: {templates: [RL-S1-PROPOSER], slots: {health_flags: declined}}
+    expect: {templates: [declined_note, RL-S1-PROPOSER], slots: {health_flags: declined}}
   - text: "yes"
     expect: {templates: [readback]}
   - text: "yes"

@@ -37,6 +37,7 @@ on the confirmed slots when a later state needs its result after hydration.
 """
 
 import dataclasses
+import difflib
 import json
 import logging
 import re
@@ -116,6 +117,20 @@ SYNONYMS = {
     "mother": "parent",
     "father": "parent",
 }
+# Whole answers that give a closed value without its words (Fix 2). Only the whole message, so
+# "indian living in dubai" is never read as resident; read back at once, like a typo's match.
+WHOLE = {
+    "residency": dict.fromkeys(
+        (
+            "indian", "i_am_indian", "i_am_an_indian", "indian_resident", "resident_of_india",
+            "i_live_in_india", "living_in_india", "in_india",
+        ),
+        "resident",
+    ),
+}  # fmt: skip
+# A negation keeps a single word from answering ("I am not a resident" is not "resident").
+NEGATIONS = frozenset({"not", "non", "no", "nahi", "nahin"})
+CLOSE = 0.9  # difflib ratio for a misspelt closed answer ("resdent"), never "unemployed" (0.89)
 # Slot names a model may use for ours.
 ALIASES = {
     "age": "age_years",
@@ -143,6 +158,7 @@ class Answer:
     value: Any
     declined: bool = False
     derived: bool = False  # worked out, not said (an age from a birth year): read back at once
+    said: str | None = None  # the customer's words, when the value maps them to another label
 
 
 def valid(current: SessionState) -> bool:
@@ -154,12 +170,24 @@ def _words(text: str) -> list[str]:
     return re.findall(r"[a-z_]+", text.casefold().replace("-", "_"))
 
 
-def _choice(slot: str, text: str) -> str | None:
+def _choice(slot: str, text: str) -> Answer | None:
+    """A closed value: the whole answer or one of its words, a synonym, a whole answer that names
+    it another way, or a misspelling of one (the last two read back at once)."""
     words = _words(text)
-    for word in ("_".join(words), *words):
+    joined = "_".join(words)
+    if joined in WHOLE.get(slot, {}):
+        return Answer(WHOLE[slot][joined], derived=True)
+    scan = [joined] if NEGATIONS & set(words) else [joined, *words]
+    for word in scan:
         word = SYNONYMS.get(word, word)
         if word in CHOICES[slot]:
-            return word
+            return Answer(word)
+    if NEGATIONS & set(words):
+        return None
+    vocabulary = [w for w in (*CHOICES[slot], *SYNONYMS) if SYNONYMS.get(w, w) in CHOICES[slot]]
+    for word in (w for w in words if len(w) >= 5):
+        if close := difflib.get_close_matches(word, vocabulary, n=1, cutoff=CLOSE):
+            return Answer(SYNONYMS.get(close[0], close[0]), derived=True)
     return None
 
 
@@ -191,12 +219,10 @@ async def understand(
         flag = None if word == "declined" else word == "yes"
         return Answer({HEALTH: flag} if slot == "health_flags" else flag, word == "declined")
     if kind == "choice":
-        chosen = _choice(slot, text)
-        return Answer(chosen) if chosen else None
+        return _choice(slot, text)
     if kind == "relationship":
-        chosen = _choice(slot, text)
         free = " ".join(w for w in _words(text) if w not in ("my", "the", "is", "for"))[:40]
-        return Answer(chosen or free) if chosen or free else None
+        return _choice(slot, text) or (Answer(free) if free else None)
     if kind == "pincode":
         pincode = parse_pincode(text) or parse_pincode(evidence)
         if pincode is None:
@@ -235,7 +261,11 @@ async def _occupation(turn: Any, text: str) -> Answer | list[Occupation] | None:
     for q in [text, *words[:2]]:
         found: list[Occupation] = await turn.domain.search_occupations(q)
         if len(found) == 1:
-            return Answer(found[0].code)
+            if q == text:
+                return Answer(found[0].code)
+            # Found by one word of the answer ("ai engineer" -> Software engineer): confirmed at
+            # once, showing the customer's words beside the master's label (Fix 2).
+            return Answer(found[0].code, derived=True, said=text)
         if found:
             return found[:5]
     return None
@@ -271,6 +301,7 @@ class Screen:
     confirm: str | None = None  # a value to read back at once
     options: tuple[str, list[Occupation]] | None = None
     noted: bool = False  # the turn was something other than an answer (a note, FAQ, off-topic...)
+    mapped: dict[str, str] = dataclasses.field(default_factory=dict)  # slot -> the words it maps
 
     @classmethod
     async def load(
@@ -369,6 +400,11 @@ class Screen:
         logger.info("slot %s %s", slot, status)
         if answer.derived or confidence < settings.confidence_accept:
             self.confirm = slot
+        if answer.said is not None:
+            self.mapped[slot] = answer.said
+        notes = scripts(self.turn).declined_notes
+        if answer.declined and self.prefix == "s1" and slot in notes:  # Quote-Only: quote_withheld
+            self.lead.append(("declined_note", notes[slot]))  # what "prefer not to say" means
         if slot == "health_flags" and answer.value[HEALTH] is True:
             self.disclosed()
         return True
@@ -486,6 +522,7 @@ class Screen:
             attr = self.attr(str(payload.get("slot")))
             if attr is not None:
                 self.ask(attr)
+                self.turn.phrase = None  # a detail the customer chose to change: no lead sentence
                 return False
         elif kind is None:
             await self.candidates()
@@ -545,8 +582,18 @@ class Screen:
             logger.info("invalid input limit on %s: advisor offered", attr.attribute)
             return True
         hint = self.template(attr).hint or ""
-        self.ask(attr, instead=("format_hint", texts.format_hint.format(hint=hint).rstrip()))
+        self.ask(attr, instead=("format_hint", self._format_hint(hint)))
         return True
+
+    def _format_hint(self, hint: str) -> str:
+        """The clarifying hint behind an opening taken in turn from the bundle's leads (Fix 2: the
+        same opening every time read as blame), or behind the one format_hint line."""
+        texts = scripts(self.turn)
+        if not (leads := texts.format_hint_leads):
+            return texts.format_hint.format(hint=hint).rstrip()
+        used = self.session.counters.get("format_hint", 0)
+        self.session.counters = {**self.session.counters, "format_hint": used + 1}
+        return f"{leads[used % len(leads)]} {hint}".rstrip()
 
     def _count_invalid(self, *, reset: bool = False) -> int:
         counters = self.session.counters
@@ -626,9 +673,12 @@ class Screen:
         texts = scripts(self.turn)
         self.session.pending_slot = slot
         self.session.last_prompt_id = f"{self.prefix}.confirm:{slot}"
-        self.reply(
-            [("readback", texts.readback.format(facts=await self.fact(slot)))], self._yes_no()
-        )
+        fact = await self.fact(slot)
+        if (said := self.mapped.get(slot)) is not None and texts.occupation_mapped:
+            text = texts.occupation_mapped.format(said=said, label=fact)  # both, never just one
+        else:
+            text = texts.readback.format(facts=fact)
+        self.reply([("readback", text)], self._yes_no())
 
     async def readback(self) -> None:
         """Every asked value, from the slots, before any decision (TDD §3.6)."""

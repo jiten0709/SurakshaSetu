@@ -16,7 +16,7 @@ turns:
   - text: "411001"
     expect: {templates: [RL-S1-TOBACCO]}
   - action: {type: SLOT, payload: {slot: tobacco_12m, value: declined}}
-    expect: {templates: [RL-S1-OCCUPATION], slots: {tobacco_12m: declined}}
+    expect: {templates: [declined_note, RL-S1-OCCUPATION], slots: {tobacco_12m: declined}}
   - text: salaried
     expect: {templates: [RL-S1-HEALTH]}
   - text: "no"

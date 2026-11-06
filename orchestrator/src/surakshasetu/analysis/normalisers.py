@@ -104,8 +104,19 @@ def parse_pincode(text: str) -> str | None:
 
 # --- yes/no/declined ------------------------------------------------------------------------------
 
-_YES = frozenset({"yes", "yeah", "yep", "sure", "haan", "han", "हाँ", "हां", "ji haan", "ji"})
-_NO = frozenset({"no", "nope", "nahi", "nahin", "नहीं"})
+_YES = frozenset(
+    {
+        "yes", "yeah", "yep", "yup", "ya", "sure", "yes please", "correct", "that's right",
+        "haan", "han", "haan ji", "हाँ", "हां", "ji haan", "ji",
+    }
+)  # fmt: skip
+# Clear negatives only: a hedge ("not really") on a material fact must not become "no".
+_NO = frozenset(
+    {
+        "no", "nope", "nah", "na", "never", "not at all", "no thanks", "no such thing",
+        "nothing like that", "nahi", "nahin", "nahi hai", "nahin hai", "bilkul nahi", "नहीं",
+    }
+)  # fmt: skip
 _DECLINE_PHRASES = (
     "decline",
     "declined",

@@ -77,6 +77,52 @@ class SuitabilityCalculatorTest {
   }
 
   @Test
+  void savingsAreSubtractedFromTheNeed() {
+    // Fix 2's audited conversation as the orchestrator then read it: age 40, I = 5,00,000, the
+    // dependants mis-read as one spouse aged 12, A = 15,00,000. The spouse depends until 60, so
+    // n = 20. N = 5,00,000 × 0.7 × a(20) + F − A = 57,75,950.70 + 2,00,000 − 15,00,000
+    //   = 44,75,950.70, the figure the customer saw; without A it would be 59,75,950.70.
+    Sizing s =
+        size(
+            40,
+            "500000",
+            List.of(spouse(12)),
+            List.of(),
+            "0",
+            "0",
+            "1500000",
+            20,
+            SA_MAX,
+            Goal.INCOME_PROTECTION,
+            Goal.RETIREMENT,
+            Goal.CHILD_EDUCATION);
+    assertSizing(s, "4475950.70", "4500000", "10000000", 20, 20);
+  }
+
+  @Test
+  void eachDependantKeepsItsOwnHorizon() {
+    // The same conversation read correctly: spouse 35, children 12 and 20. The spouse depends
+    // until 60 (20 years), the children until 25 (13 and 5 years): n = 20, not 20 per dependant.
+    // G: only the 12-year-old is under the education corpus's age 18: 20,00,000 / (1+r)^6
+    //   = 17,85,924.62. N = 44,75,950.70 + 17,85,924.62 = 62,61,875.32 → 65,00,000.
+    Sizing s =
+        size(
+            40,
+            "500000",
+            List.of(spouse(35), child(12), child(20)),
+            List.of(),
+            "0",
+            "0",
+            "1500000",
+            20,
+            SA_MAX,
+            Goal.INCOME_PROTECTION,
+            Goal.RETIREMENT,
+            Goal.CHILD_EDUCATION);
+    assertSizing(s, "6261875.32", "6500000", "10000000", 20, 20);
+  }
+
+  @Test
   void incomeDeclined() {
     // Age 40, income declined: no income term and no uw_cap. N = L + F = 50,00,000 + 2,00,000
     // = 52,00,000 → 55,00,000 (SA_max ₹2 crore doesn't bind). n is still 25 − 10 = 15.

@@ -146,5 +146,25 @@ def test_yes_no_unrecognised_text_is_none() -> None:
     assert parse_yes_no("maybe later") is None
 
 
+# Fix 2: the audited conversation's "no such thing", and other plain answers.
+@pytest.mark.parametrize(
+    "text",
+    ["nah", "no such thing", "nothing like that", "not at all", "never", "no thanks", "nahi hai"],
+)
+def test_more_ways_of_saying_no(text: str) -> None:
+    assert parse_yes_no(text) == "no"
+
+
+@pytest.mark.parametrize("text", ["yup", "yes please", "correct", "that's right", "haan ji"])
+def test_more_ways_of_saying_yes(text: str) -> None:
+    assert parse_yes_no(text) == "yes"
+
+
+@pytest.mark.parametrize("text", ["not really", "rarely", "sometimes"])
+def test_a_hedge_is_never_a_no(text: str) -> None:
+    # On a material fact (tobacco), "not really" must not become "no": it gets the hint.
+    assert parse_yes_no(text) is None
+
+
 def test_devanagari_digits_to_ascii() -> None:
     assert devanagari_digits_to_ascii("०१२३४५६७८९") == "0123456789"

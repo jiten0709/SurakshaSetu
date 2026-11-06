@@ -1,0 +1,57 @@
+# Step 22 (TDD §2.6, §3.9): phrases matched as whole words anywhere in the turn, after NFKC,
+# case-folding and collapsing spaces (as needs.yaml). They back up nlu-extract's intents and slots.
+# Customer words only: nothing here is ever shown. Owner: compliance; every list awaits its review.
+
+# Regulatory pushback on a question: S1 explains the material-fact reason, S2 the suitability
+# purpose, S0 answers from the privacy FAQ, S3 cites the wording.
+pushback:
+  - why do you need
+  - why do you want to know
+  - why are you asking
+  - why should i tell you
+  - why do you ask
+  - kyun chahiye
+  - kyon chahiye
+  - kyun puch rahe ho
+  - क्यों चाहिए
+  - क्यों पूछ रहे हैं
+
+# A tax regime the customer states: a proposed fact they confirm (never assumed).
+regime_old:
+  - old regime
+  - old tax regime
+  - purani regime
+  - purana regime
+  - पुरानी व्यवस्था
+regime_new:
+  - new regime
+  - new tax regime
+  - nayi regime
+  - naya regime
+  - नई व्यवस्था
+
+# A medical report shared in the chat: asked not to share (TDD §3.9).
+medical_report:
+  - medical report
+  - medical reports
+  - lab report
+  - blood report
+  - test report
+  - discharge summary
+  - prescription
+  - मेडिकल रिपोर्ट
+
+# A request to continue in another language (TDD §3.9).
+language_hi:
+  - in hindi
+  - hindi mein
+  - hindi me
+  - talk in hindi
+  - हिंदी में
+language_en:
+  - in english
+  - english mein
+  - english me
+  - talk in english
+  - अंग्रेज़ी में
+  - अंग्रेजी में

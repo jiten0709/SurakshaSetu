@@ -32,6 +32,7 @@ suitability record and re-runs S2's rows (G3).
 """
 
 import dataclasses
+import difflib
 import logging
 import re
 from decimal import Decimal
@@ -43,7 +44,7 @@ from pydantic import TypeAdapter, ValidationError
 from surakshasetu.analysis.models import Intent
 from surakshasetu.analysis.normalisers import devanagari_digits_to_ascii, parse_money, parse_yes_no
 from surakshasetu.audit.events import EngineDecisionHeader, EventType, SufficiencyElectionHeader
-from surakshasetu.compose.bundle import mentions, phrase
+from surakshasetu.compose.bundle import SlotTemplate, mentions, phrase
 from surakshasetu.compose.placeholders import format_inr
 from surakshasetu.crypto.jcs import sha256_hex
 from surakshasetu.domain.client import DomainError
@@ -84,6 +85,10 @@ NEEDS: dict[str, Kind] = {
     "premium_budget_inr_pa": "flow",
 }
 SHORT = frozenset({"annual_income_inr", "dependants", "liabilities"})  # TDD §3.7's short path
+# Fix 2: needs inputs the rules do not ask, which the customer may change from the summary. Kept
+# out of NEEDS: a NeedsPayload always holds a cover_to_age (its default), so it is never "answered".
+OPTIONAL: dict[str, Literal["cover_to_age"]] = {"cover_to_age": "cover_to_age"}
+COVER_TO_AGE = (40, 85)  # NeedsPayload's bounds
 # Declined: a nullable slot is sent as null (it counts as declined); the others are left out (not
 # answered), except the required existing premiums, sent as "0". Step 6's short-path defaults
 # (content/testvectors/needs/02-short-path.json) fill the required slots the short path skips.
@@ -139,6 +144,22 @@ RELATIONS = {
         "other",
     ),
 }  # fmt: skip
+# Fix 2: plurals a trailing "s" does not make, and the numbers said before a relation ("two
+# children", "2 kids", "no kids", "do bachche"). A digit counts only before a plural, up to six.
+PLURALS = {
+    **dict.fromkeys(("children", "kids", "babies", "bachche", "bacche"), "child"),
+}
+COUNTS = {
+    "no": 0, "one": 1, "two": 2, "both": 2, "three": 3, "four": 4, "five": 5, "six": 6,
+    "ek": 1, "do": 2, "teen": 3, "char": 4,
+}  # fmt: skip
+MAX_COUNT = 6
+# An age said before its relation ("35 year old wife", "my 2-year-old son", "35 saal ki patni") is
+# moved after it, the order the rest of the reading expects.
+_AGE_FIRST = re.compile(
+    r"\b(\d{1,3})\s*-?\s*(?:years?|yrs?|saal|sal)(?:\s*-?\s*old)?(?:\s+(?:ki|ka|ke))?\s+"
+    r"((?:my|meri|mera|mere)\s+)?([a-z]+(?:-in-law)?)\b"
+)
 LOAN_KINDS = (
     ("home", ("home", "house", "housing", "flat")),
     ("vehicle", ("car", "vehicle", "bike", "two-wheeler")),
@@ -153,18 +174,27 @@ NONE = frozenset(
     }
 )  # fmt: skip
 # None said in a sentence: "I don't have any life cover", "haven't bought one yet", "no loans",
-# "koi loan nahi". Read only from a message that names no amount: digits always win.
-_NEG = r"(?:do ?n['’]?t|do not|did ?n['’]?t|did not|have ?n['’]?t|have not|has ?n['’]?t|never)"
-_VERB = r"(?:have|has|own|hold|got|get|buy|bought|take|taken|took)"
+# "koi loan nahi", "my employer doesn't provide any", "no such thing". Read only from a message
+# that names no amount: digits always win.
+_NEG = (
+    r"(?:do ?n['’]?t|do not|did ?n['’]?t|did not|does ?n['’]?t|does not|have ?n['’]?t|have not"
+    r"|has ?n['’]?t|is ?n['’]?t|is not|never)"
+)
+_VERB = (
+    r"(?:have|has|own|hold|got|get|buy|bought|take|taken|took|give|gives|provide|provides|offer"
+    r"|offers)"
+)
 _NONE_SAID = re.compile(
     rf"\b{_NEG}(?: {_VERB})?(?: \w+)? (?:any(?:one|body)?|one)\b(?! (?:idea|clue))"
     r"|\bno (?:(?:life )?(?:cover|insurance|policy|policies)|loans?|savings|one)\b"
+    r"|\bno such (?:thing|cover|policy|benefit)\b|\bnothing like that\b"
     r"|\b(?:not yet|nothing|nobody|none|nil|zero)\b|\bkoi(?: \w+)? nahin?\b|कोई(?: \S+)? नहीं|कुछ नहीं"
 )
 _MONTH = re.compile(r"\b(?:month|monthly|months|per month|mahina|mahine|महीना|महीने)\b", re.I)
 _YEAR = re.compile(r"\b(?:year|yearly|annual|annually|per annum|pa|lpa|saal|साल)\b", re.I)
 _K = re.compile(r"(\d+(?:\.\d+)?)\s*k\b", re.I)
 _LOAN_YEARS = re.compile(r"(\d{1,2})\s*(?:more\s+)?(?:years?|yrs?|saal|साल)", re.I)
+_YES_SAID = re.compile(r"(?:yes|yeah|yep|yup|haan|han|ji haan)\b")  # "yes, some savings"
 _DEPENDANTS = TypeAdapter(list[Dependant])
 _LIABILITIES = TypeAdapter(list[Liability])
 MONTHS_PER_YEAR = 12
@@ -175,6 +205,21 @@ class Period:
     """A yearly amount said as "80k" with no period: a month or a year is asked, never assumed."""
 
     amount: int
+
+
+@dataclasses.dataclass(frozen=True)
+class AmountNeeded:
+    """A "yes" to a money question ("Have you set aside savings?"): how much is asked, never
+    the question again (Fix 2)."""
+
+
+@dataclasses.dataclass(frozen=True)
+class AgesNeeded:
+    """Relations named without every age ("my wife and two kids"): the ages are asked in one
+    question. Each entry is "<relation>=<age>" (said), "<relation>" (one age still to say) or
+    "<relation>+" (a plural with no number: one or more ages)."""
+
+    entries: tuple[str, ...]
 
 
 class Unavailable(Exception):
@@ -203,13 +248,15 @@ def _none(folded: str) -> bool:
     return folded in NONE or (not re.search(r"\d", folded) and bool(_NONE_SAID.search(folded)))
 
 
-def _money(text: str, *, flow: bool) -> Answer | Period | None:
+def _money(text: str, *, flow: bool) -> Answer | Period | AmountNeeded | None:
     folded = _folded(text)
     yes_no = parse_yes_no(folded)
     if yes_no == "declined":
         return Answer(None, declined=True)
     if _none(folded) or yes_no == "no":
         return Answer("0")
+    if not re.search(r"\d", folded) and (yes_no == "yes" or _YES_SAID.match(folded)):
+        return AmountNeeded()
     said_ = devanagari_digits_to_ascii(text)
     month, year = bool(_MONTH.search(said_)), bool(_YEAR.search(said_))
     money = parse_money(said_)
@@ -255,38 +302,156 @@ def _income_type(text: str) -> Answer | None:
     for value, words in INCOME_WORDS:
         if folded == value.replace("_", " ") or any(re.search(rf"\b{w}\b", folded) for w in words):
             return Answer(value)
+    vocabulary = {w: value for value, words in INCOME_WORDS for w in words if " " not in w}
+    for word in (w for w in folded.split() if len(w) >= 5):  # "salried": read back at once
+        if close := difflib.get_close_matches(word, list(vocabulary), n=1, cutoff=s1.CLOSE):
+            return Answer(vocabulary[close[0]], derived=True)
     return None
 
 
-def _dependants(raw: Any, text: str) -> Answer | None:
+def _relation(token: str) -> tuple[str, bool] | None:
+    """A relation word, and whether it is plural."""
+    if token in RELATIONS:
+        return RELATIONS[token], False
+    if token in PLURALS:
+        return PLURALS[token], True
+    if token.endswith("s") and token[:-1] in RELATIONS:
+        return RELATIONS[token[:-1]], True
+    return None
+
+
+def _count(token: str, plural: bool) -> int | None:
+    """The number of people a word before a relation says, if it says one."""
+    if token in COUNTS:
+        return COUNTS[token]
+    if plural and token.isdigit() and int(token) <= MAX_COUNT:
+        return int(token)
+    return None
+
+
+def _age_first(match: re.Match[str]) -> str:
+    age, my, word = match.group(1), match.group(2) or "", match.group(3)
+    return f"{my}{word} {age}" if _relation(word) else match.group(0)
+
+
+@dataclasses.dataclass
+class _Group:
+    """The people one relation word names: how many (None: a plural with no number said) and the
+    ages given for them so far."""
+
+    relation: str
+    count: int | None
+    ages: list[int] = dataclasses.field(default_factory=list)
+
+    @property
+    def open(self) -> int | None:
+        """Ages still to say; None while a plural with no number has none."""
+        if self.count is None:
+            return None if not self.ages else 0
+        return self.count - len(self.ages)
+
+    def entries(self) -> list[str]:
+        said = [f"{self.relation}={age}" for age in self.ages]
+        if self.open is None:
+            return [*said, f"{self.relation}+"]
+        return [*said, *[self.relation] * self.open]
+
+
+def _assign(groups: list[_Group], run: list[int]) -> bool:
+    """Ages said together go to the relations still without one, in the order they were named
+    ("my wife and son, 32 and 4"); else to the relation just named ("my son, and my wife who is
+    32"). False when they fit neither."""
+    waiting = [g for g in groups if g.open != 0]
+    gaps = [g.open for g in waiting]
+    if waiting and None not in gaps and len(run) == sum(cast(list[int], gaps)):
+        ages = iter(run)
+        for group, gap in zip(waiting, cast(list[int], gaps), strict=True):
+            group.ages += [next(ages) for _ in range(gap)]
+        return True
+    last = groups[-1] if groups else None
+    if last is not None and last.open != 0 and (last.open is None or len(run) <= last.open):
+        last.ages += run
+        return True
+    return False
+
+
+def _dependants(raw: Any, text: str) -> Answer | AgesNeeded | None:
     if isinstance(raw, list):
         try:
-            return Answer([d.model_dump(mode="json") for d in _DEPENDANTS.validate_python(raw)])
+            found = [d.model_dump(mode="json") for d in _DEPENDANTS.validate_python(raw)]
         except ValidationError:
             return None
+        # A model's pairing is read back at once unless its evidence says the same, pair by pair.
+        said = _dependants(None, text) if text else None
+        plain = isinstance(said, Answer) and said.value == found and not said.derived
+        return Answer(found, derived=len(found) > 1 and not plain)
     folded = _folded(text)
     yes_no = parse_yes_no(folded)
     if yes_no == "declined":
         return Answer(None, declined=True)
     words = re.findall(r"[a-z\-]+", folded)
-    named = any(w in RELATIONS or w.rstrip("s") in RELATIONS for w in words)
+    named = any(_relation(w) for w in words)
     if yes_no == "no" or (_none(folded) and not named):  # "no kids, just my parents" names someone
         return Answer([])
-    found: list[dict[str, Any]] = []
-    relation: str | None = None
-    for token in re.findall(r"[a-z\-]+|\d{1,3}", folded):  # each relation, then its age
-        if token.isdigit():
-            if relation is not None:
-                found.append({"relation": relation, "age": int(token)})
-                relation = None
-        elif token in RELATIONS or token.rstrip("s") in RELATIONS:
-            if relation is not None:
-                return None  # a relation without an age
-            relation = RELATIONS.get(token) or RELATIONS[token.rstrip("s")]
-    if relation is not None or not found:
+    moved = _AGE_FIRST.sub(_age_first, folded)
+    tokens = re.findall(r"[a-z]+(?:-in-law)?|\d+", moved)
+    groups: list[_Group] = []
+    run: list[int] = []
+    together, dropped = False, False
+    for i, token in enumerate(tokens):
+        if (relation := _relation(token)) is not None:
+            if run and not _assign(groups, run):
+                return None
+            together, run = together or len(run) > 1, []
+            name, plural = relation
+            count = _count(tokens[i - 1], plural) if i else None
+            if count == 0:  # "no kids"
+                dropped = True
+                continue
+            groups.append(_Group(name, count if count is not None else None if plural else 1))
+        elif token.isdigit():
+            ahead = _relation(tokens[i + 1]) if i + 1 < len(tokens) else None
+            if ahead is None or _count(token, ahead[1]) is None:  # not "2 kids"
+                run.append(int(token))
+    if run and not _assign(groups, run):
         return None
+    together = together or len(run) > 1
+    if not groups:
+        return Answer([]) if dropped else None
+    if sum(g.open is None for g in groups) > 1 or any(a > 110 for g in groups for a in g.ages):
+        return None  # "my kids and my parents": who is how old is not clear
+    if any(g.open != 0 for g in groups):
+        return AgesNeeded(tuple(e for g in groups for e in g.entries()))
+    found = [{"relation": g.relation, "age": age} for g in groups for age in g.ages]
     try:
-        return Answer([d.model_dump(mode="json") for d in _DEPENDANTS.validate_python(found)])
+        valid_ = [d.model_dump(mode="json") for d in _DEPENDANTS.validate_python(found)]
+    except ValidationError:
+        return None
+    # Read back at once when the pairing was worked out rather than said pair by pair: a plural, a
+    # count, an age before its relation, or ages said together (TDD §3.7's dependants, Fix 2).
+    inferred = moved != folded or together or any(g.count != 1 for g in groups)
+    return Answer(valid_, derived=inferred)
+
+
+def fill_ages(entries: tuple[str, ...], ages: list[int]) -> list[dict[str, Any]] | None:
+    """The follow-up's ages, in the order the relations were named; None unless they fit."""
+    open_ = sum(1 for e in entries if "=" not in e and not e.endswith("+"))
+    plural = [e for e in entries if e.endswith("+")]
+    extra = len(ages) - open_
+    if len(plural) > 1 or extra < len(plural) or (extra and not plural):
+        return None
+    said_ = iter(ages)
+    found: list[dict[str, Any]] = []
+    for entry in entries:
+        relation, _, age = entry.partition("=")
+        if age:
+            found.append({"relation": relation, "age": int(age)})
+        elif relation.endswith("+"):
+            found += [{"relation": relation[:-1], "age": next(said_)} for _ in range(extra)]
+        else:
+            found.append({"relation": relation, "age": next(said_)})
+    try:
+        return [d.model_dump(mode="json") for d in _DEPENDANTS.validate_python(found)]
     except ValidationError:
         return None
 
@@ -338,12 +503,20 @@ def _liabilities(raw: Any, text: str) -> Answer | None:
 # --- the needs discovery --------------------------------------------------------------------------
 
 
-def understand_value(slot: str, raw: Any, evidence: str) -> Answer | Period | None:
+def understand_value(
+    slot: str, raw: Any, evidence: str
+) -> Answer | Period | AmountNeeded | AgesNeeded | None:
     """A needs slot's value from what the customer said (an nlu-extract value with its evidence
     span, or the whole message): None when it cannot be used, a Period when a bare "k" leaves the
-    period open. Pure; Needs.understand and the offline evaluation (Step 23) both read it."""
-    kind = NEEDS[slot]
+    period open, AmountNeeded for a "yes" to a money question, AgesNeeded for relations named
+    without every age. Pure; Needs.understand and the offline evaluation (Step 23) both read it."""
     text = raw if isinstance(raw, str) else evidence
+    if slot in OPTIONAL:  # cover_to_age: one age within the contract's bounds
+        said_ = [raw] if isinstance(raw, int) and not isinstance(raw, bool) else None
+        numbers = said_ or [int(n) for n in re.findall(r"\d+", devanagari_digits_to_ascii(text))]
+        low, high = COVER_TO_AGE
+        return Answer(numbers[0]) if len(numbers) == 1 and low <= numbers[0] <= high else None
+    kind = NEEDS[slot]
     if kind in ("flow", "lump"):
         result = _money(text, flow=kind == "flow")
         if isinstance(raw, int | float) and not isinstance(raw, bool) and result is None:
@@ -369,6 +542,8 @@ class Needs(Screen):
     offer_short: bool = False
     rephrased: bool = False
     distressed_now: bool = False  # distress stated this turn: acknowledged, an answer still read
+    amount_for: str | None = None  # a "yes" to this money question: how much is asked (Fix 2)
+    ages: AgesNeeded | None = None  # relations named without every age: the ages are asked
 
     @classmethod
     async def open(cls, turn: Any, current: SessionState) -> "Needs":
@@ -378,6 +553,10 @@ class Needs(Screen):
         attrs = [
             RequiredAttribute(attribute=r.slot, reason_line_id=r.reason_line_id) for r in required
         ]
+        if scripts(turn).cover_to_age is not None:  # Fix 2: changeable from the summary, not asked
+            attrs.append(
+                RequiredAttribute(attribute="cover_to_age", reason_line_id="RL-S2-COVER-TO-AGE")
+            )
         row = cast(SessionRow, turn.row)
         known = store.latest_slots(turn.conn, turn.keys, row.key_ref, turn.session_id)
         for slot_row in turn.slot_rows:
@@ -403,11 +582,37 @@ class Needs(Screen):
 
     @property
     def asked(self) -> list[RequiredAttribute]:
-        """The short path asks income, dependants and loans, and keeps whatever was answered."""
+        """The short path asks income, dependants and loans, and keeps whatever was answered; an
+        optional input counts once the customer gave it."""
         return [
             a
             for a in self.attrs
-            if not self.short or a.attribute in SHORT or a.attribute in self.known
+            if (a.attribute not in OPTIONAL or a.attribute in self.known)
+            and (not self.short or a.attribute in SHORT or a.attribute in self.known)
+        ]
+
+    def attr(self, slot: str) -> RequiredAttribute | None:
+        """An asked slot, or an optional one the customer chose to change."""
+        return next(
+            (
+                a
+                for a in self.attrs
+                if a.attribute == slot and (slot in OPTIONAL or a in self.asked)
+            ),
+            None,
+        )
+
+    def template(self, attr: RequiredAttribute) -> SlotTemplate:
+        if attr.attribute in OPTIONAL:
+            return cast(SlotTemplate, scripts(self.turn).cover_to_age)
+        return super().template(attr)
+
+    def fix(self) -> None:
+        """The summary was wrong: which detail? The optional inputs are offered after the rest."""
+        super().fix()
+        extra = [a for a in self.attrs if a.attribute in OPTIONAL and a not in self.asked]
+        self.turn.quick_replies += [
+            quick_reply(self.names[a.attribute], "REASK", {"slot": a.attribute}) for a in extra
         ]
 
     def invalidate(self, slot: str, status: str) -> None:
@@ -423,9 +628,25 @@ class Needs(Screen):
         self, slot: str, raw: Any, evidence: str
     ) -> Answer | list[Occupation] | None:
         result = understand_value(slot, raw, evidence)
+        texts = scripts(self.turn)
         if isinstance(result, Period):
             self.period, self.noted = (slot, result.amount), True
             return None
+        if isinstance(result, AmountNeeded):  # without the bundle's text: the format hint
+            if texts.amount_ask is not None:
+                self.amount_for, self.noted = slot, True
+            return None
+        if isinstance(result, AgesNeeded):
+            if texts.dependants_ages is not None:
+                self.ages, self.noted = result, True
+            return None
+        if (
+            slot in OPTIONAL
+            and result is not None
+            and self.session.eligibility is not None
+            and result.value <= self.snapshot().age_years
+        ):
+            return None  # cover that ends before the life assured's age: asked again
         return result
 
     async def take(self, slot: str, raw: Any, evidence: str, confidence: float) -> bool:
@@ -518,6 +739,12 @@ class Needs(Screen):
         if self.period is not None:
             self.ask_period(*self.period)
             return False
+        if self.ages is not None:
+            self.ask_ages(self.ages)
+            return False
+        if self.amount_for is not None and (attr := self.attr(self.amount_for)) is not None:
+            self.ask(attr, instead=("amount_ask", cast(str, scripts(self.turn).amount_ask)))
+            return False
         if self.offer_short:
             self.offer()
             return False
@@ -534,8 +761,8 @@ class Needs(Screen):
             hint = self.template(attr).hint or ""
             instead = ("rephrase", f"{scripts(self.turn).rephrase} {hint}".strip())
         super().ask(attr, quick, instead=instead)
-        if self.distress():
-            self.turn.phrase = None  # no generated sentence once distress is stated
+        if self.distress() or attr.attribute in OPTIONAL:
+            self.turn.phrase = None  # no generated sentence once distress is stated (or no slot)
 
     def choices(self, slot: str) -> list[dict[str, Any]]:
         texts = scripts(self.turn)
@@ -568,6 +795,23 @@ class Needs(Screen):
             ],
         )
 
+    def ask_ages(self, need: AgesNeeded) -> None:
+        """One question for the ages still missing, in the order the relations were named; the
+        prompt id holds the relations (and any age said) until the answer pairs them (Fix 2)."""
+        texts = scripts(self.turn)
+        relations = texts.needs.relations
+        who = [
+            relations[cast(Any, e.rstrip("+"))] + (" (each)" if e.endswith("+") else "")
+            for e in need.entries
+            if "=" not in e
+        ]
+        self.session.pending_slot = "dependants"
+        self.session.last_prompt_id = f"s2.ages:{','.join(need.entries)}"
+        self.reply(
+            [("dependants_ages", cast(str, texts.dependants_ages).format(who=", ".join(who)))], []
+        )
+        logger.info("dependants named without every age: %d asked", len(who))
+
     def offer(self) -> None:
         texts = scripts(self.turn)
         n = texts.needs
@@ -589,7 +833,7 @@ class Needs(Screen):
         self.session.pending_slot = slot
         self.session.last_prompt_id = f"s2.confirm:{slot}"
         _, value = self.known[slot]
-        kind = NEEDS[slot]
+        kind = NEEDS.get(slot)
         if kind == "flow" and value is not None:
             text = texts.money_readback.format(amount=format_inr(value))
         elif kind == "lump" and value is not None:
@@ -605,6 +849,8 @@ class Needs(Screen):
         _, value = self.known[slot]
         if value is None:
             return n.declined.get(slot, n.declined["default"])
+        if slot in OPTIONAL:
+            return str(value)
         kind = NEEDS[slot]
         if kind == "goals":
             return ", ".join(texts.labels.goals[g] for g in value) or n.none
@@ -652,6 +898,9 @@ class Needs(Screen):
                     body[slot] = DEFAULTS[slot]  # the required premiums: declined counts as none
             elif slot in DEFAULTS:
                 body[slot] = DEFAULTS[slot]
+        for slot in OPTIONAL:
+            if known.get(slot) is not None:
+                body[slot] = known[slot]
         body["financial_distress"] = known.get(DISTRESS) is True
         body["comprehension_difficulty_count"] = self.session.counters.get(
             "comprehension_difficulty", 0
@@ -729,10 +978,16 @@ class Needs(Screen):
     def summary(self, result: SuitabilityResult) -> None:
         texts = scripts(self.turn)
         n, a = texts.needs, result.assumptions
-        facts = [
-            n.facts[attr.attribute].format(value=self.value_text(attr.attribute))
-            for attr in self.asked
-        ]
+        # A declined budget says how affordability was judged without it: the engine's estimate
+        # against income, as a band in words, never an amount (Fix 2).
+        bands = {str(band): text for band, text in n.affordability.items()}
+        band = bands.get(result.affordability)
+
+        def value(slot: str) -> str:
+            declined = slot == "premium_budget_inr_pa" and self.known[slot][1] is None
+            return band if declined and band else self.value_text(slot)
+
+        facts = [n.facts[attr.attribute].format(value=value(attr.attribute)) for attr in self.asked]
         facts.append(
             n.facts["existing_cover_counted"].format(value=format_inr(a.existing_cover_counted_inr))
         )
@@ -763,7 +1018,8 @@ class Needs(Screen):
         return [
             a
             for a in self.attrs
-            if a.attribute not in self.known or self.known[a.attribute][1] is None
+            if a.attribute not in OPTIONAL
+            and (a.attribute not in self.known or self.known[a.attribute][1] is None)
         ]
 
 
@@ -861,6 +1117,8 @@ async def _prompts(screen: Needs, prompt: str) -> bool:
         return True
     if prompt.startswith("s2.period:"):
         return await _period(screen, prompt)
+    if prompt.startswith("s2.ages:"):
+        return await _ages(screen, prompt)
     result = current.suitability
     if result is None or current.needs is None or current.needs.slots_sha256 is None:
         return False  # the record changed since: the open prompt no longer applies
@@ -916,6 +1174,30 @@ async def _period(screen: Needs, prompt: str) -> bool:
     screen.write(slot, value, "corrected" if prior else "proposed", 1.0)
     screen.filled.add(slot)
     screen.confirm = slot
+    await screen.next()
+    return True
+
+
+async def _ages(screen: Needs, prompt: str) -> bool:
+    """The answer to "how old is each of them?": the ages in the order the relations were named,
+    then read back. A message with no number is read as any other answer (Fix 2)."""
+    turn = screen.turn
+    if turn.action is not None or turn.pipeline is None:
+        return False
+    ages = [
+        int(n) for n in re.findall(r"\d+", devanagari_digits_to_ascii(turn.pipeline.stored_raw))
+    ]
+    if not ages:
+        return False
+    entries = tuple(prompt.split(":", 1)[1].split(","))
+    found = fill_ages(entries, ages)
+    if found is None:
+        screen.ask_ages(AgesNeeded(entries))  # not one age per person: the same question
+        return True
+    prior = screen.known.get("dependants")
+    screen.write("dependants", found, "corrected" if prior else "proposed", 1.0)
+    screen.filled.add("dependants")
+    screen.confirm = "dependants"
     await screen.next()
     return True
 

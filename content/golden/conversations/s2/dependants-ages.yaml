@@ -1,0 +1,28 @@
+id: s2-dependants-ages
+description: >-
+  Fix 2: relations named without their ages get one question for the ages, in the order named; too
+  few ages ask the same question again; the ages are paired and read back before anything is used.
+prelude: to-s2
+turns:
+  - action: {type: SLOT, payload: {slot: goals, value: income_protection}}
+    expect: {templates: [RL-S2-INCOME]}
+  - text: 12 LPA
+    expect: {templates: [readback]}
+  - text: "yes"
+    expect: {templates: [RL-S2-INCOME-TYPE]}
+  - action: {type: SLOT, payload: {slot: income_type, value: salaried}}
+    expect: {templates: [RL-S2-DEPENDANTS]}
+  - text: my wife and two kids
+    expect:
+      templates: [dependants_ages]
+      contains: ["How old is each of them: spouse, child, child?"]
+      lacks: ["spouse (", "child ("]
+  - text: 32 and 4
+    expect: {templates: [dependants_ages]}
+  - text: 32, 7 and 4
+    expect:
+      templates: [readback]
+      contains: ["To confirm: spouse (32), child (7), child (4). Correct?"]
+      slots: {dependants: proposed}
+  - text: "yes"
+    expect: {templates: [RL-S2-LIABILITIES]}

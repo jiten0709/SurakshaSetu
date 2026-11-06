@@ -295,12 +295,16 @@ async def test_dependants_are_relations_and_ages_only(said: str, value: Any) -> 
 
 
 @pytest.mark.asyncio
-async def test_a_dependant_without_an_age_gets_the_format_hint() -> None:
+async def test_relations_without_ages_get_one_question_for_the_ages() -> None:
+    # Fix 2: was the format hint, which asked the customer to say everything again.
     t = s2_turn("my wife and my son", prompt="s2.ask:dependants")
     await run(t)
     assert rows(t) == {}
-    assert ids(t) == ["template:format_hint"]
-    assert SLOTS["RL-S2-DEPENDANTS"].hint in (t.released.text if t.released else "")
+    assert ids(t) == ["template:dependants_ages"]
+    assert t.next is not None and t.next.last_prompt_id == "s2.ages:spouse,child"
+    assert t.released is not None and t.released.text == (
+        "How old is each of them: spouse, child? Just the ages, in that order, are fine."
+    )
 
 
 @pytest.mark.asyncio
@@ -360,7 +364,6 @@ def test_none_said_in_a_sentence_is_understood(slot: str, said: str, value: Any)
         ("existing_cover_inr", "not sure"),
         ("existing_cover_inr", "I don't have any idea"),
         ("existing_cover_inr", "I don't know which one"),
-        ("dependants", "my parents, no kids"),  # names someone: never read as no one
     ],
 )
 def test_an_unclear_answer_is_not_read_as_none(slot: str, said: str) -> None:
@@ -852,3 +855,227 @@ async def test_an_answer_in_the_same_message_as_distress_is_still_taken() -> Non
         "dependants": ([{"relation": "spouse", "age": 32}], "proposed"),
     }
     assert ids(t) == ["template:distress_ack", "template:RL-S2-GOALS"]  # the first missing one
+
+
+# --- Fix 2 (2026-10-29): the audited conversation's answers --------------------------------------
+@pytest.mark.parametrize(
+    ("said", "found", "derived"),
+    [
+        (
+            "my 35 year old wife, and two children who are 12 and 20 years old",
+            [("spouse", 35), ("child", 12), ("child", 20)],
+            True,
+        ),
+        ("my wife and son, 32 and 4", [("spouse", 32), ("child", 4)], True),
+        ("2 kids aged 5 and 8", [("child", 5), ("child", 8)], True),
+        ("my 2 year old son", [("child", 2)], True),
+        (
+            "meri patni 35 aur do bachche 12 aur 20",
+            [("spouse", 35), ("child", 12), ("child", 20)],
+            True,
+        ),
+        ("my parents 60 and 58", [("parent", 60), ("parent", 58)], True),
+        # Said pair by pair, as every golden says them: no read-back of its own.
+        ("my wife is 32 and my son is 4", [("spouse", 32), ("child", 4)], False),
+        (
+            "my wife is 32, my son is 7 and my daughter is 4",
+            [("spouse", 32), ("child", 7), ("child", 4)],
+            False,
+        ),
+        ("wife 32 son 4", [("spouse", 32), ("child", 4)], False),
+        ("no kids", [], False),
+    ],
+)
+def test_each_dependant_is_read_with_its_own_age(
+    said: str, found: list[tuple[str, int]], derived: bool
+) -> None:
+    answer = s2.understand_value("dependants", said, said)
+    assert isinstance(answer, s2.Answer)
+    assert answer.value == [{"relation": r, "age": a} for r, a in found]
+    assert answer.derived is derived
+
+
+@pytest.mark.parametrize(
+    ("said", "entries"),
+    [
+        ("my wife and two kids", ("spouse", "child", "child")),
+        ("my son, and my wife who is 32", ("child", "spouse=32")),
+        ("my parents, no kids", ("parent+",)),  # names someone: never read as no one
+    ],
+)
+def test_relations_without_every_age_ask_for_the_ages(said: str, entries: tuple[str, ...]) -> None:
+    assert s2.understand_value("dependants", said, said) == s2.AgesNeeded(entries)
+
+
+@pytest.mark.parametrize(
+    ("evidence", "derived"),
+    [
+        ("my wife is 32, my son is 7 and my daughter is 4", False),  # said pair by pair
+        ("my wife and kids, 32, 7 and 4", True),  # the model paired them: read back
+        ("my family", True),  # the evidence does not say it at all
+    ],
+)
+def test_a_models_dependants_are_read_back_unless_said_pair_by_pair(
+    evidence: str, derived: bool
+) -> None:
+    listed = [{"relation": "spouse", "age": 32}, {"relation": "child", "age": 7}]
+    listed.append({"relation": "child", "age": 4})
+    answer = s2.understand_value("dependants", listed, evidence)
+    assert answer == s2.Answer(listed, derived=derived)
+
+
+def test_ages_for_two_plurals_are_not_guessed() -> None:
+    assert s2.understand_value("dependants", "my kids and my parents", "") is None
+
+
+@pytest.mark.parametrize(
+    ("entries", "ages", "found"),
+    [
+        (
+            ("spouse", "child", "child"),
+            [35, 12, 20],
+            [("spouse", 35), ("child", 12), ("child", 20)],
+        ),
+        (("child", "spouse=32"), [4], [("child", 4), ("spouse", 32)]),
+        (("spouse", "child+"), [35, 1, 2], [("spouse", 35), ("child", 1), ("child", 2)]),
+        (("spouse", "child+"), [35], None),  # the children need at least one age
+        (("spouse", "child", "child"), [35, 12], None),
+        (("spouse",), [35, 12], None),
+        (("spouse",), [135], None),
+    ],
+)
+def test_the_follow_up_ages_pair_in_the_order_named(
+    entries: tuple[str, ...], ages: list[int], found: list[tuple[str, int]] | None
+) -> None:
+    expected = None if found is None else [{"relation": r, "age": a} for r, a in found]
+    assert s2.fill_ages(entries, ages) == expected
+
+
+@pytest.mark.asyncio
+async def test_the_audited_dependants_answer_is_read_back_at_once() -> None:
+    said = "my 35 year old wife, and two children who are 12 and 20 years old"
+    t = s2_turn(said, prompt="s2.ask:dependants")
+    await run(t)
+    three = [{"relation": "spouse", "age": 35}, {"relation": "child", "age": 12}]
+    three.append({"relation": "child", "age": 20})
+    assert rows(t) == {"dependants": (three, "proposed")}
+    assert ids(t) == ["template:readback"]
+    assert t.released is not None and t.released.text == (
+        "To confirm: spouse (35), child (12), child (20). Correct?"
+    )
+    assert t.next is not None and t.next.last_prompt_id == "s2.confirm:dependants"
+
+
+@pytest.mark.asyncio
+async def test_the_ages_asked_for_are_paired_then_read_back() -> None:
+    t = s2_turn("35, 12 and 20", prompt="s2.ages:spouse,child,child")
+    await run(t)
+    three = [{"relation": "spouse", "age": 35}, {"relation": "child", "age": 12}]
+    three.append({"relation": "child", "age": 20})
+    assert rows(t) == {"dependants": (three, "proposed")}
+    assert ids(t) == ["template:readback"]
+    assert t.next is not None and t.next.last_prompt_id == "s2.confirm:dependants"
+
+
+@pytest.mark.asyncio
+async def test_too_few_ages_ask_the_same_question_again() -> None:
+    t = s2_turn("35 and 12", prompt="s2.ages:spouse,child,child")
+    await run(t)
+    assert rows(t) == {}
+    assert ids(t) == ["template:dependants_ages"]
+    assert t.next is not None and t.next.last_prompt_id == "s2.ages:spouse,child,child"
+
+
+@pytest.mark.parametrize(
+    ("slot", "said"),
+    [
+        ("employer_cover_inr", "no such thing"),
+        ("employer_cover_inr", "nothing like that"),
+        ("employer_cover_inr", "my company doesn't provide any"),
+        ("employer_cover_inr", "nah"),
+        ("existing_cover_inr", "none"),
+        ("existing_annual_premium_inr", "i dont have any policy"),
+    ],
+)
+def test_the_audited_none_answers_are_none(slot: str, said: str) -> None:
+    answer = s2.understand_value(slot, said, said)
+    assert isinstance(answer, s2.Answer) and answer.value == "0"
+
+
+def test_an_amount_still_wins_over_no_such_thing() -> None:
+    answer = s2.understand_value("employer_cover_inr", "no such thing, about 5 lakh", "")
+    assert isinstance(answer, s2.Answer) and answer.value == "500000"
+
+
+@pytest.mark.parametrize("said", ["yes", "Yes, some savings", "haan"])
+def test_a_yes_to_a_money_question_is_not_an_amount(said: str) -> None:
+    assert s2.understand_value("earmarked_assets_inr", said, said) == s2.AmountNeeded()
+
+
+@pytest.mark.asyncio
+async def test_a_yes_to_the_savings_question_asks_how_much_then_reads_the_amount() -> None:
+    t = s2_turn("yes", prompt="s2.ask:earmarked_assets_inr")
+    await run(t)
+    assert rows(t) == {}
+    assert ids(t) == ["template:amount_ask"]
+    assert t.released is not None and t.released.text == "Roughly how much? A rough figure is fine."
+    assert t.next is not None and t.next.last_prompt_id == "s2.ask:earmarked_assets_inr"
+    assert t.next.counters.get("invalid_input", 0) == 0  # not an unusable answer
+    assert [r["label"] for r in t.quick_replies] == ["Skip"]
+
+    t = s2_turn("approximately 15 lakhs", prompt="s2.ask:earmarked_assets_inr")
+    await run(t)
+    assert rows(t) == {"earmarked_assets_inr": ("1500000", "proposed")}
+    assert t.released is not None and t.released.text == "Just to check: ₹15,00,000. Is that right?"
+
+
+def test_a_misspelt_income_type_is_read_back() -> None:
+    answer = s2.understand_value("income_type", "salried", "salried")
+    assert answer == s2.Answer("salaried", derived=True)
+    assert s2.understand_value("income_type", "unemployed", "unemployed") is None
+
+
+@pytest.mark.asyncio
+async def test_a_declined_budget_says_how_affordability_was_judged(
+    stored: dict[str, tuple[str, Any]],
+) -> None:
+    held = await summarised(stored, premium_budget_inr_pa=None)
+    assert held.suitability is not None and held.suitability.affordability == "green"
+    t = s2_turn("yes", prompt="s2.confirm:premium_budget_inr_pa")
+    await run(t)
+    assert t.released is not None
+    assert (
+        "Premium budget: not shared, so I compared the likely premium for this cover with your"
+        " income: it is within the range usually considered comfortable"
+    ) in t.released.text
+    assert ids(t) == ["template:needs_summary", "template:summary_question"]  # no part added
+
+
+@pytest.mark.asyncio
+async def test_the_cover_to_age_can_be_changed_from_the_summary(
+    stored: dict[str, tuple[str, Any]],
+) -> None:
+    held = await summarised(stored)
+    t = await confirm(stored, held, "no")
+    assert t.quick_replies[-1] == {
+        "label": "Cover to age",
+        "action": {"type": "REASK", "payload": {"slot": "cover_to_age"}},
+    }
+
+    t = s2_turn(action={"type": "REASK", "payload": {"slot": "cover_to_age"}}, prompt="s2.fix")
+    await run(t)
+    assert ids(t) == ["template:RL-S2-COVER-TO-AGE"]
+    assert t.next is not None and t.next.last_prompt_id == "s2.ask:cover_to_age"
+    assert t.phrase is None  # a detail the customer chose: no generated lead
+
+    t = s2_turn("30", prompt="s2.ask:cover_to_age")  # before the life assured's age: asked again
+    await run(t)
+    assert rows(t) == {}
+
+    tier = Tier()
+    t = s2_turn("I plan to retire at 58", tier=tier, prompt="s2.ask:cover_to_age")
+    await run(t)
+    assert rows(t) == {"cover_to_age": (58, "proposed")}
+    (request,) = tier.bodies(EVALUATE)
+    assert request["needs"]["cover_to_age"] == 58
+    assert t.released is not None and "Cover to age: 58" in t.released.text
