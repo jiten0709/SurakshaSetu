@@ -1,0 +1,28 @@
+id: s1-health-statement
+description: >-
+  Step 1.2: a condition named at the health question ("i have diabetes") is a derived "yes":
+  proposed, acknowledged once, and confirmed in the S1 read-back, never asked again. No diagnosis
+  is stored; the engine flags MEDICAL_UW.
+prelude: to-s1
+turns:
+  - text: "34"
+    expect: {templates: [RL-S1-RESIDENCY]}
+  - action: {type: SLOT, payload: {slot: residency, value: resident}}
+    expect: {templates: [RL-S1-PINCODE]}
+  - text: "411001"
+    expect: {templates: [RL-S1-TOBACCO]}
+  - text: "no"
+    expect: {templates: [RL-S1-OCCUPATION]}
+  - text: salaried
+    expect: {templates: [RL-S1-HEALTH]}
+  - text: i have diabetes
+    expect:
+      templates: [medical_ack, RL-S1-PROPOSER]
+      slots: {health_flags: proposed}
+      slot_rows: 6
+      counters: {medical_ack: 1}
+      lacks: [diabetes]
+  - text: "yes"
+    expect: {templates: [readback], contains: ["yes to the health question"]}
+  - text: "yes"
+    expect: {state: S2, row: S1.4, engine: {service: eligibility, outcome: ELIGIBLE, flags: [MEDICAL_UW]}}

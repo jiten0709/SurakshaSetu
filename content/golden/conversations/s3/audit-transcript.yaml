@@ -1,8 +1,8 @@
 id: s3-audit-transcript
 description: >-
   Fix 2: the audited demo conversation (2026-10-29), turn for turn, from the consent form to the
-  recommendation. "indian" is read as resident and read back; "i am a ai engineer" is confirmed
-  showing both the customer's words and the master's label; the health question is visible, and
+  recommendation. "indian" is read as resident and read back; "i am a ai engineer" is offered as a
+  choice (Software engineer or None of these, Step 1.2), never proposed; the health question is visible, and
   its "yes" after a fix gets the acknowledgement; the three dependants are read with their own ages
   and read back; "no such thing" is no employer cover; a "yes" to the savings question asks how
   much; the declined budget's line says how affordability was judged. With the child-education
@@ -27,12 +27,9 @@ turns:
   - action: {type: SLOT, payload: {slot: tobacco_12m, value: "no"}}
     expect: {templates: [RL-S1-OCCUPATION]}
   - text: i am a ai engineer
-    expect:
-      templates: [readback]
-      contains: ['You said "i am a ai engineer". The closest match in our list is Software engineer. Is that right?']
-      slots: {occupation_code: proposed}
-  - text: "yes"
-    expect: {templates: [RL-S1-HEALTH], contains: ["Have you ever been diagnosed with or treated for a serious illness"]}
+    expect: {templates: [RL-S1-OCCUPATION], actions: [SLOT, REASK], slot_rows: 4}
+  - action: {type: SLOT, payload: {slot: occupation_code, value: OCC-SWE-03}}
+    expect: {templates: [RL-S1-HEALTH], contains: ["Have you ever been diagnosed with or treated for a serious illness"], slots: {occupation_code: proposed}}
   - action: {type: SLOT, payload: {slot: health_flags, value: "no"}}
     expect: {templates: [RL-S1-PROPOSER]}
   - action: {type: SLOT, payload: {slot: proposer.is_life_assured, value: "yes"}}

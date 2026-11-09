@@ -308,6 +308,20 @@ async def test_relations_without_ages_get_one_question_for_the_ages() -> None:
 
 
 @pytest.mark.asyncio
+async def test_one_missing_age_is_asked_in_the_singular() -> None:
+    # Step 1.2: was "How old is each of them: spouse?".
+    t = s2_turn("a wife and a 20 year old daughter", prompt="s2.ask:dependants")
+    await run(t)
+    assert ids(t) == ["template:dependant_age"]
+    assert t.released is not None and t.released.text == "How old is your spouse?"
+    assert t.next is not None and t.next.last_prompt_id == "s2.ages:spouse,child=20"
+
+    plural = s2_turn("my kids", prompt="s2.ask:dependants")  # one entry, but "each"
+    await run(plural)
+    assert ids(plural) == ["template:dependants_ages"]
+
+
+@pytest.mark.asyncio
 async def test_a_loan_is_read_and_read_back_with_its_amount() -> None:
     t = s2_turn("home loan of 35 lakh, 18 years left", prompt="s2.ask:liabilities")
     await run(t)

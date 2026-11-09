@@ -285,7 +285,7 @@ async def test_an_occupation_is_a_code_from_the_master_and_several_matches_are_o
     several = s1_turn("e", prompt="s1.ask:occupation_code")  # every label has an "e"
     await run(several)
     assert several.slot_rows == [] and ids(several)[-1] == "template:RL-S1-OCCUPATION"
-    assert len(several.quick_replies) == 4
+    assert len(several.quick_replies) == 5  # four matches, then "None of these"
     assert several.quick_replies[0]["action"]["payload"]["value"] == "OCC-OFFICE-01"
 
 
@@ -467,6 +467,43 @@ async def test_a_serious_illness_disclosed_gets_the_acknowledgement_and_an_advis
     assert rows(t) == {"health_flags": ({"RL-S1-HEALTH": True}, "proposed")}
     assert ids(t)[:1] == ["template:medical_ack"]
     assert any(r["action"]["type"] == "HUMAN_REQUEST" for r in t.quick_replies)
+    assert t.next is not None and t.next.counters["medical_ack"] == 1
+
+
+@pytest.mark.asyncio
+async def test_a_condition_named_at_the_health_question_is_a_derived_yes(
+    stored: dict[str, tuple[str, Any]],
+) -> None:
+    # Step 1.2: was the acknowledgement with nothing filled, then the same question again.
+    stored.update({"age_years": ("proposed", 34)})
+    t = s1_turn("i have diabetes", prompt="s1.ask:health_flags")
+    await run(t)
+    assert rows(t) == {"health_flags": ({"RL-S1-HEALTH": True}, "proposed")}
+    assert ids(t) == ["template:medical_ack", "template:RL-S1-RESIDENCY"]  # no read-back now
+    assert t.next is not None and t.next.counters["medical_ack"] == 1
+
+
+@pytest.mark.asyncio
+async def test_the_acknowledgement_is_said_once_per_session() -> None:
+    t = s1_turn("yes", prompt="s1.ask:health_flags", counters={"medical_ack": 1})
+    await run(t)
+    assert rows(t) == {"health_flags": ({"RL-S1-HEALTH": True}, "proposed")}
+    assert "template:medical_ack" not in ids(t)
+    assert all(r["action"]["type"] != "HUMAN_REQUEST" for r in t.quick_replies)
+
+    again = s1_turn("I have diabetes", prompt="s1.ask:pincode", counters={"medical_ack": 1})
+    await run(again)
+    assert ids(again)[-1] == "template:RL-S1-PINCODE"  # not an answer: no format hint
+    assert "template:format_hint" not in ids(again) and "template:medical_ack" not in ids(again)
+    assert again.slot_rows == []
+
+
+@pytest.mark.asyncio
+async def test_a_negated_condition_is_neither_a_yes_nor_a_disclosure() -> None:
+    t = s1_turn("I don't have diabetes", prompt="s1.ask:health_flags")
+    await run(t)
+    assert "template:medical_ack" not in ids(t)
+    assert all(r.value != {"RL-S1-HEALTH": True} for r in t.slot_rows)
 
 
 @pytest.mark.asyncio
@@ -651,19 +688,27 @@ async def test_indian_is_read_as_resident_and_read_back_at_once() -> None:
 
 
 @pytest.mark.asyncio
-async def test_an_occupation_read_from_one_word_shows_both_the_words_and_the_label() -> None:
-    t = s1_turn("i am a ai engineer", prompt="s1.ask:occupation_code")
+async def test_an_occupation_found_by_one_word_is_offered_never_proposed() -> None:
+    # Step 1.2: was proposed and read back ("civil engineer" read as Software engineer).
+    t = s1_turn("civil engineer", prompt="s1.ask:occupation_code")
     await run(t)
-    assert rows(t) == {"occupation_code": ("OCC-SWE-03", "proposed")}
-    assert t.released is not None and t.released.text == (
-        'You said "i am a ai engineer". The closest match in our list is Software engineer.'
-        " Is that right?"
-    )
-    assert t.next is not None and t.next.last_prompt_id == "s1.confirm:occupation_code"
+    assert t.slot_rows == [] and ids(t)[-1] == "template:RL-S1-OCCUPATION"
+    assert [(r["label"], r["action"]) for r in t.quick_replies] == [
+        (
+            "Software engineer",
+            {"type": "SLOT", "payload": {"slot": "occupation_code", "value": "OCC-SWE-03"}},
+        ),
+        ("None of these", {"type": "REASK", "payload": {"slot": "occupation_code"}}),
+    ]
+    assert t.next is not None and t.next.last_prompt_id == "s1.ask:occupation_code"
 
-    no = s1_turn("no", prompt="s1.confirm:occupation_code")
-    await run(no)
-    assert ids(no)[-1] == "template:RL-S1-OCCUPATION"  # the question again
+    none = s1_turn(
+        action={"type": "REASK", "payload": {"slot": "occupation_code"}},
+        prompt="s1.ask:occupation_code",
+    )
+    await run(none)
+    assert ids(none) == ["template:format_hint"]  # the question is on screen: its hint
+    assert none.released is not None and SLOTS["RL-S1-OCCUPATION"].hint in none.released.text
 
 
 @pytest.mark.asyncio
@@ -679,12 +724,10 @@ async def test_a_whole_answer_that_names_the_occupation_is_not_read_back(
 
 
 @pytest.mark.asyncio
-async def test_an_echoed_occupation_with_personal_data_is_never_released() -> None:
-    # RC-LEAK: the echo is the customer's redacted words, and an email in them is not this
-    # session's approved text, so the release blocks (fails closed) instead of repeating it.
+async def test_the_customer_words_are_never_echoed_with_the_choices() -> None:
     t = s1_turn("teacher, mail me at ravi.k@example.com", prompt="s1.ask:occupation_code")
     await run(t)
-    assert t.released is not None and t.released.kind == "blocked"
+    assert t.slot_rows == [] and t.released is not None
     assert "ravi.k@example.com" not in t.released.text
 
 
@@ -693,7 +736,7 @@ async def test_the_occupation_words_never_reach_the_log(caplog: pytest.LogCaptur
     caplog.set_level(logging.DEBUG, logger="surakshasetu")
     t = s1_turn("i am a zqxsentinel engineer", prompt="s1.ask:occupation_code")
     await run(t)
-    assert t.released is not None and "zqxsentinel" in t.released.text
+    assert t.released is not None and "zqxsentinel" not in t.released.text
     assert "zqxsentinel" not in caplog.text
 
 

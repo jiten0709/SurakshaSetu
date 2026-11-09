@@ -130,6 +130,8 @@ WHOLE = {
 }  # fmt: skip
 # A negation keeps a single word from answering ("I am not a resident" is not "resident").
 NEGATIONS = frozenset({"not", "non", "no", "nahi", "nahin"})
+# A condition named with a negation is not a disclosure ("no, I don't have diabetes"; Step 1.2).
+_NEGATED = re.compile(r"\b(?:no|not|never|don'?t|doesn'?t|haven'?t|without|nahi|nahin)\b|नहीं", re.I)
 CLOSE = 0.9  # difflib ratio for a misspelt closed answer ("resdent"), never "unemployed" (0.89)
 # Slot names a model may use for ours.
 ALIASES = {
@@ -158,7 +160,6 @@ class Answer:
     value: Any
     declined: bool = False
     derived: bool = False  # worked out, not said (an age from a birth year): read back at once
-    said: str | None = None  # the customer's words, when the value maps them to another label
 
 
 def valid(current: SessionState) -> bool:
@@ -254,18 +255,16 @@ async def understand(
 
 async def _occupation(turn: Any, text: str) -> Answer | list[Occupation] | None:
     """A code from the occupation master (TDD §3.6), searched by what the customer said, then by
-    its longer words. One match is the answer; several are offered as choices."""
+    its longer words. Only one match for the whole answer is the answer; any other match, one found
+    by a single word included ("civil engineer" -> Software engineer), is offered as choices
+    (Step 1.2), never proposed."""
     if not text or len(text) > 80:
         return None
     words = sorted({w for w in re.findall(r"\w{4,}", text)}, key=len, reverse=True)
     for q in [text, *words[:2]]:
         found: list[Occupation] = await turn.domain.search_occupations(q)
-        if len(found) == 1:
-            if q == text:
-                return Answer(found[0].code)
-            # Found by one word of the answer ("ai engineer" -> Software engineer): confirmed at
-            # once, showing the customer's words beside the master's label (Fix 2).
-            return Answer(found[0].code, derived=True, said=text)
+        if len(found) == 1 and q == text:
+            return Answer(found[0].code)
         if found:
             return found[:5]
     return None
@@ -301,7 +300,7 @@ class Screen:
     confirm: str | None = None  # a value to read back at once
     options: tuple[str, list[Occupation]] | None = None
     noted: bool = False  # the turn was something other than an answer (a note, FAQ, off-topic...)
-    mapped: dict[str, str] = dataclasses.field(default_factory=dict)  # slot -> the words it maps
+    stated: bool = False  # a condition named at the health question: a derived "yes" (Step 1.2)
 
     @classmethod
     async def load(
@@ -400,8 +399,6 @@ class Screen:
         logger.info("slot %s %s", slot, status)
         if answer.derived or confidence < settings.confidence_accept:
             self.confirm = slot
-        if answer.said is not None:
-            self.mapped[slot] = answer.said
         notes = scripts(self.turn).declined_notes
         if answer.declined and self.prefix == "s1" and slot in notes:  # Quote-Only: quote_withheld
             self.lead.append(("declined_note", notes[slot]))  # what "prefer not to say" means
@@ -424,13 +421,12 @@ class Screen:
         and only when nlu-extract proposed nothing for it (its confidence stands)."""
         turn = self.turn
         pending = self.pending()
-        if (
-            pending
-            and pending not in self.offered | self.filled
-            and not self.noted
-            and turn.pipeline is not None
-        ):
-            text = turn.pipeline.stored_raw
+        if not pending or pending in self.offered | self.filled or turn.pipeline is None:
+            return
+        text = turn.pipeline.stored_raw
+        if self.stated:  # proposed, confirmed in the S1 read-back, never read back at once
+            await self.take(pending, True, text, 1.0)
+        elif not self.noted:
             await self.take(pending, text, text, 1.0)
 
     def pending(self) -> str | None:
@@ -475,8 +471,11 @@ class Screen:
         if mentions(lexicon.health_terms, text):
             if question:
                 self.note("underwriting_note", texts.underwriting_note)
-            else:
+            elif self.pending() != "health_flags":
                 self.disclosed()
+            elif not _NEGATED.search(text):
+                # ponytail: "my father has diabetes" is a "yes" too; the S1 read-back corrects it
+                self.stated = True  # the answer is "yes" (take acknowledges it)
         if (
             Intent.EXPRESS_PATH in intents
             and self.prefix == "s1"
@@ -499,7 +498,12 @@ class Screen:
 
     def disclosed(self) -> None:
         """A serious illness disclosed: the acknowledgement and an advisor offer; no insurability
-        statement, and no diagnosis stored (the engine flags MEDICAL_UW from the answer)."""
+        statement, and no diagnosis stored (the engine flags MEDICAL_UW from the answer). Said once
+        per session (counters.medical_ack); a later disclosure is still not an answer."""
+        self.noted = True
+        if self.session.counters.get("medical_ack"):
+            return
+        self.session.counters = {**self.session.counters, "medical_ack": 1}
         sc = scripts(self.turn).screening
         self.note("medical_ack", scripts(self.turn).medical_ack)
         if not any(r["action"]["type"] == "HUMAN_REQUEST" for r in self.replies):
@@ -521,7 +525,11 @@ class Screen:
         elif kind == "REASK":
             attr = self.attr(str(payload.get("slot")))
             if attr is not None:
-                self.ask(attr)
+                if prompt == f"{self.prefix}.ask:{attr.attribute}":  # "None of these": on screen
+                    hint = self._format_hint(self.template(attr).hint or "")
+                    self.ask(attr, instead=("format_hint", hint))
+                else:
+                    self.ask(attr)
                 self.turn.phrase = None  # a detail the customer chose to change: no lead sentence
                 return False
         elif kind is None:
@@ -608,10 +616,12 @@ class Screen:
             slot, found = self.options
             attr = self.attr(slot)
             if attr is not None:
-                self.ask(
-                    attr,
-                    [quick_reply(o.label, "SLOT", {"slot": slot, "value": o.code}) for o in found],
-                )
+                quick = [
+                    quick_reply(o.label, "SLOT", {"slot": slot, "value": o.code}) for o in found
+                ]
+                if (none := scripts(self.turn).screening.none_of_these) is not None:
+                    quick.append(quick_reply(none, "REASK", {"slot": slot}))  # the hint, again
+                self.ask(attr, quick)
                 return False
         if self.confirm is not None:
             await self.confirm_one(self.confirm)
@@ -673,11 +683,7 @@ class Screen:
         texts = scripts(self.turn)
         self.session.pending_slot = slot
         self.session.last_prompt_id = f"{self.prefix}.confirm:{slot}"
-        fact = await self.fact(slot)
-        if (said := self.mapped.get(slot)) is not None and texts.occupation_mapped:
-            text = texts.occupation_mapped.format(said=said, label=fact)  # both, never just one
-        else:
-            text = texts.readback.format(facts=fact)
+        text = texts.readback.format(facts=await self.fact(slot))
         self.reply([("readback", text)], self._yes_no())
 
     async def readback(self) -> None:

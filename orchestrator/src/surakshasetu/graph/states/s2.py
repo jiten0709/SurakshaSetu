@@ -807,9 +807,12 @@ class Needs(Screen):
         ]
         self.session.pending_slot = "dependants"
         self.session.last_prompt_id = f"s2.ages:{','.join(need.entries)}"
-        self.reply(
-            [("dependants_ages", cast(str, texts.dependants_ages).format(who=", ".join(who)))], []
-        )
+        missing = [e for e in need.entries if "=" not in e]
+        if len(missing) == 1 and not missing[0].endswith("+") and texts.dependant_age is not None:
+            part = ("dependant_age", texts.dependant_age.format(who=who[0]))  # one age (Step 1.2)
+        else:
+            part = ("dependants_ages", cast(str, texts.dependants_ages).format(who=", ".join(who)))
+        self.reply([part], [])
         logger.info("dependants named without every age: %d asked", len(who))
 
     def offer(self) -> None:

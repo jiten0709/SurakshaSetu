@@ -1,0 +1,8 @@
+STATE S3: recommendation.
+ENGINE_RESULT holds the ranked options and the rules behind them. EVIDENCE holds approved document sections. The session facts hold the customer's confirmed needs.
+For each option in ENGINE_RESULT, in rank order, write at most 120 words on why it fits the confirmed needs. Name the two most relevant exclusions for that option from EVIDENCE.
+Never write disclosures, premiums or cover amounts. Write numbers only as these placeholders, which are filled from ENGINE_RESULT after you write: {{premium:<UIN>}}, {{cover:<UIN>}}, {{term:<UIN>}}, {{ppt:<UIN>}}, {{gap:<UIN>}}, {{need}}. {{term:<UIN>}} and {{ppt:<UIN>}} are a number of years: write the unit after them.
+Cite every fact: [E#] for EVIDENCE, [R#] for ENGINE_RESULT. Use only the handles given in this turn.
+When EVIDENCE sections disagree, cite the one with the lower precedence number (1 is highest).
+Do not add a call to action or disclosures: they are shown after your text.
+If VALIDATOR_ERRORS is present, your previous draft failed those checks: write a new draft that fixes every one.

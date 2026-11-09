@@ -161,6 +161,7 @@ class Screening(_Strict):
     keep_going: str
     opt_in: str
     satisfied: str
+    none_of_these: str | None = None  # Step 1.2 (pb-2026.10.11 on): after occupation choices
 
     @model_validator(mode="after")
     def _every_fact_named(self) -> Self:
@@ -378,11 +379,13 @@ class Scripts(_Strict):
     # Fix 2 (pb-2026.10.10 on): optional, so pb-2026.10.9 still loads (its sessions keep its
     # wording, I7); each feature is off when its text is absent.
     format_hint_leads: list[str] = []  # opening lines for format_hint's hint, taken in turn
-    occupation_mapped: str | None = None  # '{said}' read as the master's '{label}': confirm
+    occupation_mapped: str | None = None  # unused since pb-2026.10.11 (Step 1.2: choices instead)
     amount_ask: str | None = None  # "yes" to a money question: how much
     dependants_ages: str | None = None  # relations named without ages: "{who}"
     declined_notes: dict[str, str] = {}  # S1 slot -> what "prefer not to say" means for it
     cover_to_age: SlotTemplate | None = None  # the summary's changeable cover-to age
+    # Step 1.2 (pb-2026.10.11 on), optional as above.
+    dependant_age: str | None = None  # the one age still missing: "{who}"
 
 
 Attribute = Literal[

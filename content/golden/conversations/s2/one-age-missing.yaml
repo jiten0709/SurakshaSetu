@@ -1,0 +1,27 @@
+id: s2-one-age-missing
+description: >-
+  Step 1.2: with one dependant's age still to say ("a wife and a 20 year old daughter"), the
+  question is singular ("How old is your spouse?"), never "each of them"; the answer pairs and is
+  read back.
+prelude: to-s2
+turns:
+  - action: {type: SLOT, payload: {slot: goals, value: income_protection}}
+    expect: {templates: [RL-S2-INCOME]}
+  - text: 12 LPA
+    expect: {templates: [readback]}
+  - text: "yes"
+    expect: {templates: [RL-S2-INCOME-TYPE]}
+  - action: {type: SLOT, payload: {slot: income_type, value: salaried}}
+    expect: {templates: [RL-S2-DEPENDANTS]}
+  - text: a wife and a 20 year old daughter
+    expect:
+      templates: [dependant_age]
+      contains: ["How old is your spouse?"]
+      lacks: ["each of them"]
+  - text: "32"
+    expect:
+      templates: [readback]
+      contains: ["To confirm: spouse (32), child (20). Correct?"]
+      slots: {dependants: proposed}
+  - text: "yes"
+    expect: {templates: [RL-S2-LIABILITIES]}

@@ -1,0 +1,21 @@
+id: s1-occupation-one-word
+description: >-
+  Step 1.2: an occupation the master matches only by one word of the answer ("civil engineer" ->
+  Software engineer) is offered as a choice with "None of these", never proposed or read back;
+  "None of these" asks again with the question's hint; a whole-answer match is taken.
+prelude: to-s1
+turns:
+  - text: "34"
+    expect: {templates: [RL-S1-RESIDENCY]}
+  - action: {type: SLOT, payload: {slot: residency, value: resident}}
+    expect: {templates: [RL-S1-PINCODE]}
+  - text: "411001"
+    expect: {templates: [RL-S1-TOBACCO]}
+  - text: "no"
+    expect: {templates: [RL-S1-OCCUPATION]}
+  - text: civil engineer
+    expect: {templates: [RL-S1-OCCUPATION], actions: [SLOT, REASK], slot_rows: 4, lacks: [Software engineer, closest match]}
+  - action: {type: REASK, payload: {slot: occupation_code}}
+    expect: {templates: [format_hint], contains: ["A few words is enough"], slot_rows: 4}
+  - text: teacher
+    expect: {templates: [RL-S1-HEALTH], slots: {occupation_code: proposed}}
