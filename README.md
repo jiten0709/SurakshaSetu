@@ -2,11 +2,11 @@
 
 An AI-assisted conversational advisor for life and term insurance in India. It guides a customer from consent, through eligibility and needs discovery, to a compliant, explainable plan recommendation, and then hands the chosen plan to the insurer's existing application journey.
 
-> **Phase 1 is complete (Steps 1–30).** The whole S0–S3 journey works end to end in the terminal client and in the browser: consent, eligibility, the Quote-Only path, needs discovery, a ranked and cited recommendation with hash-verified disclosures, and a signed hand-off. The cross-cutting handlers (FAQ, objections, human escalation, pause, data erasure) work too.
+> **Phase 1 is complete.** The whole S0–S3 journey works end to end in the terminal client and in the browser: consent, eligibility, the Quote-Only path, needs discovery, a ranked and cited recommendation with hash-verified disclosures, and a signed hand-off. The cross-cutting handlers (FAQ, objections, human escalation, pause, data erasure) work too.
 >
 > - **Evidence:** `make eval` passes 208 of 208 (207 golden and red-team conversations plus the pilot DUMMY gate), and 0 of 157 attacks succeed. Compliance can render a verified dossier for any session.
 > - **Not real yet:** every product, rule, rate and document is fictitious `DUMMY` data, and the language models are local stubs until the hosting decision (D2).
-> - **Upcoming:** the production layer (Steps 31–33: WORM audit streaming, observability, retention) and the pre-pilot gates. See the [roadmap](documentation/roadmap.md).
+> - **Upcoming:** the production layer (WORM audit streaming, observability, retention) and the pre-pilot gates. See the [roadmap](documentation/roadmap.md).
 
 ## Core idea
 
@@ -19,11 +19,11 @@ An AI-assisted conversational advisor for life and term insurance in India. It g
 
 ### 1. Install the prerequisites
 
-| Tool | Why it's needed |
-| --- | --- |
+| Tool                                          | Why it's needed                                                                                                                                |
+| --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
 | [Docker](https://docs.docker.com/get-docker/) | Runs the whole stack: Postgres, Qdrant, MinIO, the model servers, the gateway, the API and the UI. Give the Docker VM at least 8 GB of memory. |
-| [uv](https://docs.astral.sh/uv/) | Runs the Python setup steps on your machine (migrations, gateway seeding, knowledge-base ingest). |
-| JDK 21 | Builds the domain services (eligibility, suitability, quotes, ranking). |
+| [uv](https://docs.astral.sh/uv/)              | Runs the Python setup steps on your machine (migrations, gateway seeding, knowledge-base ingest).                                              |
+| JDK 21                                        | Builds the domain services (eligibility, suitability, quotes, ranking).                                                                        |
 
 You don't need Node on your machine: the browser UI runs in its own container.
 
@@ -50,12 +50,12 @@ The models are local stubs, so stick to the quick-reply buttons and short answer
 cd orchestrator && uv run python scripts/chat.py      # add --locale hi-IN for Hindi
 ```
 
-| Type | To |
-| --- | --- |
-| a number | pick a quick reply |
-| `f` | fill in the consent form |
-| `/erase` | delete your data |
-| `/quit` | leave |
+| Type     | To                       |
+| -------- | ------------------------ |
+| a number | pick a quick reply       |
+| `f`      | fill in the consent form |
+| `/erase` | delete your data         |
+| `/quit`  | leave                    |
 
 ### 5. Prove it works (optional)
 

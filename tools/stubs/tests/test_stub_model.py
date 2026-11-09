@@ -188,21 +188,101 @@ def test_summary_and_conversation_defaults_carry_no_numbers() -> None:
         assert not re.search(r"\d", text)
 
 
-def test_recommendation_narrates_each_option_with_its_handles_and_no_numbers() -> None:
-    prompt = (
-        '<engine id="R1">999N001V02</engine> <engine id="R2">999N002V01</engine> '
-        '<evidence id="E2" label="x">…</evidence> [E1] [E1] [R1]'
+def engine(handle: str, fact: dict[str, Any]) -> str:
+    # As compose/envelope.py writes it: JSON html-escaped with quote=False.
+    return f'<engine id="{handle}" rule="x">{json.dumps(fact, sort_keys=True)}</engine>'
+
+
+def s3_envelope(affordability: str = "amber") -> str:
+    return "\n".join(
+        [
+            "ENGINE_RESULT:",
+            engine(
+                "R1",
+                {
+                    "uin": "999N001V02",
+                    "rank": 1,
+                    "term_years": 26,
+                    "ppt_years": 26,
+                    "rider_uins": ["999A007V01", "999A008V01", "999A009V01"],
+                    "reason_codes": ["RANK-FIT-TERM"],
+                },
+            ),
+            engine(
+                "R2",
+                {
+                    "uin": "999N002V01",
+                    "rank": 2,
+                    "term_years": 26,
+                    "ppt_years": 26,
+                    "rider_uins": ["999A007V01"],
+                    "reason_codes": ["RANK-FIT-TERM_ROP", "RANK-SA-CAPPED"],
+                },
+            ),
+            engine(
+                "R3",
+                {
+                    "fit_types": ["TERM"],
+                    "affordability": affordability,
+                    "cover_to_age": 60,
+                    "dependency_years": 26,
+                    "reason_codes": [],
+                },
+            ),
+            "EVIDENCE:",
+            '<evidence id="E1" label="a">DUMMY: Exclusions apply. More text.</evidence>',
+            '<evidence id="E2" label="b">DUMMY: Other text.</evidence>',
+        ]
     )
 
-    narrative = content("gen-recommend", prompt)
 
-    paragraphs = narrative.split("\n\n")
-    assert len(paragraphs) == 2
-    assert "[R1]" in paragraphs[0] and "[R2]" in paragraphs[1]
+def recommend(user: str, system: str = "STATE S3: recommendation.") -> str:
+    body = {
+        "model": "gen-recommend",
+        "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
+    }
+    response = client.post("/v1/chat/completions", json=body)
+    assert response.status_code == 200, response.text
+    return str(response.json()["choices"][0]["message"]["content"])
+
+
+def test_recommendation_gives_each_fact_its_own_sentence_cited_at_its_end() -> None:
+    paragraphs = recommend(s3_envelope()).split("\n\n")
+
+    assert len(paragraphs) == 4
+    for n, paragraph in enumerate(paragraphs[:3], start=1):
+        assert paragraph.endswith(f"[R{n}].")
+        assert paragraph.count("[R") == 1  # the handle only at the end: never where a name goes
+    assert len(set(paragraphs)) == 4
+    assert "999N001V02" in paragraphs[0] and "999A009V01" in paragraphs[0]
+    assert "999N002V01" in paragraphs[1] and "capped" in paragraphs[1]
+    assert "return of premium" in paragraphs[1]
+    assert paragraphs[3].endswith("[E1] [E2].")
     for paragraph in paragraphs:
-        assert "[E1] [E2]" in paragraph
-        assert len(paragraph.split()) <= 120
-        assert not re.search(r"\d", re.sub(r"\[[RE]\d+\]", "", paragraph))
+        bare = re.sub(r"\b\d{3}[NA]\d{3}V\d{2}\b|\[[RE]\d+\]", "", paragraph)
+        assert not re.search(r"\d|\b(first|second|third|top)\b", bare, re.IGNORECASE)
+
+
+def test_the_budget_is_mentioned_only_when_the_engine_says_green() -> None:
+    assert "budget" not in recommend(s3_envelope("amber"))
+    assert "budget" not in recommend(s3_envelope("unknown"))
+    assert "within the budget you shared [R3]." in recommend(s3_envelope("green"))
+
+
+SIDE = "SIDE QUERY: the customer asked a question outside the pending step.\nAnswer it briefly."
+
+
+def test_a_side_question_answers_with_the_first_evidence_sentence_cited() -> None:
+    answer = recommend(s3_envelope("green"), system=SIDE)
+
+    assert answer == "DUMMY: Exclusions apply. [E1]"
+
+
+def test_a_side_question_cuts_where_the_rails_split_and_needs_evidence() -> None:
+    user = '<evidence id="E4" label="x">Pay Rs. 500\n  a year &amp; more.</evidence>'
+
+    assert recommend(user, system=SIDE) == "Pay Rs. [E4]"
+    assert recommend("<user_input>what is 80C?</user_input>", system=SIDE) == stub_model.FRIENDLY
 
 
 def test_recommendation_without_options_is_one_friendly_sentence() -> None:

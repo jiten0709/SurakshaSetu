@@ -4,10 +4,13 @@
 calls it (infra/omniroute/seed.json targets each combo at its stub id). Each stub plays exactly
 one combo, so the stub always knows its role, and the response's `model` names the stub. Tests and
 golden conversations script replies per (session, route) through /__script; the session is the
-request's `user` field. Unscripted replies are fixed functions of the request.
+request's `user` field. Unscripted replies are fixed functions of the request: gen-recommend
+narrates each engine fact it was given (S3) or answers from the first evidence block (a side query;
+enhancement Step 1.1).
 """
 
 import hashlib
+import html
 import json
 import re
 from collections import deque
@@ -90,8 +93,20 @@ BRIDGES = (
 )
 SUMMARY = "The customer is exploring life cover and has answered the questions asked so far."
 TURN_ANALYSIS = {"intents": [], "slots": [], "side_query": None, "language": "en"}
-HANDLE = re.compile(r'(?:\[|id=")([RE]\d+)(?:\]|")')
 MAX_CITED_EVIDENCE = 3
+# A phrase only l1/side-query.txt carries: the envelope's system message is L0 + one L1.
+SIDE_QUERY_L1 = "SIDE QUERY: the customer asked a question outside the pending step."
+ENGINE = re.compile(r'<engine id="(R\d+)"[^>]*>(.*?)</engine>', re.S)
+EVIDENCE = re.compile(r'<evidence id="(E\d+)"[^>]*>(.*?)</evidence>', re.S)
+SENTENCE_END = re.compile(r"(?<=[.!?।])\s+|\n+")  # the output rails' split (rails/output.py)
+KINDS = {"TERM": "term", "TERM_ROP": "term with return of premium"}
+# The ranker's sizing codes, in words with no number (GR-NUMBER) and no ordinal.
+SIZING = {
+    "RANK-SA-CAPPED": "its cover is capped below your need",
+    "RANK-SA-MIN": "its cover is raised to the plan's minimum",
+    "RANK-TERM-CAPPED": "its term ends before your need does",
+    "RANK-TERM-MIN": "its term is raised to the plan's minimum",
+}
 
 
 class Scripted(BaseModel):
@@ -210,28 +225,46 @@ def _default(combo: str, messages: list[Message]) -> str:
         return SUMMARY
     if combo == "verify-claims":
         return json.dumps({"verdict": "not_entailed" if "UNSUPPORTED" in text else "entailed"})
-    if combo == "gen-recommend":
-        return _narrative(" ".join(m.content or "" for m in messages)) or FRIENDLY
     system = next((m.content or "" for m in messages if m.role == "system"), "")
+    if combo == "gen-recommend":
+        reply = _answer(text) if SIDE_QUERY_L1 in system else _narrative(text)
+        return reply or FRIENDLY
     next_slot = system.rpartition("NEXT_SLOT:")[2].casefold()
     return next((line for key, line in BRIDGES if key in next_slot), FRIENDLY)
 
 
 def _narrative(prompt: str) -> str:
-    """One short paragraph per engine result [R#], citing the evidence [E#]; no numbers."""
-    handles = sorted(set(HANDLE.findall(prompt)), key=lambda h: (h[0], int(h[1:])))
-    evidence = [f"[{h}]" for h in handles if h[0] == "E"][:MAX_CITED_EVIDENCE]
-    cited = (
-        f" Its main terms and exclusions are in the cited documents {' '.join(evidence)}."
-        if evidence
-        else ""
-    )
-    return "\n\n".join(
-        f"Option [{r}] fits the protection need you described and stays within the budget you "
-        f"shared.{cited} Please read its disclosures before you decide."
-        for r in handles
-        if r[0] == "R"
-    )
+    """One sentence per engine fact, from its own content and cited at its end, then one sentence
+    citing the evidence (the composer lists sources only for cited evidence). No numbers."""
+    lines = [_fact(h, json.loads(html.unescape(body))) for h, body in ENGINE.findall(prompt)]
+    evidence = [f"[{h}]" for h, _ in EVIDENCE.findall(prompt)][:MAX_CITED_EVIDENCE]
+    if lines and evidence:
+        cited = " ".join(evidence)
+        lines.append(f"Their main terms and exclusions are in the cited documents {cited}.")
+    return "\n\n".join(lines)
+
+
+def _fact(handle: str, fact: dict[str, Any]) -> str:
+    if "uin" not in fact:  # the needs assessment: a budget claim only when the engine says green
+        budget = ", within the budget you shared" if fact.get("affordability") == "green" else ""
+        return f"These options are matched to the needs you confirmed{budget} [{handle}]."
+    codes = fact.get("reason_codes") or []
+    fit = next((c.removeprefix("RANK-FIT-") for c in codes if c.startswith("RANK-FIT-")), None)
+    kind = KINDS.get(fit, fit.lower().replace("_", " ")) if fit else "protection"
+    clauses = [f"The plan {fact['uin']} fits the {kind} cover your needs call for"]
+    clauses += [SIZING[c] for c in codes if c in SIZING]
+    if riders := fact.get("rider_uins") or []:
+        clauses.append(f"with rider{'s' if len(riders) > 1 else ''} {', '.join(riders)}")
+    return f"{', '.join(clauses)} [{handle}]."
+
+
+def _answer(prompt: str) -> str:
+    """A side question: the first evidence block's first sentence (as the rails split it), cited."""
+    first = EVIDENCE.search(prompt)
+    if first is None:
+        return ""
+    sentence = SENTENCE_END.split(" ".join(html.unescape(first.group(2)).split()), maxsplit=1)[0]
+    return f"{sentence} [{first.group(1)}]"
 
 
 def _error(
