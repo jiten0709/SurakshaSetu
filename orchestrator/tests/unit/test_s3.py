@@ -294,7 +294,7 @@ async def test_the_commit_records_the_recommendation_and_what_was_shown(
     assert recorded.rendered_sha256 and recorded.rendered_sha256 == rec.rendered_sha256
     assert recorded.evidence_map == {"R1": "RANK-FIT-TERM"}
     assert rec.shown[TERM].set_sha256 == seed_set(TERM).set_sha256
-    assert rec.shown[TERM].registry_version == "2026.09.1"
+    assert rec.shown[TERM].registry_version == "2026.11.1"
     assert set(rec.shown[TERM].documents) == {"CIS", "POLICY_WORDING"}
     assert held.last_prompt_id == s3.OPTIONS
 
@@ -511,7 +511,7 @@ async def test_the_acknowledgment_hands_off_with_a_signed_intake(
     assert signed["selected"]["quote_id"] == chosen.next.recommendation.selection.quote.quote_id  # type: ignore[union-attr]
     assert signed["audit_anchor"] == {"session_seq": 7, "hash": "07" * 32}
     assert signed["disclosure_acks"] == [
-        {"uin": TERM, "registry_version": "2026.09.1", "set_sha256": seed_set(TERM).set_sha256}
+        {"uin": TERM, "registry_version": "2026.11.1", "set_sha256": seed_set(TERM).set_sha256}
     ]
     [handoff] = stored.handoffs
     assert (handoff["queue"], handoff["reason_code"]) == ("application", "APPLICATION_INTAKE")
@@ -733,7 +733,7 @@ async def test_a_tax_question_is_answered_with_citations_the_condition_and_tax_0
         "template:side_query_caveat",
         "template:tax_condition",
         "template:regime_ask",
-        "registry:DISC-GLOBAL-TAX-05",
+        "registry:DISC-GLOBAL-TAX-35",
         "template:sources",
         "template:side_query_bridge",
         "template:s3_choices",

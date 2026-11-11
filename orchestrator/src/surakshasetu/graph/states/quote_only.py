@@ -7,7 +7,7 @@ plan must be named by the customer: by its catalog name or its UIN, never propos
 before the quote when collected here). The quote is the quote adapter's: POST /v1/quotes at the
 product's quote_defaults (GET /v1/catalog/products/{uin}), or the cover and term the customer
 stated. The card is a bundle template filled from the quote's own response, with
-DISC-GLOBAL-QUOTE-02 verbatim from the registry and the standing Quote-Only caveat.
+DISC-GLOBAL-QUOTE-32 verbatim from the registry and the standing Quote-Only caveat.
 
 Rows (decide): QO.1 any request to apply -> the hard block, state unchanged (C13); QO.2 satisfied ->
 Exit with a summary (and the re-engagement line with P3 only); QO.3 an opt-in -> S2 when eligibility
@@ -50,7 +50,7 @@ logger = logging.getLogger(__name__)
 QUOTE_SLOTS = ("age_years", "gender", "tobacco_12m")  # of the rules' attributes, what a quote needs
 STATED = ("sum_assured_inr", "term_years")  # what a customer may state for the quote
 PLAN, QUOTED, BLOCKED = "qo.plan", "qo.quoted", "qo.blocked"
-QUOTE_02 = "DISC-GLOBAL-QUOTE-02"
+QUOTE_02 = "DISC-GLOBAL-QUOTE-32"
 
 
 async def node(state: GraphState, *, runtime: Runtime[Any]) -> None:

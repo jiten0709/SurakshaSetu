@@ -9,7 +9,7 @@ and the turn runs in TDD order (graph/nodes.side_query):
    facts and cannot write them). In S0, before consent, and once the conversation has ended, only
    from the approved privacy FAQ (content/faq), never generated. Elsewhere from the evidence, with
    the side-query L1 on gen-recommend: every claim cited and verified by the output rails, the
-   state's caveat after it, and for tax the regime condition and DISC-GLOBAL-TAX-05 verbatim (never
+   state's caveat after it, and for tax the regime condition and DISC-GLOBAL-TAX-35 verbatim (never
    a personal computation; the regime asked when it is not known);
 3. `respond` pops the frame and joins: the answer, the one-line bridge, then the state's prompt.
 
@@ -52,7 +52,7 @@ logger = logging.getLogger(__name__)
 
 FAQ_ROOT = Path(__file__).resolve().parents[4] / "content" / "faq"
 IST = ZoneInfo("Asia/Kolkata")
-TAX_05 = "DISC-GLOBAL-TAX-05"
+TAX_05 = "DISC-GLOBAL-TAX-35"
 TAX = re.compile(r"(?i)\btax(es)?\b|टैक्स")
 # "FY 2025-26", "AY 2026-27", "2025-26": the tax year a question is about. An assessment year is
 # the tax year before it.
@@ -214,7 +214,7 @@ async def answer(
     """A cited answer from the evidence: retrieval for the question (the view's state, the products
     in focus or shown, the regime and the tax year), the side-query L1 on gen-recommend, engine
     facts in S3 only. Tax adds the regime condition (and the regime question when it is not known)
-    and DISC-GLOBAL-TAX-05 verbatim; a dispute adds the exclusion note. Insufficient evidence or
+    and DISC-GLOBAL-TAX-35 verbatim; a dispute adds the exclusion note. Insufficient evidence or
     retrieval down: the abstain line and an advisor."""
     texts = io.bundle.templates[view.locale].scripts
     rec = view.recommendation if view.fsm_state is FsmState.S3 else None

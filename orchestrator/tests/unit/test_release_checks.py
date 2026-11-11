@@ -23,7 +23,7 @@ from surakshasetu.domain.models import DisclosureItem, DisclosureSet
 from surakshasetu.rails.output import Verdict, _set_sha256, disclosures, dummy, guard, leaks
 
 # domain-services' DisclosureRegistryTest pins the same seed set: both tiers must agree.
-SEED_SET_SHA256 = "fdcc70b9a658fda8ce69daf5fec4c0420de4a784911541b292a0e53e5450eee8"
+SEED_SET_SHA256 = "7b0d02ed58fe937abf29600c92c433cbe10c70f2a3d40b3f9cbee40531be1aa2"
 NARRATIVE = "Suraksha Term Shield fits the need you described [R1]."
 
 
@@ -63,7 +63,7 @@ def test_a_composed_turn_with_the_registry_set_passes() -> None:
 def test_an_edited_body_in_the_released_text_blocks() -> None:
     first = seed_set().items[0].body
 
-    verdict = check(retext(s3(), first, first.replace("Approved", "Approvd")))
+    verdict = check(retext(s3(), first, first[:-1]))  # its final full stop dropped
 
     assert verdict.action == "block"
     assert verdict.detail == (f"{TERM}: disclosure bodies differ from the registry",)
@@ -165,7 +165,7 @@ def test_approved_registry_text_is_not_a_leak() -> None:
 
 
 def test_the_notice_and_ai_disclosure_shown_verbatim_are_not_leaks() -> None:
-    """Step 18: S0 shows the consent notice and DISC-GLOBAL-AI-06 outside any disclosure set."""
+    """Step 18: S0 shows the consent notice and DISC-GLOBAL-AI-36 outside any disclosure set."""
     notice = "Our data protection officer: dpo@insurer.example, 9876543210."
     shown = ctx(approved_text=(notice,))
 

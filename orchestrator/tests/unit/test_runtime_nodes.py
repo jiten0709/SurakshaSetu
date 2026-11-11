@@ -31,7 +31,7 @@ from surakshasetu.store.conv import SessionRow
 SID = UUID("0199a1b2-0000-7000-8000-00000000c0de")
 SUBJECT = UUID("0199a1b2-0000-7000-8000-00000000beef")
 KEY = UUID("0199a1b2-0000-7000-8000-0000000000aa")
-BUNDLE = load_bundle("pb-2026.10.11", env="dev")
+BUNDLE = load_bundle("pb-2026.10.12", env="dev")
 SCRIPTS = BUNDLE.templates["en-IN"].scripts
 NOW = datetime.now(UTC)
 SENTINEL = "my PAN is ABCDE1234F and I live at 42 Sentinel Lane"
@@ -203,7 +203,7 @@ async def test_a_template_turn_is_audited_from_input_to_validation(
     assert t.released is not None and t.released.rendered is not None
     assert [i for i, _ in t.released.rendered.parts] == [
         "template:greeting",
-        "registry:DISC-GLOBAL-AI-06",
+        "registry:DISC-GLOBAL-AI-36",
         "notice:2026.09.1-en",
     ]
     assert t.form is not None and t.form["notice_version"] == "2026.09.1-en"
@@ -407,7 +407,7 @@ async def test_load_hydrates_from_conv_only_when_the_checkpoint_lags(
 async def test_a_kill_switch_on_the_active_bundle_refuses_the_turn(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    loading(monkeypatch, switches={("prompt_bundle", "pb-2026.10.11")})
+    loading(monkeypatch, switches={("prompt_bundle", "pb-2026.10.12")})
 
     with pytest.raises(BundleError) as excinfo:
         await nodes.load(GraphState(), rt(turn()))

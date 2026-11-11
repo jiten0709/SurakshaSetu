@@ -29,7 +29,7 @@ from harness import (  # noqa: E402
 
 from surakshasetu.crypto.jcs import sha256_hex  # noqa: E402
 
-PINS = {"prompt_bundle": "pb-2026.10.11", "rules": "2026.09.1"}
+PINS = {"prompt_bundle": "pb-2026.10.12", "rules": "2026.09.1"}
 
 
 def body(text: str = "Hi", state: str = "S0", turn_id: str = "t1", **message: Any) -> bytes:
@@ -88,7 +88,7 @@ def transcript(*turns: dict[str, Any], **update: Any) -> Transcript:
     raw = body()
     t = Transcript(
         conversation=conversation,
-        active_bundle="pb-2026.10.11",
+        active_bundle="pb-2026.10.12",
         consent_valid_from_start=False,
         initial_pins=PINS,
         sent=[Sent(0, 200, raw, customer_text="hello")],
@@ -299,7 +299,7 @@ def test_the_consent_prompt_is_released_verbatim_with_a_form_for_a_held_notice()
     form = {"notice_version": "n1", "notice_sha256": "ab" * 32}
     parts = [
         {"id": "template:greeting", "text": "Hi"},
-        {"id": "registry:DISC-GLOBAL-AI-06", "text": "AI body"},
+        {"id": "registry:DISC-GLOBAL-AI-36", "text": "AI body"},
         {"id": "notice:n1", "text": "Notice body"},
     ]
 
@@ -315,8 +315,8 @@ def test_the_consent_prompt_is_released_verbatim_with_a_form_for_a_held_notice()
     assert released(notices={})  # a notice the service does not hold
     assert released(registry_bodies={"Another"})  # the registry part
 
-    # Step 19: the indicative quote's DISC-GLOBAL-QUOTE-02 is a registry part too.
-    parts.append({"id": "registry:DISC-GLOBAL-QUOTE-02", "text": "Quote body"})
+    # Step 19: the indicative quote's DISC-GLOBAL-QUOTE-32 is a registry part too.
+    parts.append({"id": "registry:DISC-GLOBAL-QUOTE-32", "text": "Quote body"})
     assert released(registry_bodies={"AI body", "Quote body"}) == []
     assert released()  # a body the registry does not hold
 
@@ -571,7 +571,7 @@ def test_the_s3_suite_and_the_scripted_conversation_cover_the_step_21_paths() ->
         "declined_exit",
     } <= templates
     parts = {i for t in turns for i in (t.expect.parts or [])}
-    assert {"template:exclusion_note", "template:tax_condition", "registry:DISC-GLOBAL-TAX-05",
+    assert {"template:exclusion_note", "template:tax_condition", "registry:DISC-GLOBAL-TAX-35",
             "template:guarantee_note"} <= parts  # fmt: skip
     assert any(t.registry_tamper for t in turns) and any(t.journey_down for t in turns)
     assert any(t.days_later for t in turns) and any(c.given.fixture_product for c in s3)
@@ -788,7 +788,7 @@ def test_a_record_holds_counts_ids_and_timings_never_text() -> None:
             "state": "S1",
             "from_state": "S0",
             "language": "en",
-            "bundle": "pb-2026.10.11",
+            "bundle": "pb-2026.10.12",
             "latency_ms": 812.5,
             "sample": True,
             "side_query": False,

@@ -18,14 +18,14 @@ turns:
   - text: "yes"
     expect:
       state: QUOTE_ONLY
-      parts: [template:quote_card, registry:DISC-GLOBAL-QUOTE-02, template:quote_caveat, template:quote_next]
+      parts: [template:quote_card, registry:DISC-GLOBAL-QUOTE-32, template:quote_caveat, template:quote_next]
       engine: {service: quote}
       slots: {age_years: confirmed, tobacco_12m: confirmed}
-      contains: ["Indicative premium for Suraksha Term Shield (UIN 999N001V02): ₹16,000 a year.", "Cover: ₹1,00,00,000 for 30 years.", "DUMMY: Premium is indicative, final after underwriting."]
+      contains: ["Indicative premium for Suraksha Term Shield (UIN 999N001V02): ₹16,000 a year.", "Cover: ₹1,00,00,000 for 30 years.", "DUMMY: The premium shown is indicative."]
   - text: what about 1.23 crore
     script:
       nlu-extract:
         - {intents: [SLOT_ANSWER], slots: [{slot: sum_assured_inr, value: null, confidence: 0.95, evidence_span: 1.23 crore}]}
     expect: {templates: [cover_bounds], contains: ["cover can be from ₹25,00,000 to ₹10,00,00,000, in steps of ₹5,00,000."], slots: {sum_assured_inr: declined}}
   - text: 1.25 crore
-    expect: {parts: [template:quote_card, registry:DISC-GLOBAL-QUOTE-02, template:quote_caveat, template:quote_next], contains: ["Cover: ₹1,25,00,000 for 30 years."], engine: {service: quote}}
+    expect: {parts: [template:quote_card, registry:DISC-GLOBAL-QUOTE-32, template:quote_caveat, template:quote_next], contains: ["Cover: ₹1,25,00,000 for 30 years."], engine: {service: quote}}

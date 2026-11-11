@@ -1,7 +1,7 @@
 """The side-query subgraph (Step 22, TDD §2.6): frames pushed and popped, the frozen view, the
 compound turn's order (the slot first, then the answer, then the resume), a full stack, retrieval
 down, the offer after five in a row, S0's privacy FAQ (no generation), tax (the regime condition,
-asked when unknown, DISC-GLOBAL-TAX-05), the regime revealed in a question (proposed, then
+asked when unknown, DISC-GLOBAL-TAX-35), the regime revealed in a question (proposed, then
 confirmed), the tax year, the FAQ loader, the RESPONSE_RELEASED header and a log sentinel."""
 
 from datetime import UTC, datetime
@@ -335,7 +335,7 @@ async def test_tax_asks_the_regime_when_unknown_and_not_once_it_is_confirmed(
         "template:side_query_caveat",
         "template:tax_condition",
         "template:regime_ask",
-        "registry:DISC-GLOBAL-TAX-05",
+        "registry:DISC-GLOBAL-TAX-35",
         "template:sources",
     ]
     assert kinds(t)[:2] == ["FACT", "FACT"]

@@ -22,28 +22,29 @@ class DisclosureRegistryTest extends DomainApiTestSupport {
   private static final HexFormat HEX = HexFormat.of();
 
   /**
-   * set_sha256 of 999N001V02 / web / en-IN / 2026.09.1 from content/seed. Computed once and
+   * set_sha256 of 999N001V02 / web / en-IN / 2026.11.1 from content/seed, the newest version and so
+   * the one served (2026.09.1's was fdcc70b9…0eee8; enhancement Step 1.3). Computed once and
    * reviewed: the orchestrator's surakshasetu.crypto.jcs gives the same value (step-5 audit).
    * Changing a seed body or the order must change it, and needs a new registry_version.
    */
   static final String SEED_SET_SHA256 =
-      "fdcc70b9a658fda8ce69daf5fec4c0420de4a784911541b292a0e53e5450eee8";
+      "7b0d02ed58fe937abf29600c92c433cbe10c70f2a3d40b3f9cbee40531be1aa2";
 
   private static final List<String> SEED_ORDER =
       List.of(
-          "DISC-GLOBAL-SOLICIT-01",
-          "DISC-GLOBAL-QUOTE-02",
-          "DISC-UIN-999N001V02-21",
-          "DISC-GLOBAL-S45-03",
-          "DISC-GLOBAL-FREELOOK-04",
-          "DISC-GLOBAL-TAX-05");
+          "DISC-GLOBAL-SOLICIT-31",
+          "DISC-GLOBAL-QUOTE-32",
+          "DISC-UIN-999N001V02-51",
+          "DISC-GLOBAL-S45-33",
+          "DISC-GLOBAL-FREELOOK-34",
+          "DISC-GLOBAL-TAX-35");
 
   @Test
   void theSeedSetIsServedInOrderWithVerifiedHashes() throws Exception {
     JsonNode set = json(api(setRequest("999N001V02", "web", "en-IN")).andExpect(status().isOk()));
 
     assertThat(ids(set)).isEqualTo(SEED_ORDER);
-    assertThat(set.get("registry_version").asString()).isEqualTo("2026.09.1");
+    assertThat(set.get("registry_version").asString()).isEqualTo("2026.11.1");
     assertThat(set.get("is_dummy").asBoolean()).isTrue();
     List<Jcs.SetItem> items = new ArrayList<>();
     for (JsonNode item : set.get("items")) {
@@ -53,7 +54,7 @@ class DisclosureRegistryTest extends DomainApiTestSupport {
       items.add(new Jcs.SetItem(item.get("disclosure_id").asString(), Jcs.bodySha256(body)));
     }
     assertThat(set.get("set_sha256").asString())
-        .isEqualTo(Jcs.setSha256("2026.09.1", "999N001V02", "web", "en-IN", items))
+        .isEqualTo(Jcs.setSha256("2026.11.1", "999N001V02", "web", "en-IN", items))
         .isEqualTo(SEED_SET_SHA256);
   }
 
@@ -72,7 +73,7 @@ class DisclosureRegistryTest extends DomainApiTestSupport {
         .doesNotHaveDuplicates();
 
     JsonNode rop = json(api(setRequest("999N002V01", "app", "en-IN")).andExpect(status().isOk()));
-    assertThat(ids(rop).get(2)).isEqualTo("DISC-UIN-999N002V01-22");
+    assertThat(ids(rop).get(2)).isEqualTo("DISC-UIN-999N002V01-52");
   }
 
   @Test

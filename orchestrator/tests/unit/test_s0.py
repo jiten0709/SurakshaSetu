@@ -176,9 +176,10 @@ async def test_the_first_turn_is_the_greeting_with_the_ai_disclosure_and_the_not
     await run(t)
 
     notice = notice_json()
-    assert ids(t) == ["template:greeting", "registry:DISC-GLOBAL-AI-06", "notice:2026.09.1-en"]
+    assert ids(t) == ["template:greeting", "registry:DISC-GLOBAL-AI-36", "notice:2026.09.1-en"]
     assert t.released is not None and t.released.text.startswith(
-        "Namaste, I'm SurakshaSetu, an AI assistant from DUMMY Insurer. I'm not a human advisor."
+        "Namaste, I'm SurakshaSetu, an AI assistant from Suraksha Life Insurance Company "
+        "Limited. I'm not a human advisor."
     )
     assert notice["body"] in t.released.text
     form = t.form
@@ -283,7 +284,7 @@ async def test_a_notice_mismatch_re_renders_the_notice_in_force() -> None:
 
     assert ids(t) == [
         "template:notice_updated",
-        "registry:DISC-GLOBAL-AI-06",
+        "registry:DISC-GLOBAL-AI-36",
         "notice:2026.09.1-en",
     ]
     assert t.form is not None and t.next is not None and t.next.consent is None
@@ -513,7 +514,7 @@ async def test_a_notice_language_switch_renders_the_hindi_notice_and_re_pins_at_
     await run(t)
 
     assert t.next is not None and t.next.locale == "hi-IN"
-    assert ids(t) == ["template:greeting", "registry:DISC-GLOBAL-AI-06", "notice:2026.09.1-hi"]
+    assert ids(t) == ["template:greeting", "registry:DISC-GLOBAL-AI-36", "notice:2026.09.1-hi"]
     assert t.released is not None and t.released.text.startswith(HI.greeting.split("{")[0])
     assert t.form is not None and t.form["language"] == "hi-IN"
     assert t.quick_replies[0]["action"]["payload"] == {"language": "en-IN"}
@@ -538,8 +539,8 @@ async def test_a_notice_language_switch_renders_the_hindi_notice_and_re_pins_at_
     ("record", "expected"),
     [
         ("valid", ["template:intent_ask"]),
-        ("lapsed", ["template:consent_renew", "registry:DISC-GLOBAL-AI-06", "notice:2026.09.1-en"]),
-        (None, ["template:greeting", "registry:DISC-GLOBAL-AI-06", "notice:2026.09.1-en"]),
+        ("lapsed", ["template:consent_renew", "registry:DISC-GLOBAL-AI-36", "notice:2026.09.1-en"]),
+        (None, ["template:greeting", "registry:DISC-GLOBAL-AI-36", "notice:2026.09.1-en"]),
     ],
 )
 async def test_entering_s0_opens_the_prompt_for_the_consent_held(
@@ -586,7 +587,8 @@ async def test_the_re_disclosure_stays_truthful_when_the_registry_is_down() -> N
 
     assert t.released is not None
     assert t.released.text.startswith(
-        "I'm SurakshaSetu, an AI assistant from DUMMY Insurer. I'm not a human advisor.\n\n"
+        "I'm SurakshaSetu, an AI assistant from Suraksha Life Insurance Company Limited. "
+        "I'm not a human advisor.\n\n"
     )
     # S1's own reads are down too (Step 19): its retry follows the truthful line.
     assert ids(t) == ["template:ai_redisclosure", "template:screening_retry"]

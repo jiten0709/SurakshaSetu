@@ -29,7 +29,7 @@ turns:
   - text: i am a ai engineer
     expect: {templates: [RL-S1-OCCUPATION], actions: [SLOT, REASK], slot_rows: 4}
   - action: {type: SLOT, payload: {slot: occupation_code, value: OCC-SWE-03}}
-    expect: {templates: [RL-S1-HEALTH], contains: ["Have you ever been diagnosed with or treated for a serious illness"], slots: {occupation_code: proposed}}
+    expect: {templates: [RL-S1-HEALTH], contains: ["Have you ever been diagnosed with, or treated for, a serious illness"], slots: {occupation_code: proposed}}
   - action: {type: SLOT, payload: {slot: health_flags, value: "no"}}
     expect: {templates: [RL-S1-PROPOSER]}
   - action: {type: SLOT, payload: {slot: proposer.is_life_assured, value: "yes"}}

@@ -1,0 +1,3 @@
+SUMMARY: write a rolling summary of the conversation so far, to replace the previous summary.
+Keep only what the customer asked, decided or still needs, in at most 250 words of plain sentences.
+Write no numbers, amounts, dates, names, contact details, identifiers or product names, and no citations.

@@ -8,4 +8,4 @@ turns:
     expect: {state: S3, row: S2.2}
   - text: another insurer gives me a better deal than this
     script: {nlu-extract: [{intents: [OBJECTION_COMPETITOR]}]}
-    expect: {state: S3, row: CC5, templates: [competitor_note, s3_choices], actions: [APPLY, HUMAN_REQUEST, REVISE, SAVE], contains: ["DUMMY Insurer"], objection: competitor, objection_response: declined}
+    expect: {state: S3, row: CC5, templates: [competitor_note, s3_choices], actions: [APPLY, HUMAN_REQUEST, REVISE, SAVE], contains: ["Suraksha Life Insurance Company Limited"], objection: competitor, objection_response: declined}

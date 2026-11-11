@@ -6,4 +6,4 @@ turns:
   - action: {type: START}
     expect: {state: S0, templates: [greeting]}
   - text: why do you need all this data, I'm not comfortable sharing it
-    expect: {state: S0, parts: ["faq:2026.10.1:PF-COMPLAINT"], form: true, faq: "faq:PF-COMPLAINT", absent: [MODEL_CALL, RETRIEVAL]}
+    expect: {state: S0, parts: ["faq:2026.11.1:PF-COMPLAINT"], form: true, faq: "faq:PF-COMPLAINT", absent: [MODEL_CALL, RETRIEVAL]}

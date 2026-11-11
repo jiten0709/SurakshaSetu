@@ -422,8 +422,8 @@ class Transcript:
     evidence: dict[str, str] = field(default_factory=dict)  # chunk_id -> text and its label
     # Step 18: the Consent Service's notices (version -> (body, body_sha256)) for the parts and
     # forms released, and the registry's single-disclosure bodies (every language) that registry:
-    # parts may carry: DISC-GLOBAL-AI-06 (Step 18), DISC-GLOBAL-QUOTE-02 (Step 19) and
-    # DISC-GLOBAL-TAX-05 (Step 21, with an S3 tax answer).
+    # parts may carry: DISC-GLOBAL-AI-36 (Step 18), DISC-GLOBAL-QUOTE-32 (Step 19) and
+    # DISC-GLOBAL-TAX-35 (Step 21, with an S3 tax answer).
     notices: dict[str, tuple[str, str]] = field(default_factory=dict)
     registry_bodies: set[str] = field(default_factory=set)
     intakes: list[dict[str, Any]] = field(default_factory=list)  # Step 21: the journey's, verified

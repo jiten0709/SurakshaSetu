@@ -28,3 +28,31 @@ notices:
       [P3 optional] Send me product updates
       [ ] I confirm I am 18 or older
       [Read in English / other language]
+
+  # Enhancement Step 1.3 (2026-11-09): the reviewed draft with demo values, still DUMMY until the DPO
+  # approves it. A new notice_version (notices are immutable); 2026.09.1-en stays for its records.
+  - notice_version: 2026.11.1-en
+    language: en-IN
+    approved_by: dpo@surakshalife.example.com
+    effective_from: 2026-11-09
+    is_dummy: true
+    body: |-
+      DUMMY: How we use your information (notice 2026.11.1)
+
+      Suraksha Life Insurance Company Limited is the data fiduciary for this conversation.
+
+      What we collect: the answers you give here, such as your age, where you live, your work, whether you use tobacco, a yes or no about serious illness, your income, the people who depend on you, your loans and your existing cover. We don't need identity numbers, card or bank details, or medical reports, and identity and card numbers are removed if you share them.
+
+      What we use it for, only with your consent:
+      [P1 required] Use my answers, including basic health and lifestyle details, to assess my needs and suggest plans
+      [P2 optional] Let a licensed advisor contact me
+      [P3 optional] Send me product updates
+
+      How long we keep it: your answers are kept only as long as the purposes you agreed to need them, and no longer than 30 days after your last activity, unless you apply for a policy or the law requires longer. A record of what was shown to you and of your consent is kept, encrypted, for the period the law sets.
+
+      Your rights: you can see a summary of what we hold, correct it, withdraw any consent and ask us to erase your information, at any time and as easily as you gave consent: tell the assistant, use the options on screen, or write to grievance@surakshalife.example.com, 1800-123-4568. If you're not satisfied with our reply, you can complain to the Data Protection Board of India.
+
+      This chat is with an automated AI assistant and is recorded.
+
+      [ ] I confirm I am 18 or older
+      [Read in हिंदी / other language]

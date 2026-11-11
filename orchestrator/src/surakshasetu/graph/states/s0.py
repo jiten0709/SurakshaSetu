@@ -1,6 +1,6 @@
 """The S0 node: State-0, greeting, AI disclosure and consent (TDD §3.5; Step 18).
 
-S0 generates nothing. It releases bundle templates, the registry's DISC-GLOBAL-AI-06 and the
+S0 generates nothing. It releases bundle templates, the registry's DISC-GLOBAL-AI-36 and the
 Consent Service's notice body, verbatim, and calls no gen-* route. Consent is recorded only by
 the Consent Service, from the structured CONSENT_SUBMIT action or, while the consent prompt is
 open, from a whole-message match in the bundle's closed lexicon

@@ -137,7 +137,7 @@ def session(db: Conn, keys: LocalKeyService, key_ref: str) -> UUID:
                 from_state="S3", to_state="HANDOFF", trigger="S3.4", invariants={"I1": True}
             ),
             {},
-            PINS | {"prompt_bundle": "pb-2026.10.11"},
+            PINS | {"prompt_bundle": "pb-2026.10.12"},
         ),
     ]
     for event_type, header, payload, pins in trail:
@@ -174,7 +174,7 @@ def test_a_complete_session_renders_every_section(
     assert d["session_id"] == str(session_id)
     assert d["chain"] == {"ok": True, "checked": 6}
     assert [p["from_seq"] for p in d["pins"]] == [1, 6]
-    assert d["pins"][1]["pins"]["prompt_bundle"] == "pb-2026.10.11"
+    assert d["pins"][1]["pins"]["prompt_bundle"] == "pb-2026.10.12"
     (record,) = d["consent"]["records"]
     assert record["session_id"] == str(session_id) and record["method"] == "structured_action"
     assert "record" not in record  # the HTML's table rows never leak into the JSON

@@ -9,4 +9,4 @@ turns:
     expect: {state: EXIT, row: S0.2, templates: [consent_declined], absent: [CONSENT_CAPTURED]}
   - text: What do you do with my data?
     script: {nlu-extract: [{intents: [GENERAL_FAQ], side_query: "What do you do with my data?"}]}
-    expect: {state: EXIT, parts: ["faq:2026.10.1:PF-PURPOSES"], faq: "faq:PF-PURPOSES", absent: [MODEL_CALL, RETRIEVAL]}
+    expect: {state: EXIT, parts: ["faq:2026.11.1:PF-PURPOSES"], faq: "faq:PF-PURPOSES", absent: [MODEL_CALL, RETRIEVAL]}

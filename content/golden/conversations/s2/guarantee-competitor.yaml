@@ -8,6 +8,6 @@ turns:
   - text: I want guaranteed high returns
     expect: {state: S2, row: S2.STAY, templates: [guarantee_note, RL-S2-GOALS], lacks: ["guaranteed return"]}
   - text: is the LIC plan better?
-    expect: {state: S2, templates: [competitor_note, RL-S2-GOALS], contains: ["DUMMY Insurer"]}
+    expect: {state: S2, templates: [competitor_note, RL-S2-GOALS], contains: ["Suraksha Life Insurance Company Limited"]}
   - text: savings
     expect: {templates: [RL-S2-INCOME], slots: {goals: proposed}}

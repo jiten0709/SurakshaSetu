@@ -42,7 +42,7 @@ def settings(**update: Any) -> Settings:
 
 def pins() -> VersionPins:
     return VersionPins(
-        prompt_bundle="pb-2026.10.11",
+        prompt_bundle="pb-2026.10.12",
         rules="2026.09.1",
         corpus={},
         consent_notice=NOTICE,
@@ -138,7 +138,7 @@ def notice_json(language: str = "en-IN") -> dict[str, Any]:
 def ai_disclosure_json(language: str = "en-IN") -> dict[str, Any]:
     body = f"DUMMY: AI assistant identity and human alternative ({language})."
     return {
-        "disclosure_id": "DISC-GLOBAL-AI-06",
+        "disclosure_id": "DISC-GLOBAL-AI-36",
         "language": language,
         "body": body,
         "body_sha256": hashlib.sha256(body.encode()).hexdigest(),
@@ -154,7 +154,7 @@ def domain_handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json=VERSIONS)
     if request.url.path == "/v1/consent/notices/current":
         return httpx.Response(200, json=notice_json(language))
-    if request.url.path == "/v1/disclosures/DISC-GLOBAL-AI-06":
+    if request.url.path == "/v1/disclosures/DISC-GLOBAL-AI-36":
         return httpx.Response(200, json=ai_disclosure_json(language))
     return screening_handler(request)
 
@@ -480,7 +480,11 @@ def seed_set(uin: str = TERM, language: str = "en-IN", channel: str = "web") -> 
     """The seed registry set, with bodies and hashes as the registry computes them."""
     seed = yaml.safe_load((SEED_DISCLOSURES / "disclosures.yaml").read_text(encoding="utf-8"))
     bodies = {d["disclosure_id"]: d["bodies"][language] for d in seed["disclosures"]}
-    row = next(s for s in seed["disclosure_sets"] if s["uin"] == uin)
+    # the newest registry_version, as the registry serves it (all seed members are in force)
+    row = max(
+        (s for s in seed["disclosure_sets"] if s["uin"] == uin),
+        key=lambda s: [int(n) for n in s["registry_version"].split(".")],
+    )
     items = [
         DisclosureItem(disclosure_id=i, body=bodies[i], body_sha256=content_sha256(bodies[i]))
         for i in row["disclosure_ids"]
@@ -527,8 +531,8 @@ def screening_handler(request: httpx.Request) -> httpx.Response:
         uin = path.rsplit("/", 1)[1]
         found = seed_set(uin, params.get("language", "en-IN"), params.get("channel", "web"))
         return httpx.Response(200, json=found.model_dump(mode="json"))
-    if path == "/v1/disclosures/DISC-GLOBAL-TAX-05":
-        return httpx.Response(200, json=disclosure_json("DISC-GLOBAL-TAX-05", params["language"]))
+    if path == "/v1/disclosures/DISC-GLOBAL-TAX-35":
+        return httpx.Response(200, json=disclosure_json("DISC-GLOBAL-TAX-35", params["language"]))
     if path == "/v1/suitability/required-slots":
         return httpx.Response(200, json=REQUIRED_SLOTS)
     if path == "/v1/suitability/evaluate":
@@ -563,13 +567,13 @@ def screening_handler(request: httpx.Request) -> httpx.Response:
         )
     if path == "/v1/quotes":
         return quote_json(json.loads(request.content))
-    if path == "/v1/disclosures/DISC-GLOBAL-QUOTE-02":
+    if path == "/v1/disclosures/DISC-GLOBAL-QUOTE-32":
         body = "DUMMY: Premium is indicative, final after underwriting."
         digest = hashlib.sha256(body.encode()).hexdigest()
         return httpx.Response(
             200,
             json={
-                "disclosure_id": "DISC-GLOBAL-QUOTE-02",
+                "disclosure_id": "DISC-GLOBAL-QUOTE-32",
                 "language": params.get("language"),
                 "body": body,
                 "body_sha256": digest,

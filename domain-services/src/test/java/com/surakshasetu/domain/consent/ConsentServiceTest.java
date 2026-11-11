@@ -31,7 +31,7 @@ import tools.jackson.databind.json.JsonMapper;
 class ConsentServiceTest extends DomainApiTestSupport {
 
   private static final JsonMapper JSON = JsonMapper.builder().build();
-  private static final String EN = "2026.09.1-en";
+  private static final String EN = "2026.11.1-en"; // the en-IN notice in force (Step 1.3)
 
   // --- create and idempotency ------------------------------------------------------------
 

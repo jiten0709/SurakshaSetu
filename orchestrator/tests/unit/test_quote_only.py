@@ -1,6 +1,6 @@
 """Quote-Only (Step 19): the plan named by the customer (never proposed, I3), age and tobacco read
 back, the quote at the product's quote_defaults or a stated cover, the indicative card with
-DISC-GLOBAL-QUOTE-02 verbatim, the quote adapter's problems, the declined-tobacco path, and the
+DISC-GLOBAL-QUOTE-32 verbatim, the quote adapter's problems, the declined-tobacco path, and the
 rows: the hard block (C13), satisfied -> Exit, and the opt-in to S2 or S1. The domain tier is
 runtime_support's stand-in."""
 
@@ -124,7 +124,7 @@ async def test_a_read_back_then_the_quote_at_the_products_defaults_with_quote_02
     assert (request["age_years"], request["tobacco_12m"], request["rider_uins"]) == (34, False, [])
     assert ids(t) == [
         "template:quote_card",
-        "registry:DISC-GLOBAL-QUOTE-02",
+        "registry:DISC-GLOBAL-QUOTE-32",
         "template:quote_caveat",
         "template:quote_next",
     ]

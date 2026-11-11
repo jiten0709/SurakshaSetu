@@ -11,7 +11,7 @@ turns:
       gen-recommend: ["Premiums can qualify for the deduction only under the old tax regime [E1]."]
     expect:
       state: S1
-      parts: [generated:answer, template:side_query_caveat, template:tax_condition, template:regime_ask, "registry:DISC-GLOBAL-TAX-05", template:sources, template:side_query_bridge, template:RL-S1-RESIDENCY]
+      parts: [generated:answer, template:side_query_caveat, template:tax_condition, template:regime_ask, "registry:DISC-GLOBAL-TAX-35", template:sources, template:side_query_bridge, template:RL-S1-RESIDENCY]
       slots: {age_years: proposed}
       citations: true
       faq: answered

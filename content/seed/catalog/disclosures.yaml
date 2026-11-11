@@ -104,6 +104,107 @@ disclosures:
       en-IN: "DUMMY: Key exclusions and waiting periods summary for 999N002V01."
       hi-IN: "DUMMY: [hi translation pending approval] Key exclusions and waiting periods summary for 999N002V01."
 
+  # Enhancement Step 1.3 (2026-11-09): the reviewed drafts with demo values, still DUMMY until
+  # compliance approves them. New ids (bodies are immutable); the 2026.09.1 rows above stay.
+  - disclosure_id: DISC-GLOBAL-SOLICIT-31
+    scope: GLOBAL
+    scope_key: null
+    approved_by: compliance-officer@surakshalife.example.com
+    effective_from: 2026-11-09
+    effective_to: null
+    is_dummy: true
+    bodies:
+      en-IN: "DUMMY: This conversation is a solicitation for life insurance by Suraksha Life Insurance Company Limited, registered with IRDAI under registration number IRDAI/R/2026/001. The plans shown are the insurer's own products. Insurance is the subject matter of the solicitation. For details of risk factors, terms and conditions, please read the sales brochure and policy wording carefully before concluding a sale."
+      hi-IN: "DUMMY: [hi translation pending approval] This conversation is a solicitation for life insurance by Suraksha Life Insurance Company Limited, registered with IRDAI under registration number IRDAI/R/2026/001. The plans shown are the insurer's own products. Insurance is the subject matter of the solicitation. For details of risk factors, terms and conditions, please read the sales brochure and policy wording carefully before concluding a sale."
+
+  - disclosure_id: DISC-GLOBAL-QUOTE-32
+    scope: GLOBAL
+    scope_key: null
+    approved_by: compliance-officer@surakshalife.example.com
+    effective_from: 2026-11-09
+    effective_to: null
+    is_dummy: true
+    bodies:
+      en-IN: "DUMMY: The premium shown is indicative. It is based on your answers here and the insurer's current rates, and the final premium is set by the insurer after underwriting, once your application, health and other details have been reviewed. It may be higher or lower than shown, and the cover may be offered on different terms."
+      hi-IN: "DUMMY: [hi translation pending approval] The premium shown is indicative. It is based on your answers here and the insurer's current rates, and the final premium is set by the insurer after underwriting, once your application, health and other details have been reviewed. It may be higher or lower than shown, and the cover may be offered on different terms."
+
+  - disclosure_id: DISC-GLOBAL-S45-33
+    scope: GLOBAL
+    scope_key: null
+    approved_by: compliance-officer@surakshalife.example.com
+    effective_from: 2026-11-09
+    effective_to: null
+    is_dummy: true
+    bodies:
+      en-IN: "DUMMY: You must give true and complete answers to every question the insurer asks. If a material fact is misstated or not disclosed, the insurer may question the policy and decline a claim, as Section 45 of the Insurance Act, 1938 allows. After the policy has been in force for 3 years from its issue, revival or rider date, it cannot be questioned on any ground, under that same section."
+      hi-IN: "DUMMY: [hi translation pending approval] You must give true and complete answers to every question the insurer asks. If a material fact is misstated or not disclosed, the insurer may question the policy and decline a claim, as Section 45 of the Insurance Act, 1938 allows. After the policy has been in force for 3 years from its issue, revival or rider date, it cannot be questioned on any ground, under that same section."
+
+  - disclosure_id: DISC-GLOBAL-FREELOOK-34
+    scope: GLOBAL
+    scope_key: null
+    approved_by: compliance-officer@surakshalife.example.com
+    effective_from: 2026-11-09
+    effective_to: null
+    is_dummy: true
+    bodies:
+      en-IN: "DUMMY: Free-look period: after you receive the policy document, you have 30 days to review its terms. If you disagree with any of them, you may return the policy within that period, stating your reasons. The insurer then refunds the premium paid, after deducting only what the regulations allow (proportionate risk premium, expenses for medical examination, and stamp duty charges)."
+      hi-IN: "DUMMY: [hi translation pending approval] Free-look period: after you receive the policy document, you have 30 days to review its terms. If you disagree with any of them, you may return the policy within that period, stating your reasons. The insurer then refunds the premium paid, after deducting only what the regulations allow (proportionate risk premium, expenses for medical examination, and stamp duty charges)."
+
+  - disclosure_id: DISC-GLOBAL-TAX-35
+    scope: GLOBAL
+    scope_key: null
+    approved_by: compliance-officer@surakshalife.example.com
+    effective_from: 2026-11-09
+    effective_to: null
+    is_dummy: true
+    bodies:
+      en-IN: "DUMMY: Tax benefits, if any, depend on the tax law in force, the tax regime you choose and your own circumstances, and the law can change. Nothing in this conversation is tax advice; please consult a tax professional about what applies to you."
+      hi-IN: "DUMMY: [hi translation pending approval] Tax benefits, if any, depend on the tax law in force, the tax regime you choose and your own circumstances, and the law can change. Nothing in this conversation is tax advice; please consult a tax professional about what applies to you."
+
+  - disclosure_id: DISC-GLOBAL-AI-36
+    scope: GLOBAL
+    scope_key: null
+    approved_by: compliance-officer@surakshalife.example.com
+    effective_from: 2026-11-09
+    effective_to: null
+    is_dummy: true
+    bodies:
+      en-IN: "DUMMY: You are chatting with SurakshaSetu, an automated AI assistant, not a person. It can make mistakes, and it gives no final decisions: eligibility, premiums and terms are decided by the insurer's rules and underwriting. You can ask for a licensed human advisor at any time."
+      hi-IN: "DUMMY: [hi translation pending approval] You are chatting with SurakshaSetu, an automated AI assistant, not a person. It can make mistakes, and it gives no final decisions: eligibility, premiums and terms are decided by the insurer's rules and underwriting. You can ask for a licensed human advisor at any time."
+
+  - disclosure_id: DISC-CAT-SAVINGS-41
+    scope: CATEGORY
+    scope_key: NON_PAR_SAVINGS
+    approved_by: compliance-officer@surakshalife.example.com
+    effective_from: 2026-11-09
+    effective_to: null
+    is_dummy: true
+    bodies:
+      en-IN: "DUMMY: This plan has benefits that are fixed by the policy and benefits that are not fixed and can vary. The benefit illustration shows both, at the illustrative rates the regulations set; those rates are not a forecast and are not promised. Please read the benefit illustration and the policy wording before you decide."
+      hi-IN: "DUMMY: [hi translation pending approval] This plan has benefits that are fixed by the policy and benefits that are not fixed and can vary. The benefit illustration shows both, at the illustrative rates the regulations set; those rates are not a forecast and are not promised. Please read the benefit illustration and the policy wording before you decide."
+
+  - disclosure_id: DISC-UIN-999N001V02-51
+    scope: UIN
+    scope_key: 999N001V02
+    approved_by: compliance-officer@surakshalife.example.com
+    effective_from: 2026-11-09
+    effective_to: null
+    is_dummy: true
+    bodies:
+      en-IN: "DUMMY: Key exclusions for Suraksha Term Shield (999N001V02): if the life assured's death is self-inflicted within 12 months of the start or revival of the policy, the death benefit is limited to 80% of the premiums paid or the surrender value, whichever is higher. Other exclusions are set out in the policy wording's exclusions section. Riders have their own exclusions and waiting periods, set out in each rider wording. This is a summary; the policy wording is the full and binding text."
+      hi-IN: "DUMMY: [hi translation pending approval] Key exclusions for Suraksha Term Shield (999N001V02): if the life assured's death is self-inflicted within 12 months of the start or revival of the policy, the death benefit is limited to 80% of the premiums paid or the surrender value, whichever is higher. Other exclusions are set out in the policy wording's exclusions section. Riders have their own exclusions and waiting periods, set out in each rider wording. This is a summary; the policy wording is the full and binding text."
+
+  - disclosure_id: DISC-UIN-999N002V01-52
+    scope: UIN
+    scope_key: 999N002V01
+    approved_by: compliance-officer@surakshalife.example.com
+    effective_from: 2026-11-09
+    effective_to: null
+    is_dummy: true
+    bodies:
+      en-IN: "DUMMY: Key exclusions for Suraksha Term Shield ROP (999N002V01): if the life assured's death is self-inflicted within 12 months of the start or revival of the policy, the death benefit is limited to 80% of the premiums paid or the surrender value, whichever is higher. Other exclusions are set out in the policy wording's exclusions section. The return of premium on survival is paid only if all premiums due have been paid and the policy is in force at maturity. This is a summary; the policy wording is the full and binding text."
+      hi-IN: "DUMMY: [hi translation pending approval] Key exclusions for Suraksha Term Shield ROP (999N002V01): if the life assured's death is self-inflicted within 12 months of the start or revival of the policy, the death benefit is limited to 80% of the premiums paid or the surrender value, whichever is higher. Other exclusions are set out in the policy wording's exclusions section. The return of premium on survival is paid only if all premiums due have been paid and the policy is in force at maturity. This is a summary; the policy wording is the full and binding text."
+
 # Ordered sets, one row per channel x language. TDD §7.3 seed order for 999N001V02; 999N002V01 is
 # the same with its own UIN item. A set is immutable under its registry_version.
 disclosure_sets:
@@ -130,3 +231,28 @@ disclosure_sets:
       - DISC-GLOBAL-S45-03
       - DISC-GLOBAL-FREELOOK-04
       - DISC-GLOBAL-TAX-05
+
+  # Enhancement Step 1.3 (2026-11-09): the same order with the new ids.
+  - uin: 999N001V02
+    registry_version: "2026.11.1"
+    channels: [web, app]
+    languages: [en-IN, hi-IN]
+    disclosure_ids:
+      - DISC-GLOBAL-SOLICIT-31
+      - DISC-GLOBAL-QUOTE-32
+      - DISC-UIN-999N001V02-51
+      - DISC-GLOBAL-S45-33
+      - DISC-GLOBAL-FREELOOK-34
+      - DISC-GLOBAL-TAX-35
+
+  - uin: 999N002V01
+    registry_version: "2026.11.1"
+    channels: [web, app]
+    languages: [en-IN, hi-IN]
+    disclosure_ids:
+      - DISC-GLOBAL-SOLICIT-31
+      - DISC-GLOBAL-QUOTE-32
+      - DISC-UIN-999N002V01-52
+      - DISC-GLOBAL-S45-33
+      - DISC-GLOBAL-FREELOOK-34
+      - DISC-GLOBAL-TAX-35

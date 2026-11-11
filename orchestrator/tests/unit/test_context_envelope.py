@@ -61,7 +61,7 @@ def test_sections_run_static_to_dynamic_in_two_provider_neutral_messages() -> No
     system, user = env.messages
 
     assert [m["role"] for m in env.messages] == ["system", "user"]
-    l0 = bundle().l0.replace("{insurer}", "DUMMY Insurer").rstrip("\n")
+    l0 = bundle().l0.replace("{insurer}", "Suraksha Life Insurance Company Limited").rstrip("\n")
     assert system["content"].startswith(l0)  # the cacheable prefix
     assert system["content"].endswith(bundle().l1["S3"])
     marks = ["<session_facts>", "<summary>", "<recent_turns>", "ENGINE_RESULT:", "EVIDENCE:"]

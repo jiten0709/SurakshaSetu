@@ -18,10 +18,10 @@ turns:
   - text: "yes"
     expect:
       state: QUOTE_ONLY
-      parts: [template:quote_card, registry:DISC-GLOBAL-QUOTE-02, template:quote_caveat, template:quote_next]
+      parts: [template:quote_card, registry:DISC-GLOBAL-QUOTE-32, template:quote_caveat, template:quote_next]
       engine: {service: quote}
       slots: {age_years: confirmed, tobacco_12m: confirmed}
-      contains: ["Indicative premium for Suraksha Term Shield (UIN 999N001V02): ₹16,000 a year.", "Cover: ₹1,00,00,000 for 30 years.", "DUMMY: Premium is indicative, final after underwriting."]
+      contains: ["Indicative premium for Suraksha Term Shield (UIN 999N001V02): ₹16,000 a year.", "Cover: ₹1,00,00,000 for 30 years.", "DUMMY: The premium shown is indicative."]
   - text: great, apply now
     expect: {state: QUOTE_ONLY, row: QO.1, reason: HARD_BLOCK_C13, templates: [hard_block], absent: [ENGINE_DECISION, HANDOFF]}
   - text: I want to buy this plan today

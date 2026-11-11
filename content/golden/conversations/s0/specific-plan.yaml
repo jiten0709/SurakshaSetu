@@ -3,7 +3,7 @@ description: >-
   Consent plus specific_plan goes to Quote-Only (row S0.3), which asks the customer to name a plan
   (I3). The TDD example then: 34, no tobacco, read back, and 999N001V02 quoted at its
   quote_defaults (₹1 crore, 30 years, regular, annual) for the DUMMY ₹16,000, with
-  DISC-GLOBAL-QUOTE-02 verbatim from the registry.
+  DISC-GLOBAL-QUOTE-32 verbatim from the registry.
 turns:
   - action: {type: START}
     expect: {state: S0, templates: [greeting]}
@@ -20,7 +20,7 @@ turns:
   - text: "yes"
     expect:
       state: QUOTE_ONLY
-      parts: [template:quote_card, registry:DISC-GLOBAL-QUOTE-02, template:quote_caveat, template:quote_next]
+      parts: [template:quote_card, registry:DISC-GLOBAL-QUOTE-32, template:quote_caveat, template:quote_next]
       engine: {service: quote}
       slots: {age_years: confirmed, tobacco_12m: confirmed}
-      contains: ["Indicative premium for Suraksha Term Shield (UIN 999N001V02): ₹16,000 a year.", "Cover: ₹1,00,00,000 for 30 years.", "DUMMY: Premium is indicative, final after underwriting."]
+      contains: ["Indicative premium for Suraksha Term Shield (UIN 999N001V02): ₹16,000 a year.", "Cover: ₹1,00,00,000 for 30 years.", "DUMMY: The premium shown is indicative."]

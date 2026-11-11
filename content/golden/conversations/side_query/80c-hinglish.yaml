@@ -1,7 +1,7 @@
 id: sq-80c-hinglish
 description: >-
   The worked example in Hinglish (S2): the general rule from the Income-tax Act 2025 evidence,
-  cited, the regime condition asked, DISC-GLOBAL-TAX-05 verbatim, then back to the pending question.
+  cited, the regime condition asked, DISC-GLOBAL-TAX-35 verbatim, then back to the pending question.
 prelude: to-s2
 turns:
   - text: section 80C ke under life insurance premium ka deduction kitna hai?
@@ -10,7 +10,7 @@ turns:
       gen-recommend: ["Premium par deduction sirf old tax regime mein milta hai, conditions ke saath [E1]."]
     expect:
       state: S2
-      parts: [generated:answer, template:side_query_caveat, template:tax_condition, template:regime_ask, "registry:DISC-GLOBAL-TAX-05", template:sources, template:side_query_bridge, template:RL-S2-GOALS]
+      parts: [generated:answer, template:side_query_caveat, template:tax_condition, template:regime_ask, "registry:DISC-GLOBAL-TAX-35", template:sources, template:side_query_bridge, template:RL-S2-GOALS]
       citations: true
       abstained: false
       retrieved: ["tax:ita2025"]

@@ -18,6 +18,6 @@ turns:
   - text: "yes"
     expect:
       state: QUOTE_ONLY
-      parts: [template:quote_card, registry:DISC-GLOBAL-QUOTE-02, template:quote_caveat, template:quote_next]
+      parts: [template:quote_card, registry:DISC-GLOBAL-QUOTE-32, template:quote_caveat, template:quote_next]
       engine: {service: quote}
       slots: {tobacco_12m: confirmed}

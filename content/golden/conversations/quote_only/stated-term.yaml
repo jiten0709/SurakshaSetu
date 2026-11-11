@@ -7,6 +7,6 @@ turns:
       nlu-extract: [{intents: [SLOT_ANSWER], slots: [{slot: term_years, value: 20, confidence: 0.95, evidence_span: 20 years}]}]
     expect:
       state: QUOTE_ONLY
-      parts: [template:quote_card, registry:DISC-GLOBAL-QUOTE-02, template:quote_caveat, template:quote_next]
+      parts: [template:quote_card, registry:DISC-GLOBAL-QUOTE-32, template:quote_caveat, template:quote_next]
       engine: {service: quote}
       contains: ["for 20 years"]

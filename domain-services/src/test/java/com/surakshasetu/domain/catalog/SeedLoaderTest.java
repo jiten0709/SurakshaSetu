@@ -29,17 +29,17 @@ class SeedLoaderTest extends DomainApiTestSupport {
             count(
                 "SELECT count(*) FROM catalog.disclosure WHERE disclosure_id LIKE 'DISC-%'"
                     + " AND body LIKE 'DUMMY:%'"))
-        .isEqualTo(9 * 2);
+        .isEqualTo((9 + 9) * 2); // the 2026.09.1 edition and Step 1.3's, two languages each
     assertThat(
             count(
                 "SELECT count(*) FROM catalog.disclosure_set"
                     + " WHERE channel IN ('web', 'app') AND language IN ('en-IN', 'hi-IN')"))
-        .isEqualTo(2 * 2 * 2);
+        .isEqualTo(2 * 2 * 2 * 2); // registry versions 2026.09.1 and 2026.11.1
     assertThat(count("SELECT count(*) FROM catalog.pincode")).isEqualTo(20);
     assertThat(count("SELECT count(*) FROM catalog.occupation")).isEqualTo(10);
     assertThat(count("SELECT count(DISTINCT risk_class) FROM catalog.occupation")).isEqualTo(4);
     assertThat(count("SELECT count(*) FROM consent.notice_version WHERE body LIKE 'DUMMY:%'"))
-        .isEqualTo(2);
+        .isEqualTo(3); // 2026.09.1-en, 2026.09.1-hi, 2026.11.1-en
     for (String table :
         new String[] {
           "catalog.product",

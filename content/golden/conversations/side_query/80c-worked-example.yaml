@@ -4,7 +4,7 @@ description: >-
   maps 80C to section 123 of the Income-tax Act 2025 and Schedule XV, and the current tax year
   (2026-27, the 2025 Act in force from 1 April 2026) keeps the 1961-Act chunks out. The answer is
   the general rule, cited and verified, with the regime condition (unknown, so asked) and
-  DISC-GLOBAL-TAX-05 verbatim, never a computation; then the bridge and S2's pending question. The
+  DISC-GLOBAL-TAX-35 verbatim, never a computation; then the bridge and S2's pending question. The
   customer answers the regime (confirmed), and the next tax question no longer asks it.
 prelude: to-s2
 turns:
@@ -15,7 +15,7 @@ turns:
     expect:
       state: S2
       row: S2.STAY
-      parts: [generated:answer, template:side_query_caveat, template:tax_condition, template:regime_ask, "registry:DISC-GLOBAL-TAX-05", template:sources, template:side_query_bridge, template:RL-S2-GOALS]
+      parts: [generated:answer, template:side_query_caveat, template:tax_condition, template:regime_ask, "registry:DISC-GLOBAL-TAX-35", template:sources, template:side_query_bridge, template:RL-S2-GOALS]
       citations: true
       abstained: false
       faq: answered
@@ -30,5 +30,5 @@ turns:
       gen-recommend: ["Under the old regime the deduction for premiums can apply, subject to its conditions [E1]."]
     expect:
       state: S2
-      parts: [generated:answer, template:side_query_caveat, template:tax_condition, "registry:DISC-GLOBAL-TAX-05", template:sources, template:side_query_bridge, template:RL-S2-GOALS]
+      parts: [generated:answer, template:side_query_caveat, template:tax_condition, "registry:DISC-GLOBAL-TAX-35", template:sources, template:side_query_bridge, template:RL-S2-GOALS]
       faq: answered

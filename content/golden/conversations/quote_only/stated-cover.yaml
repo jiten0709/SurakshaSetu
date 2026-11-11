@@ -9,6 +9,6 @@ turns:
       nlu-extract: [{intents: [SLOT_ANSWER], slots: [{slot: sum_assured_inr, value: 20000000, confidence: 0.95, evidence_span: 2 crore}]}]
     expect:
       state: QUOTE_ONLY
-      parts: [template:quote_card, registry:DISC-GLOBAL-QUOTE-02, template:quote_caveat, template:quote_next]
+      parts: [template:quote_card, registry:DISC-GLOBAL-QUOTE-32, template:quote_caveat, template:quote_next]
       engine: {service: quote}
       contains: ["₹2,00,00,000"]

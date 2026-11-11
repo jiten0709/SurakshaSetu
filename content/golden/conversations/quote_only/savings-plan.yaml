@@ -18,4 +18,4 @@ turns:
   - text: "yes"
     expect: {templates: [plan_unavailable], contains: ["Suraksha Saver Guarantee isn't available to buy right now"], absent: [ENGINE_DECISION]}
   - text: Suraksha Term Shield then
-    expect: {parts: [template:quote_card, registry:DISC-GLOBAL-QUOTE-02, template:quote_caveat, template:quote_next], contains: ["₹16,000 a year"]}
+    expect: {parts: [template:quote_card, registry:DISC-GLOBAL-QUOTE-32, template:quote_caveat, template:quote_next], contains: ["₹16,000 a year"]}

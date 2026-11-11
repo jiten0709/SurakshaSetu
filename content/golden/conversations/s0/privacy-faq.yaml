@@ -7,4 +7,4 @@ turns:
     expect: {state: S0, templates: [greeting]}
   - text: How will you use my information?
     script: {nlu-extract: [{intents: [GENERAL_FAQ], side_query: "How will you use my information?"}]}
-    expect: {state: S0, templates: [], parts: ["faq:2026.10.1:PF-PURPOSES"], form: true, faq: "faq:PF-PURPOSES", absent: [MODEL_CALL, RETRIEVAL]}
+    expect: {state: S0, templates: [], parts: ["faq:2026.11.1:PF-PURPOSES"], form: true, faq: "faq:PF-PURPOSES", absent: [MODEL_CALL, RETRIEVAL]}

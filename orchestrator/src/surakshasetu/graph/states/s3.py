@@ -34,7 +34,7 @@ quoted again with its own values), then the customer's choice:
 Free text: "which one should I buy?" (the top option and its reasons; the choice stays the
 customer's), a plan that is not an option (why, from the held eligibility and suitability, and an
 advisor), "make it cheaper", and questions (tax, an exclusion dispute, a guarantee) answered from
-the evidence with citations, the state's caveat, and for tax DISC-GLOBAL-TAX-05 verbatim. Anything
+the evidence with citations, the state's caveat, and for tax DISC-GLOBAL-TAX-35 verbatim. Anything
 else gets structured choices (TDD §3.9).
 
 The transition for an entering turn is already decided, so a problem found there is answered on

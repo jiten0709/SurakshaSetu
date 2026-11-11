@@ -1,7 +1,7 @@
 id: s3-tax
 description: >-
   "How much tax will I save?": the general rule from the tax evidence, cited and verified; the
-  regime condition and no personal computation; DISC-GLOBAL-TAX-05 verbatim from the registry.
+  regime condition and no personal computation; DISC-GLOBAL-TAX-35 verbatim from the registry.
 prelude: to-s3
 turns:
   - text: "yes"
@@ -12,7 +12,7 @@ turns:
       gen-recommend: ["Premiums can qualify for a deduction only under the old tax regime, subject to conditions [E2]."]
     expect:
       state: S3
-      parts: [generated:answer, template:side_query_caveat, template:tax_condition, template:regime_ask, "registry:DISC-GLOBAL-TAX-05", template:sources, template:side_query_bridge, template:s3_choices]
+      parts: [generated:answer, template:side_query_caveat, template:tax_condition, template:regime_ask, "registry:DISC-GLOBAL-TAX-35", template:sources, template:side_query_bridge, template:s3_choices]
       faq: answered
       citations: true
       abstained: false

@@ -72,10 +72,10 @@ CONV_TABLES = ("recommendation", "handoff", "slot_value", "turn", "session")
 TAMPERED = "9999.12.1"
 FIXTURE_SET = (
     "DISC-GLOBAL-SOLICIT-01",
-    "DISC-GLOBAL-QUOTE-02",
+    "DISC-GLOBAL-QUOTE-32",
     "DISC-GLOBAL-S45-03",
     "DISC-GLOBAL-FREELOOK-04",
-    "DISC-GLOBAL-TAX-05",
+    "DISC-GLOBAL-TAX-35",
 )
 CHECKPOINT_TABLES = ("checkpoint_writes", "checkpoint_blobs", "checkpoints")
 # OmniRoute sidelines a failed target for about 3 s (infra/omniroute/HARDENING.md), and every route
@@ -693,9 +693,9 @@ class Play:
             t.notices[version] = (notice.body, notice.body_sha256)
         for language in ("en-IN", "hi-IN"):
             for disclosure_id in (
-                "DISC-GLOBAL-AI-06",
-                "DISC-GLOBAL-QUOTE-02",
-                "DISC-GLOBAL-TAX-05",
+                "DISC-GLOBAL-AI-36",
+                "DISC-GLOBAL-QUOTE-32",
+                "DISC-GLOBAL-TAX-35",
             ):
                 found = await self.runtime.domain.get_disclosure(disclosure_id, language)
                 t.registry_bodies.add(found.body)

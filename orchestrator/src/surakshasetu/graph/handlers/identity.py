@@ -1,7 +1,7 @@
 """I6 (TDD §3.2, §3.5): "Am I talking to a person?" always gets the truthful, templated answer, in
 any state. The question is detected deterministically, from the bundle's closed phrase list
 (lexicons/identity_question.yaml) on the normalised turn, so a model outage cannot hide it. compose
-puts the `ai_redisclosure` template, filled with the registry's DISC-GLOBAL-AI-06 body verbatim,
+puts the `ai_redisclosure` template, filled with the registry's DISC-GLOBAL-AI-36 body verbatim,
 before anything else the turn says (after the crisis script, when that is signalled).
 
 The S0 greeting shows the same registry body (graph/states/s0.py); both fetch it through
@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-AI_DISCLOSURE = "DISC-GLOBAL-AI-06"
+AI_DISCLOSURE = "DISC-GLOBAL-AI-36"
 
 
 def asks(prompts: PromptBundle, pipeline: PipelineResult | None) -> bool:
@@ -30,7 +30,7 @@ def asks(prompts: PromptBundle, pipeline: PipelineResult | None) -> bool:
 
 
 async def disclosure(turn: "Turn") -> str | None:
-    """DISC-GLOBAL-AI-06 in the session's language, verbatim, fetched once per turn. None when the
+    """DISC-GLOBAL-AI-36 in the session's language, verbatim, fetched once per turn. None when the
     registry cannot give it; the caller decides what that means."""
     if turn.ai_disclosure is None:
         try:
