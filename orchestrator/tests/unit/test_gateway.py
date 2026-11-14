@@ -9,6 +9,7 @@ import pytest
 import respx
 from pydantic import BaseModel, SecretStr
 
+from surakshasetu.analysis.models import TurnAnalysis
 from surakshasetu.config import Settings
 from surakshasetu.crypto.jcs import sha256_hex
 from surakshasetu.gateway import (
@@ -21,6 +22,7 @@ from surakshasetu.gateway import (
 )
 from surakshasetu.gateway.adapter import ROUTES, TeiModel
 from surakshasetu.logging import configure_logging
+from surakshasetu.rails.injection import GuardVerdict as RailGuardVerdict
 
 GATEWAY = "http://gateway.test/v1"
 EMBED = "http://embed.test"
@@ -286,6 +288,36 @@ async def test_content_failing_the_response_format_is_unavailable(
         await call(Route.GUARD_INPUT, response_format=GuardVerdict)
 
     assert failed.value.reason == "SCHEMA_MISMATCH"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_an_out_of_range_guard_score_fails_closed_unclamped(
+    respx_mock: respx.MockRouter,
+) -> None:
+    # O5: a backend may ignore the schema's number bounds (readiness §13.2: 1.9625). The adapter's
+    # own check refuses it; nothing clamps it into range.
+    respx_mock.post(f"{GATEWAY}/chat/completions").respond(
+        200, json=completion('{"injection_score": 1.9625, "safety": "safe"}')
+    )
+
+    with pytest.raises(GatewayUnavailable) as failed:
+        await call(Route.GUARD_INPUT, response_format=RailGuardVerdict)
+
+    assert failed.value.reason == "SCHEMA_MISMATCH"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_the_sent_schema_is_normalised(respx_mock: respx.MockRouter) -> None:
+    route = respx_mock.post(f"{GATEWAY}/chat/completions").respond(
+        200, json=completion('{"intents": [], "language": "en"}')
+    )
+
+    await call(Route.NLU_EXTRACT, response_format=TurnAnalysis)
+
+    sent = json.loads(route.calls.last.request.content)["response_format"]["json_schema"]
+    assert sent["schema"]["$defs"]["SlotCandidate"]["properties"]["value"] == {}
 
 
 # --- embed and rerank: TEI, called directly --------------------------------------------------

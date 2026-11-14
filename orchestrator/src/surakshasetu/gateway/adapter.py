@@ -235,7 +235,7 @@ class Gateway:
                 "type": "json_schema",
                 "json_schema": {
                     "name": response_format.__name__,
-                    "schema": response_format.model_json_schema(),
+                    "schema": _normalise_schema(response_format.model_json_schema()),
                 },
             }
         headers = {
@@ -406,6 +406,34 @@ def _check_data_class(
     if reason is not None:
         logger.warning("gateway %s refused: %s", route, reason)
         raise GatewayPolicyViolation(reason)
+
+
+# Schema keywords holding one subschema, a list of them, or a name -> subschema map.
+_ONE_SCHEMA = ("items", "additionalProperties", "not")
+_SCHEMA_LIST = ("anyOf", "oneOf", "allOf", "prefixItems")
+_SCHEMA_MAP = ("properties", "$defs", "patternProperties")
+
+
+def _normalise_schema(node: Any) -> Any:
+    """A subschema that is only an annotation title (Pydantic's `Any`, e.g. SlotCandidate.value)
+    becomes `{}`, which accepts the same instances: a self-hosted backend's grammar converter
+    rejects the titled form (O1, readiness §14.1). Only schema positions are walked, so a property
+    *named* title, or a `default` that looks like one, is never touched."""
+    if not isinstance(node, dict):
+        return node  # a boolean schema
+    if node.keys() == {"title"} and isinstance(node["title"], str):
+        return {}
+    out = dict(node)
+    for key in _ONE_SCHEMA:
+        if key in out:
+            out[key] = _normalise_schema(out[key])
+    for key in _SCHEMA_LIST:
+        if key in out:
+            out[key] = [_normalise_schema(s) for s in out[key]]
+    for key in _SCHEMA_MAP:
+        if key in out:
+            out[key] = {name: _normalise_schema(s) for name, s in out[key].items()}
+    return out
 
 
 def _compression_fired(value: str) -> bool:
