@@ -133,6 +133,8 @@ async def run_slots(
     domain: DomainClient,
     settings: Settings,
     asked: dict[str, frozenset[str]],
+    *,
+    guard_prompt: str | None = None,
 ) -> list[SlotResult]:
     results = []
     for item in items:
@@ -145,6 +147,7 @@ async def run_slots(
             fsm_state=state.value,
             pending=PendingSlotSpec(item.pending_slot, KNOWN_SLOTS[state]),
             settings=settings,
+            guard_prompt=guard_prompt,
         )
         results.append(SlotResult(item, await _read(item, found.result, domain, settings, asked)))
     logger.info("slot labels: %d utterances read", len(results))
@@ -202,7 +205,11 @@ async def _understand(state: str, slot: str, raw: Any, evidence: str, domain: Do
 
 
 async def run_intents(
-    items: Sequence[IntentItem], gateway: Gateway, settings: Settings
+    items: Sequence[IntentItem],
+    gateway: Gateway,
+    settings: Settings,
+    *,
+    guard_prompt: str | None = None,
 ) -> list[IntentResult]:
     """The intents a turn ends up with: nlu-extract's after the block filter (a blocked turn keeps
     only a withdrawal), and SAFETY when the safety rail blocked it (it fails closed on its lexicon
@@ -217,6 +224,7 @@ async def run_intents(
             fsm_state=item.state,
             pending=PendingSlotSpec(None, KNOWN_SLOTS.get(FsmState(item.state), ())),
             settings=settings,
+            guard_prompt=guard_prompt,
         )
         intents = (
             {i.value for i in found.result.analysis.intents} if found.result.analysis else set()

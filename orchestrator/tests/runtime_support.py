@@ -42,7 +42,7 @@ def settings(**update: Any) -> Settings:
 
 def pins() -> VersionPins:
     return VersionPins(
-        prompt_bundle="pb-2026.10.12",
+        prompt_bundle="pb-2026.10.13",
         rules="2026.09.1",
         corpus={},
         consent_notice=NOTICE,
@@ -73,10 +73,13 @@ class Models:
         self.recommend = list(recommend)  # Step 21: gen-recommend drafts, in order; then CITED
         self.safety, self.injection, self.down = safety, injection, down
         self.routes: list[str] = []
+        self.messages: dict[str, list[dict[str, str]]] = {}  # each route's last request
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
-        route = json.loads(request.content)["model"]
+        body = json.loads(request.content)
+        route = body["model"]
         self.routes.append(route)
+        self.messages[route] = body["messages"]
         if route in self.down:
             raise httpx.ConnectError("down")
         if route == "guard-input":

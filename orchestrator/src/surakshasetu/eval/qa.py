@@ -100,7 +100,9 @@ async def run_qa(
                 attestation=envelope.attestation,
             )
             draft.served_model = reply.served_model
-            await _judge(draft, reply.content, ctx, gateway, pack)
+            await _judge(
+                draft, reply.content, ctx, gateway, pack, bundle.rails.get(Route.VERIFY_CLAIMS)
+            )
         except (EnvelopeError, GatewayUnavailable) as exc:
             draft.error = exc.reason
             logger.warning("qa %s: %s", question.id, exc.reason)
@@ -114,19 +116,24 @@ async def run_qa(
 
 
 async def _judge(
-    draft: Draft, text: str, ctx: OutputContext, gateway: Gateway, pack: LexiconPack
+    draft: Draft,
+    text: str,
+    ctx: OutputContext,
+    gateway: Gateway,
+    pack: LexiconPack,
+    system: str | None = None,
 ) -> None:
     issued = set(ctx.handles.evidence) | set(ctx.handles.engine)
     for sentence in sentences(normalise(text).text):
         handles = [h for h in dict.fromkeys(sentence.handles) if h in issued]
         for handle in handles:
             premise = "\n".join(sources([handle], ctx.handles))
-            draft.pairs.append(await entailed(gateway, sentence.text, premise, ctx))
+            draft.pairs.append(await entailed(gateway, sentence.text, premise, ctx, system))
         if factual(sentence.text, pack):
             draft.cited.append(bool(handles))
             premise = "\n".join(sources(handles, ctx.handles))
             draft.claims.append(
-                bool(handles) and await entailed(gateway, sentence.text, premise, ctx)
+                bool(handles) and await entailed(gateway, sentence.text, premise, ctx, system)
             )
 
 

@@ -31,7 +31,7 @@ from surakshasetu.store.conv import SessionRow
 SID = UUID("0199a1b2-0000-7000-8000-00000000c0de")
 SUBJECT = UUID("0199a1b2-0000-7000-8000-00000000beef")
 KEY = UUID("0199a1b2-0000-7000-8000-0000000000aa")
-BUNDLE = load_bundle("pb-2026.10.12", env="dev")
+BUNDLE = load_bundle("pb-2026.10.13", env="dev")
 SCRIPTS = BUNDLE.templates["en-IN"].scripts
 NOW = datetime.now(UTC)
 SENTINEL = "my PAN is ABCDE1234F and I live at 42 Sentinel Lane"
@@ -188,10 +188,17 @@ async def test_a_template_turn_is_audited_from_input_to_validation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     recorder = Recorder(monkeypatch)
-    t = turn()
+    models = Models()
+    t = turn(models)
 
     await run(t)
 
+    # Step 1.5c: the input guard leads with the pinned bundle's guard-input prompt.
+    assert models.messages["guard-input"][0] == {
+        "role": "system",
+        "content": BUNDLE.rails["guard-input"],
+    }
+    assert models.messages["guard-input"][1]["role"] == "user"
     types = recorder.types()
     assert types[:6] == ["TURN_INPUT"] + ["GUARD_VERDICT"] * 4 + ["STATE_TRANSITION"]
     assert set(types[6:]) == {"GUARD_VERDICT"}  # the release checks (rail 8)
@@ -407,7 +414,7 @@ async def test_load_hydrates_from_conv_only_when_the_checkpoint_lags(
 async def test_a_kill_switch_on_the_active_bundle_refuses_the_turn(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    loading(monkeypatch, switches={("prompt_bundle", "pb-2026.10.12")})
+    loading(monkeypatch, switches={("prompt_bundle", "pb-2026.10.13")})
 
     with pytest.raises(BundleError) as excinfo:
         await nodes.load(GraphState(), rt(turn()))
@@ -530,5 +537,6 @@ async def test_no_customer_words_reach_the_logs(
 
     logged = capsys.readouterr().out + "".join(p.read_text() for p in tmp_path.glob("*.log"))
     assert "transition S0 -> S0" in logged and "turn released" in logged
-    for leaked in ("ABCDE1234F", "Sentinel Lane", "key-ref", str(KEY)):
+    prompt = BUNDLE.rails["guard-input"].splitlines()[0]  # sent to the guard, never logged
+    for leaked in ("ABCDE1234F", "Sentinel Lane", "key-ref", str(KEY), prompt):
         assert leaked not in logged

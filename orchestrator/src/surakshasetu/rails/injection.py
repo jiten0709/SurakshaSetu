@@ -75,10 +75,13 @@ async def call_guard(
     turn_id: UUID,
     fsm_state: str,
     response: str | None = None,
+    system: str | None = None,
 ) -> GuardVerdict | None:
     """One guard-input call. With `response`, output mode (Step 14): the guard classifies the
-    assistant's reply to `text`, as a safety classifier reads an agent turn."""
-    messages = [{"role": "user", "content": text}]
+    assistant's reply to `text`, as a safety classifier reads an agent turn. `system` is the pinned
+    bundle's guard-input prompt (Step 1.5c), sent first when the bundle has one."""
+    messages = [{"role": "system", "content": system}] if system else []
+    messages.append({"role": "user", "content": text})
     if response is not None:
         messages.append({"role": "assistant", "content": response})
     try:

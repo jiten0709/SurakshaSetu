@@ -135,6 +135,19 @@ async def test_critical_intents_include_the_safety_block() -> None:
 
 
 @pytest.mark.asyncio
+async def test_the_labels_are_read_with_the_bundles_guard_prompt() -> None:
+    # Step 1.5c: the evaluation reads a turn exactly as the runtime does, prompt included.
+    item = labels.IntentItem(
+        id="in-ccc", language="en", state="S1", text="talk to a human", intents=["META_HUMAN"]
+    )
+    models = Models()
+    async with gateway(models) as gw:
+        await labels.run_intents([item], gw, settings(), guard_prompt="GUARD PROMPT")
+
+    assert models.messages["guard-input"][0] == {"role": "system", "content": "GUARD PROMPT"}
+
+
+@pytest.mark.asyncio
 async def test_the_qa_judge_scores_claims_and_citations() -> None:
     handles = issue([chunk("E1", text="DUMMY: the free-look period is 30 days.")], [])
     ctx = OutputContext(

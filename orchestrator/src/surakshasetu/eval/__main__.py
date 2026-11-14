@@ -85,12 +85,19 @@ async def probe(gateway: Gateway, settings: Settings) -> None:
     """Live mode: every chat route the evaluation uses answers, from a model that is not a stub."""
     bundle = load_bundle(settings.prompt_bundle, env=settings.env)
     ping = [{"role": "user", "content": "Reply with OK."}]
+
+    def asked(route: Route) -> list[dict[str, str]]:
+        """The ping, after the route's bundle prompt (Step 1.5c) if it has one."""
+        system = bundle.rails.get(route)
+        return ([{"role": "system", "content": system}] if system else []) + ping
+
+    raw = DataClass.SELF_HOSTED_RAW
     calls: list[tuple[Route, dict[str, Any]]] = [
-        (Route.GUARD_INPUT, {"data_class": DataClass.SELF_HOSTED_RAW, "messages": ping,
+        (Route.GUARD_INPUT, {"data_class": raw, "messages": asked(Route.GUARD_INPUT),
                              "response_format": GuardVerdict}),
-        (Route.NLU_EXTRACT, {"data_class": DataClass.SELF_HOSTED_RAW, "messages": ping,
+        (Route.NLU_EXTRACT, {"data_class": raw, "messages": ping,
                              "response_format": TurnAnalysis}),
-        (Route.VERIFY_CLAIMS, {"data_class": DataClass.SELF_HOSTED_RAW, "messages": ping,
+        (Route.VERIFY_CLAIMS, {"data_class": raw, "messages": asked(Route.VERIFY_CLAIMS),
                                "response_format": ClaimCheck}),
     ]  # fmt: skip
     for l1, slot in (("side-query", None), ("S1", next(iter(bundle.templates["en-IN"].slots)))):
@@ -160,8 +167,13 @@ async def evaluate(mode: str, records_dir: Path | None, settings: Settings) -> d
                 await probe(gateway, settings)
             calls = Calls(gateway)
             asked = await labels.asked_slots(domain)
-            slot_results = await labels.run_slots(slot_items, gateway, domain, settings, asked)
-            intent_results = await labels.run_intents(intent_items, gateway, settings)
+            guard_prompt = bundle.rails.get(Route.GUARD_INPUT)
+            slot_results = await labels.run_slots(
+                slot_items, gateway, domain, settings, asked, guard_prompt=guard_prompt
+            )
+            intent_results = await labels.run_intents(
+                intent_items, gateway, settings, guard_prompt=guard_prompt
+            )
             service = RetrievalService(retrieval_metrics.CachedRerank(gateway), qdrant, meta)
             if service.thresholds is None:
                 raise Unrunnable("no content/kb/thresholds.yaml: run make calibrate-retrieval")

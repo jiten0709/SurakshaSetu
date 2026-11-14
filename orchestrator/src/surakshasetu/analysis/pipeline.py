@@ -75,9 +75,11 @@ async def analyse(
     fsm_state: str,
     pending: PendingSlotSpec,
     settings: Settings,
+    guard_prompt: str | None = None,
 ) -> Analysed:
     """The input rails and turn analysis, with no database: what analyse_turn audits, and what the
-    offline evaluation (Step 23) measures, so both read a turn the same way."""
+    offline evaluation (Step 23) measures, so both read a turn the same way. `guard_prompt` is the
+    pinned bundle's guard-input prompt (Step 1.5c)."""
     normalised = normalise(raw_text, token_cap=settings.normalise_token_cap)
     redaction = redact.redact(normalised.text)
 
@@ -88,6 +90,7 @@ async def analyse(
             session_id=session_id,
             turn_id=turn_id,
             fsm_state=fsm_state,
+            system=guard_prompt,
         )
         inj = injection.evaluate(
             redaction.stored_raw, guard, threshold=settings.injection_score_threshold
@@ -140,6 +143,7 @@ async def analyse_turn(
     ctx: TurnContext,
     *,
     settings: Settings,
+    guard_prompt: str | None = None,
 ) -> PipelineResult:
     found = await analyse(
         gateway,
@@ -149,6 +153,7 @@ async def analyse_turn(
         fsm_state=ctx.fsm_state,
         pending=ctx.pending,
         settings=settings,
+        guard_prompt=guard_prompt,
     )
     if found.injection.hit:
         conn.execute(

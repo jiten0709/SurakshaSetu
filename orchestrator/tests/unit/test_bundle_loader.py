@@ -23,7 +23,7 @@ from surakshasetu.config import Settings
 from surakshasetu.rails.normalise import normalise
 from surakshasetu.rails.output import load_pack
 
-VERSION = "pb-2026.10.12"
+VERSION = "pb-2026.10.13"
 DMN = PROMPT_BUNDLES.parents[1] / "domain-services" / "src" / "main" / "resources" / "dmn"
 
 # TDD §3.4's L0, copied here byte for byte: tests never read docs/.
@@ -152,6 +152,29 @@ def test_one_approver_is_not_a_release(copy: Path) -> None:
 def test_an_l0_over_its_budget_is_refused(copy: Path) -> None:
     budgets = load_bundle(VERSION, env="dev").manifest.budgets.model_dump()
     rehash(copy, budgets={**budgets, "constitution": 100})
+
+    assert refused(copy) == "OVER_BUDGET"
+
+
+def test_the_classifier_prompts_are_optional_and_only_these_two(copy: Path) -> None:
+    # Step 1.5c: rails/ holds the guard-input and verify-claims system prompts.
+    rails = load_bundle(VERSION, env="dev").rails
+    assert set(rails) == {"guard-input", "verify-claims"}
+    assert all("JSON object" in text for text in rails.values())  # both ask for the schema's shape
+    assert load_bundle("pb-2026.10.12", env="dev").rails == {}  # older bundles send none
+
+    (copy / VERSION / "rails" / "verify-claims.txt").unlink()
+    rehash(copy)
+    assert set(load_bundle(VERSION, env="dev", root=copy).rails) == {"guard-input"}
+
+    (copy / VERSION / "rails" / "gen-converse.txt").write_text("unapproved\n", encoding="utf-8")
+    rehash(copy)
+    assert refused(copy) == "RAILS_INVALID"
+
+
+def test_a_classifier_prompt_over_the_state_budget_is_refused(copy: Path) -> None:
+    (copy / VERSION / "rails" / "guard-input.txt").write_text("word " * 600, encoding="utf-8")
+    rehash(copy)
 
     assert refused(copy) == "OVER_BUDGET"
 

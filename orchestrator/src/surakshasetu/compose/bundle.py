@@ -63,6 +63,9 @@ SCREENING_LEXICON = "lexicons/screening.yaml"  # Step 19
 NEEDS_LEXICON = "lexicons/needs.yaml"  # Step 20
 S3_LEXICON = "lexicons/s3.yaml"  # Step 21
 SIDE_QUERY_LEXICON = "lexicons/side_query.yaml"  # Step 22
+# Step 1.5c (pb-2026.10.13 on): the classifier routes' instructions, sent as a system message before
+# the call's own messages. Optional, so an older bundle still loads and sends none.
+RAILS = {"guard-input": "rails/guard-input.txt", "verify-claims": "rails/verify-claims.txt"}
 # Word edges that also hold inside Devanagari (as rails/output.py's lexicon matching).
 _START, _END = r"(?<![\wऀ-ॿ])", r"(?![\wऀ-ॿ])"
 
@@ -70,7 +73,7 @@ _START, _END = r"(?<![\wऀ-ॿ])", r"(?![\wऀ-ॿ])"
 class BundleError(Exception):
     """The bundle cannot be used. reason: NOT_FOUND, MANIFEST_INVALID, VERSION_MISMATCH,
     FILE_MISSING, FILE_UNLISTED, HASH_MISMATCH, TEMPLATES_INVALID, LEXICON_INVALID, OVER_BUDGET,
-    DUMMY_REFUSED,
+    DUMMY_REFUSED, RAILS_INVALID (a rails/ file other than the RAILS prompts),
     KILL_SWITCHED (the kill-switched bundle is also the active one) or RELEASED_WITH_OTHER_HASH."""
 
     def __init__(self, reason: str) -> None:
@@ -578,6 +581,7 @@ class PromptBundle:
     needs_lexicon: NeedsLexicon
     s3_lexicon: S3Lexicon
     side_query_lexicon: SideQueryLexicon
+    rails: dict[str, str]  # route -> its system prompt (RAILS); empty before pb-2026.10.13
 
     @property
     def version(self) -> str:
@@ -648,6 +652,11 @@ def load_bundle(version: str, *, env: str, root: Path = PROMPT_BUNDLES) -> Promp
     budgets = manifest.budgets
     if count_tokens(l0) > budgets.constitution:
         raise _refuse(version, "OVER_BUDGET", L0_PATH)
+    if unknown := sorted(p for p in files if p.startswith("rails/") and p not in RAILS.values()):
+        raise _refuse(version, "RAILS_INVALID", unknown[0])
+    rails = {route: files[path].decode("utf-8") for route, path in RAILS.items() if path in files}
+    if over_rails := [route for route, text in rails.items() if count_tokens(text) > budgets.state]:
+        raise _refuse(version, "OVER_BUDGET", RAILS[over_rails[0]])
     if over := [name for name, text in l1.items() if count_tokens(text) > budgets.state]:
         raise _refuse(version, "OVER_BUDGET", f"l1/{over[0]}.txt")
     bundle = PromptBundle(
@@ -662,6 +671,7 @@ def load_bundle(version: str, *, env: str, root: Path = PROMPT_BUNDLES) -> Promp
         needs_lexicon=needs_lexicon,
         s3_lexicon=s3_lexicon,
         side_query_lexicon=side_query_lexicon,
+        rails=rails,
     )
     logger.info("prompt bundle %s loaded: %d files", version, len(files))
     return bundle

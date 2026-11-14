@@ -349,6 +349,7 @@ async def input_node(state: GraphState, runtime: Runtime[Turn]) -> None:
             ),
         ),
         settings=turn.settings,
+        guard_prompt=cast(PromptBundle, turn.bundle).rails.get(Route.GUARD_INPUT),
     )
     counters = dict(session.counters)
     if result.block_reason == "injection":  # mirrors analyse_turn's UPDATE of conv.session

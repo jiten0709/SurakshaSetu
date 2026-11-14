@@ -464,7 +464,11 @@ class ClaimCheck(BaseModel):
 
 
 async def verify_claims(
-    gateway: Gateway, text: str, ctx: OutputContext, settings: Settings
+    gateway: Gateway,
+    text: str,
+    ctx: OutputContext,
+    settings: Settings,
+    system: str | None = None,
 ) -> Verdict:
     """Claim-level NLI (TDD §2.5): each cited sentence against what it cites. Every claim on
     gen-recommend (S3, side-queries); on gen-converse a share of turns, drawn from the turn id so
@@ -479,7 +483,7 @@ async def verify_claims(
     if not claims:
         return Verdict("grounding", "GR-NLI", "pass")
     results = await asyncio.gather(
-        *(entailed(gateway, s.text, premise, ctx) for s, premise in claims),
+        *(entailed(gateway, s.text, premise, ctx, system) for s, premise in claims),
         return_exceptions=True,
     )
     down = [r for r in results if isinstance(r, GatewayUnavailable)]
@@ -510,18 +514,24 @@ def _nli_due(ctx: OutputContext, settings: Settings) -> bool:
     return draw < settings.verify_sample_rate
 
 
-async def entailed(gateway: Gateway, claim: str, premise: str, ctx: OutputContext) -> bool:
+async def entailed(
+    gateway: Gateway, claim: str, premise: str, ctx: OutputContext, system: str | None = None
+) -> bool:
+    """One verify-claims call. `system` is the pinned bundle's verify-claims prompt (Step 1.5c),
+    sent first when the bundle has one."""
     plain = _PLACEHOLDER.sub(lambda m: f"[{m.group(1)}]", _CITATION.sub("", claim)).strip()
+    messages = [{"role": "system", "content": system}] if system else []
+    messages.append(
+        {
+            "role": "user",
+            "content": f"<evidence>{html.escape(premise, quote=False)}</evidence>\n"
+            f"<claim>{html.escape(plain, quote=False)}</claim>",
+        }
+    )
     result = await gateway.call(
         Route.VERIFY_CLAIMS,
         data_class=DataClass.SELF_HOSTED_RAW,
-        messages=[
-            {
-                "role": "user",
-                "content": f"<evidence>{html.escape(premise, quote=False)}</evidence>\n"
-                f"<claim>{html.escape(plain, quote=False)}</claim>",
-            }
-        ],
+        messages=messages,
         session_id=ctx.session_id,
         turn_id=ctx.turn_id,
         fsm_state=ctx.fsm_state,
@@ -573,7 +583,9 @@ def _set_sha256(shown: DisclosureSet) -> str:
     )
 
 
-async def guard(gateway: Gateway, model_text: str | None, ctx: OutputContext) -> Verdict:
+async def guard(
+    gateway: Gateway, model_text: str | None, ctx: OutputContext, system: str | None = None
+) -> Verdict:
     """guard-input in output mode, on the model's text only: the rest is approved text."""
     if model_text is None:
         return Verdict("release", "RC-GUARD", "pass", detail=("no model text",))
@@ -581,6 +593,7 @@ async def guard(gateway: Gateway, model_text: str | None, ctx: OutputContext) ->
         gateway,
         text=ctx.customer_text,
         response=model_text,
+        system=system,
         session_id=ctx.session_id,
         turn_id=ctx.turn_id,
         fsm_state=ctx.fsm_state,
@@ -682,7 +695,11 @@ async def release(
         if any(v.action == "fail" for v in verdicts):
             verdicts.append(Verdict("grounding", "GR-NLI", "skipped"))
         else:
-            verdicts.append(await verify_claims(gateway, text, ctx, settings))
+            verdicts.append(
+                await verify_claims(
+                    gateway, text, ctx, settings, bundle.rails.get(Route.VERIFY_CLAIMS)
+                )
+            )
         failed = [v for v in verdicts if v.action in ("fail", "unavailable")]
         final = attempt == 2 or any(v.action == "unavailable" for v in failed)
         consequence = "fallback" if final else "regenerate"
@@ -707,7 +724,7 @@ async def release(
     rendered = render(chosen)
     checks = [
         disclosures(rendered, numbers, sets),
-        await guard(gateway, chosen, ctx),
+        await guard(gateway, chosen, ctx, bundle.rails.get(Route.GUARD_INPUT)),
         leaks(rendered.text, ctx, sets, model_text=chosen, instructions=instructions(bundle)),
         dummy(rendered.text, settings.env),
     ]

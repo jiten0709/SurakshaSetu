@@ -4,6 +4,7 @@ what was rendered, and a template plus an advisor offer when a release check blo
 is one GUARD_VERDICT event with its rule id, in the fixed order."""
 
 import hashlib
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, cast
 
@@ -13,6 +14,7 @@ from output_support import TERM, Models, Recorder, ctx, gateway, numbers, pack, 
 from output_support import settings as make_settings
 
 from surakshasetu.audit.events import EventType
+from surakshasetu.compose.bundle import PromptBundle
 from surakshasetu.compose.composer import Rendered
 from surakshasetu.config import Settings
 from surakshasetu.gateway import Route
@@ -58,6 +60,7 @@ async def run(
     context: OutputContext | None = None,
     sets: Any = None,
     settings: Settings | None = None,
+    prompts: PromptBundle | None = None,
 ) -> tuple[Released, Recorder, Renders, Regenerations]:
     recorder = Recorder(monkeypatch)
     context = context or ctx()
@@ -70,7 +73,7 @@ async def run(
             context,
             pack=pack(),
             settings=settings or make_settings(),
-            bundle=bundle(),
+            bundle=prompts or bundle(),
             draft=draft,
             regenerate=regenerate,
             render=renders,
@@ -107,6 +110,31 @@ async def test_a_clean_draft_is_released_as_written(monkeypatch: pytest.MonkeyPa
 
 
 @pytest.mark.asyncio
+async def test_guard_and_verify_calls_lead_with_the_bundles_prompts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Step 1.5c: the classifier routes get the pinned bundle's instructions as a system message.
+    models = Models()
+    await run(monkeypatch, CLEAN, models=models)
+
+    rails = bundle().rails
+    sent = {route: messages for route, messages in models.requests}
+    assert set(sent) == {"guard-input", "verify-claims"}
+    for route, messages in models.requests:
+        assert messages[0] == {"role": "system", "content": rails[route]}
+        assert [m["role"] for m in messages[1:]] in (["user"], ["user", "assistant"])
+
+
+@pytest.mark.asyncio
+async def test_a_bundle_without_prompts_sends_none(monkeypatch: pytest.MonkeyPatch) -> None:
+    models = Models()
+    older = replace(bundle(), rails={})  # pb-2026.10.12 and earlier have none
+    await run(monkeypatch, CLEAN, models=models, prompts=older)
+
+    assert models.requests and all(m[0]["role"] == "user" for _, m in models.requests)
+
+
+@pytest.mark.asyncio
 async def test_every_verdict_is_one_guard_verdict_event(monkeypatch: pytest.MonkeyPatch) -> None:
     released, recorder, _, _ = await run(monkeypatch, CLEAN)
 
@@ -114,7 +142,7 @@ async def test_every_verdict_is_one_guard_verdict_event(monkeypatch: pytest.Monk
     for event in recorder.events:
         assert event["event_type"] is EventType.GUARD_VERDICT
         assert event["session_id"] == ctx().session_id and event["key_ref"] == "key-ref"
-        assert event["pins"] == {"prompt_bundle": "pb-2026.10.12"}
+        assert event["pins"] == {"prompt_bundle": "pb-2026.10.13"}
         header = event["header"]
         assert header.pack_version == ("2026.09.1" if header.rail == "lexicon" else None)
     assert released.verdicts["grounding:GR-NLI"] == "pass"
