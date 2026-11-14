@@ -108,11 +108,13 @@ def assemble(
     gates: Sequence[Gate],
     records: Sequence[Mapping[str, Any]],
     sections: Mapping[str, Any],
+    scales: Mapping[str, float],
 ) -> dict[str, Any]:
     failing = blocking(gates)
     return {
         "mode": mode,
         "generated": stamp,
+        "scales": dict(scales),  # dev/test timeout multipliers the run used (U6)
         "result": "FAIL" if failing else "PASS",
         "blocking": [g.name for g in failing],
         "gates": [gate_row(g) for g in gates],
@@ -137,6 +139,8 @@ def markdown(report: Mapping[str, Any]) -> str:
         "",
         f"**Result: {report['result']}**"
         + (f" (blocking: {', '.join(report['blocking'])})" if report["blocking"] else ""),
+        "",
+        "Timeout scales: " + ", ".join(f"{k}={v:g}" for k, v in report["scales"].items()) + ".",
         "",
         "Enforced gates block the release; INFO rows are computed but not gated in this mode"
         " (against the stub, model-dependent metrics are informational). n/a: nothing measured.",

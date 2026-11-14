@@ -168,8 +168,10 @@ class Gateway:
         self._api_key = settings.gateway_api_key
         self._embed_dim = settings.embed_dim
         self._query_prefix = settings.embed_query_prefix
-        # Dev and test only (pilot and prod refuse anything but 1): CPU TEI misses the GPU budgets.
+        # Dev and test only (pilot and prod refuse anything but 1): CPU TEI misses the GPU budgets,
+        # and self-hosted chat models on local hardware miss the chat budgets.
         self._tei_scale = settings.tei_timeout_scale
+        self._chat_scale = settings.gateway_timeout_scale
         # Backstop only; each call's route timeout is the real limit.
         self._http = httpx.AsyncClient(
             transport=transport,
@@ -330,7 +332,7 @@ class Gateway:
         return TeiModel(info.model_id, info.model_sha)
 
     def _timeout(self, route: Route) -> float:
-        scale = self._tei_scale if route in (Route.EMBED, Route.RERANK) else 1.0
+        scale = self._tei_scale if route in (Route.EMBED, Route.RERANK) else self._chat_scale
         return ROUTES[route].timeout_s * scale
 
     async def rerank(self, query: str, docs: list[str]) -> list[float]:

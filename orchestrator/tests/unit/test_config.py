@@ -163,6 +163,38 @@ def test_the_tei_timeout_scale_cannot_shrink_a_budget(monkeypatch: pytest.Monkey
         load_settings()
 
 
+@pytest.mark.parametrize("env", ["pilot", "prod"])
+def test_the_gateway_timeout_scale_is_dev_and_test_only(
+    monkeypatch: pytest.MonkeyPatch, env: str
+) -> None:
+    monkeypatch.setenv("SS_GATEWAY_TIMEOUT_SCALE", "15")
+    assert load_settings().gateway_timeout_scale == 15
+
+    monkeypatch.setenv("SS_ENV", env)
+    monkeypatch.setenv("SS_PG_DSN_APP", "postgresql://app_rw:x@postgres:5432/surakshasetu")
+    monkeypatch.setenv("SS_REDIS_URL", "redis://valkey:6379/0")
+    monkeypatch.setenv("SS_DOMAIN_TOKEN", "pilot-token")
+    for name, value in (KEY_AND_ANCHOR_ENV | GATEWAY_ENV | KB_ENV | AUTH_ENV).items():
+        monkeypatch.setenv(name, value)
+
+    with pytest.raises(ConfigError, match="SS_GATEWAY_TIMEOUT_SCALE"):
+        load_settings()
+
+    monkeypatch.setenv("SS_GATEWAY_TIMEOUT_SCALE", "1")
+    assert load_settings().gateway_timeout_scale == 1
+
+
+@pytest.mark.parametrize("value", ["0.5", "15.5"])
+def test_the_gateway_timeout_scale_stays_between_1_and_15(
+    monkeypatch: pytest.MonkeyPatch, value: str
+) -> None:
+    # 15 keeps gen-recommend's scaled budget (90 s) below the live gateway's 105 s bound (D-2).
+    monkeypatch.setenv("SS_GATEWAY_TIMEOUT_SCALE", value)
+
+    with pytest.raises(ConfigError, match="SS_GATEWAY_TIMEOUT_SCALE"):
+        load_settings()
+
+
 def test_the_output_rail_settings_have_safe_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     settings = load_settings()
     assert (settings.output_lexicon, settings.verify_sample_rate) == ("2026.10.1", 0.1)

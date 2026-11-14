@@ -443,6 +443,36 @@ async def test_the_tei_timeout_scale_widens_embed_and_rerank_only(
 
 @pytest.mark.asyncio
 @respx.mock
+async def test_the_gateway_timeout_scale_widens_chat_routes_only(
+    respx_mock: respx.MockRouter,
+) -> None:
+    async def slow(request: httpx.Request) -> httpx.Response:
+        await asyncio.sleep(0.25)
+        if request.url.path.endswith("/embeddings"):
+            return httpx.Response(200, json=embeddings([1.0]))
+        return httpx.Response(200, json=completion())
+
+    respx_mock.post(f"{EMBED}/v1/embeddings").mock(side_effect=slow)
+    respx_mock.post(f"{GATEWAY}/chat/completions").mock(side_effect=slow)
+
+    async with Gateway(settings(embed_dim=1, gateway_timeout_scale=4)) as gateway:
+        result = await gateway.call(  # 200 ms x 4
+            Route.GUARD_INPUT,
+            data_class=DataClass.SELF_HOSTED_RAW,
+            messages=MESSAGES,
+            session_id=SESSION,
+            turn_id=TURN,
+            fsm_state="S1",
+        )
+        with pytest.raises(GatewayUnavailable) as embed_failed:  # 150 ms, unscaled
+            await gateway.embed(["a"], kind="query")
+
+    assert result.content == "Hello there."
+    assert embed_failed.value.reason == "TIMEOUT"
+
+
+@pytest.mark.asyncio
+@respx.mock
 async def test_batch_ingestion_can_widen_the_embed_budget(respx_mock: respx.MockRouter) -> None:
     async def slow(request: httpx.Request) -> httpx.Response:
         await asyncio.sleep(0.2)

@@ -88,6 +88,10 @@ class Settings(BaseSettings):
     # Dev and test only: multiplies the embed and rerank budgets, because CPU TEI misses the TDD's
     # GPU budgets (a 40-candidate rerank takes 20-40 s on CPU). Pilot and prod require exactly 1.
     tei_timeout_scale: float = Field(default=1.0, ge=1)
+    # Dev and test only (Step 1.5d): multiplies the chat routes' budgets, for self-hosted models on
+    # local hardware. At most 15, so the largest scaled budget (gen-recommend, 90 s) stays below
+    # the live gateway's 105 s response-start bound (D-2). Pilot and prod require exactly 1.
+    gateway_timeout_scale: float = Field(default=1.0, ge=1, le=15)
     # Knowledge base (Step 11): the three collections, written by ingestion, read by retrieval.
     qdrant_url: str = "http://127.0.0.1:6333"
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
@@ -174,6 +178,8 @@ class Settings(BaseSettings):
                 raise ValueError(f"env={self.env} requires {', '.join(missing)}")
             if self.tei_timeout_scale != 1:
                 raise ValueError(f"env={self.env} requires {ENV_PREFIX}TEI_TIMEOUT_SCALE=1")
+            if self.gateway_timeout_scale != 1:
+                raise ValueError(f"env={self.env} requires {ENV_PREFIX}GATEWAY_TIMEOUT_SCALE=1")
         if unknown := set(self.inactivity_timeouts) - {"S0", "S1", "QUOTE_ONLY", "S2", "S3"}:
             raise ValueError(f"inactivity_timeouts names states no timer pauses: {sorted(unknown)}")
         if any(seconds < 60 for seconds in self.inactivity_timeouts.values()):

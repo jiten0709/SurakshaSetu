@@ -13,7 +13,7 @@ from runtime_support import Models, domain, gateway, settings
 
 from surakshasetu.compose.citations import issue
 from surakshasetu.eval import __main__ as cli
-from surakshasetu.eval import labels, qa
+from surakshasetu.eval import labels, qa, report
 from surakshasetu.gateway import Route
 from surakshasetu.logging import configure_logging
 from surakshasetu.rails.output import OutputContext, load_pack
@@ -149,6 +149,17 @@ async def test_the_qa_judge_scores_claims_and_citations() -> None:
     assert draft.claims == [True, False]  # the second factual sentence cites nothing
     assert draft.pairs == [True] and draft.cited == [True, False]
     assert qa.scores([draft], "claims") == {"all": 0.5, "en": 0.5}
+
+
+def test_the_report_states_both_timeout_scales() -> None:
+    # U6 (O5): a run's budgets are part of its result, so the report says which scales it used.
+    scales = {"SS_TEI_TIMEOUT_SCALE": 1000.0, "SS_GATEWAY_TIMEOUT_SCALE": 1.0}
+    body = report.assemble(
+        mode="live", stamp="20261114T000000Z", gates=[], records=[], sections={}, scales=scales
+    )
+
+    assert body["scales"] == scales
+    assert "SS_TEI_TIMEOUT_SCALE=1000, SS_GATEWAY_TIMEOUT_SCALE=1." in report.markdown(body)
 
 
 @pytest.mark.asyncio

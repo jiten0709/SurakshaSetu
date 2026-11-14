@@ -243,9 +243,11 @@ eval: db-migrate
 # Every §5.2 gate enforced on provisioned model routes (D2): the labelled slots and intents, retrieval
 # and the QA drafts through OmniRoute's real combos. Exit 2, "eval-live requires provisioned model
 # routes (D2)", while a stub still answers any route. SS_EVAL_PRIMARY_MODELS names each route's
-# primary model for the fallback rate. The scripted suites stay with `make eval`.
+# primary model for the fallback rate. The scripted suites stay with `make eval`. Retrieval runs on
+# CPU TEI, so the TEI scale is set here, never inherited (U6, O5); the report states both scales.
 eval-live:
-	@rm -f reports/eval-latest.md; rc=0; ($(call EVAL_REPORT,) --mode live) || rc=$$?; \
+	@rm -f reports/eval-latest.md; rc=0; ($(call EVAL_REPORT,SS_TEI_TIMEOUT_SCALE=1000) --mode live) \
+		|| rc=$$?; \
 		cat reports/eval-latest.md 2>/dev/null; exit $$rc
 
 # Validate the evaluation's sets offline (TDD §7.5 step 4): the golden conversations and the

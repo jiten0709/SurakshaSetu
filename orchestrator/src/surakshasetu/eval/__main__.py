@@ -352,6 +352,10 @@ async def main_async(mode: str, records_dir: Path | None) -> int:
         gates=gates,
         records=run["records"],
         sections=sections(run),
+        scales={
+            "SS_TEI_TIMEOUT_SCALE": settings.tei_timeout_scale,
+            "SS_GATEWAY_TIMEOUT_SCALE": settings.gateway_timeout_scale,
+        },
     )
     json_path, md_path = write(body, stamp)
     for g in metrics.blocking(gates):
