@@ -13,7 +13,7 @@ from runtime_support import Models, domain, gateway, settings
 
 from surakshasetu.compose.citations import issue
 from surakshasetu.eval import __main__ as cli
-from surakshasetu.eval import labels, qa, report
+from surakshasetu.eval import labels, qa, report, retrieval_metrics
 from surakshasetu.gateway import Route
 from surakshasetu.logging import configure_logging
 from surakshasetu.rails.output import OutputContext, load_pack
@@ -183,6 +183,61 @@ async def test_live_mode_refuses_a_stub_or_an_unreachable_route() -> None:
     async with gateway(Models(down=("guard-input",))) as gw:
         with pytest.raises(cli.Unrunnable, match=r"\(D2\): guard-input"):
             await cli.probe(gw, settings())
+
+
+LOCAL = {route: "local-model" for route in ("guard-input", "nlu-extract", "verify-claims")}
+
+
+@pytest.mark.asyncio
+async def test_the_self_hosted_probe_pings_only_the_self_hosted_routes() -> None:
+    # C6 (D-4): the gen routes stay on the stubs (O4); only the self-hosted routes need a model.
+    assert {r.value for r in cli.SELF_HOSTED} == set(LOCAL) | {"summarise"}
+    models = Models(served=LOCAL)
+    async with gateway(models) as gw:
+        await cli.probe(gw, settings(), cli.SELF_HOSTED)
+        assert set(models.routes) == set(LOCAL)  # no gen route pinged
+        with pytest.raises(cli.Unrunnable, match=r"\(D2\): gen-recommend is served by a stub"):
+            await cli.probe(gw, settings())  # make eval-live is unchanged
+    async with gateway(Models()) as gw:
+        with pytest.raises(cli.Unrunnable, match=r"\(C5b\): guard-input is served by a stub"):
+            await cli.probe(gw, settings(), cli.SELF_HOSTED)
+
+
+def test_self_hosted_qa_gates_wait_and_fallback_counts_self_hosted_calls() -> None:
+    run: dict[str, Any] = {
+        "live": True,
+        "routes": "self-hosted",
+        "records": [],
+        "slots": [],
+        "intents": [],
+        "drafts": [],
+        "retrieval": retrieval_metrics.Report(lines=[], recall={}, precision={}, abstention=1.0),
+        "calls": [
+            ("guard-input", "local-model", 9.0),
+            ("gen-recommend", "stub-gen-recommend", 9.0),
+        ],
+    }
+    primaries = {"guard-input": "local-model", "gen-recommend": "hosted-model"}
+
+    gates = {g.name: g for g in cli.gates_of(run, settings(eval_primary_models=primaries))}
+    every = {
+        g.name: g
+        for g in cli.gates_of(run | {"routes": "all"}, settings(eval_primary_models=primaries))
+    }
+
+    qa_names = ("faithfulness", "citation_precision")
+    qa_gates = [g for n, g in gates.items() if n.startswith(qa_names) or n.endswith(qa_names)]
+    assert len(qa_gates) == 4
+    assert all(g.status == "WAITING" and g.waiting_on.startswith("RD-1") for g in qa_gates)
+    assert all(every[g.name].status == "FAIL" for g in qa_gates)  # unmeasured, live: blocks
+    assert gates["latency_fallback:fallback"].value == 0.0  # the stub's call isn't counted
+    assert every["latency_fallback:fallback"].value == 0.5
+
+
+def test_self_hosted_routes_need_live_mode(tmp_path: Path) -> None:
+    with pytest.raises(SystemExit) as exited:
+        cli.main(["run", "--mode", "stub", "--records", str(tmp_path), "--routes", "self-hosted"])
+    assert exited.value.code == 2
 
 
 @pytest.mark.asyncio

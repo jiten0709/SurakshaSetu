@@ -305,6 +305,9 @@ class Gate:
     enforced: bool
     note: str = ""
     waiver: Waiver | None = None
+    # A decision the gate waits on (C6: the QA gates on RD-1 while gen-recommend is a stub). It is
+    # computed and shown, and never blocks.
+    waiting_on: str = ""
 
     @property
     def met(self) -> bool | None:
@@ -317,7 +320,9 @@ class Gate:
         return self.value == self.threshold
 
     @property
-    def status(self) -> Literal["PASS", "FAIL", "WAIVED", "INFO"]:
+    def status(self) -> Literal["PASS", "FAIL", "WAIVED", "INFO", "WAITING"]:
+        if self.waiting_on:
+            return "WAITING"
         if not self.enforced:
             return "INFO"
         if self.met:
@@ -359,9 +364,17 @@ def blocking(gates: Sequence[Gate]) -> list[Gate]:
 
 # --- gate builders ------------------------------------------------------------------------------
 def _gate(
-    name: str, value: float | None, op: Op, threshold: float, enforced: bool, note: str = ""
+    name: str,
+    value: float | None,
+    op: Op,
+    threshold: float,
+    enforced: bool,
+    note: str = "",
+    *,
+    waiting_on: str = "",
 ) -> Gate:
-    return Gate(name, name.split(":")[0], value, op, threshold, enforced, note)
+    kpi = name.split(":")[0]
+    return Gate(name, kpi, value, op, threshold, enforced, note, waiting_on=waiting_on)
 
 
 def conversation_gates(
@@ -598,9 +611,12 @@ def qa_gates(
     citation_precision: Mapping[str, float | None],
     *,
     enforced: bool,
+    waiting_on: str = "",
 ) -> list[Gate]:
-    """Pre-rail faithfulness and citation precision on the QA drafts ("all" and per language)."""
-    return [
+    """Pre-rail faithfulness and citation precision on the QA drafts ("all" and per language).
+    waiting_on marks all four WAITING (C6: the drafts come from gen-recommend, a stub until
+    RD-1)."""
+    gates = [
         _gate("faithfulness", faithfulness.get("all"), ">=", 0.97, enforced),
         _gate("citation_precision", citation_precision.get("all"), ">=", 0.98, enforced),
         _gate(
@@ -618,3 +634,4 @@ def qa_gates(
             enforced,
         ),
     ]
+    return [replace(g, waiting_on=waiting_on) for g in gates]

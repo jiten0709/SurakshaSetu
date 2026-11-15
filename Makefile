@@ -40,7 +40,8 @@ TEST_ENV := SS_TEST_PG_DSN_ADMIN="postgresql://postgres:$(POSTGRES_PASSWORD)@127
 	gateway-verify kb-ingest kb-verify kb-chunks check-ingest calibrate-retrieval eval-retrieval \
 	bakeoff-embed bakeoff-rerank test-invariants eval eval-live seed-eval e2e-scripted \
 	timers-once serve local-setup verify-release-gate dossier app-up start ui-deps ui ui-types ui-check \
-	ui-e2e gateway-live-up gateway-live-verify gateway-live-down check-gateway-live $(PLACEHOLDERS)
+	ui-e2e gateway-live-up gateway-live-verify gateway-live-down check-gateway-live \
+	eval-live-self-hosted $(PLACEHOLDERS)
 
 # Postgres first, then the migrations, so domain-services finds its domain_rw role on a fresh
 # volume. `up --wait` treats an exited one-shot as a failure, so the one-shots run on their own.
@@ -319,6 +320,29 @@ eval-live:
 	@rm -f reports/eval-latest.md; rc=0; ($(call EVAL_REPORT,SS_TEI_TIMEOUT_SCALE=1000) --mode live) \
 		|| rc=$$?; \
 		cat reports/eval-latest.md 2>/dev/null; exit $$rc
+
+# The partial live evaluation (Step 1.5f, C6, D-4): only the self-hosted routes (guard-input,
+# nlu-extract, verify-claims) need a model, on omniroute-live; the gen routes stay on the stubs
+# (O4), so the QA gates are WAITING on RD-1 and fallback counts the self-hosted calls only. It
+# creates and seeds omniroute-live (apply --live refuses __UNSET__ until C5b names a model), runs
+# the report against :20131 with the context check (D-6) and the chat scale, then removes
+# omniroute-live whatever happened. Needs what eval-live needs, plus Ollama on the host with
+# OLLAMA_CONTEXT_LENGTH=8192. `make eval-live` is unchanged. LIVE_SCALE=N sets the scale (1-15).
+LIVE_SCALE := 15
+LIVE_CONTEXT := 8192
+LIVE_EVAL_ENV := SS_TEI_TIMEOUT_SCALE=1000 SS_GATEWAY_BASE_URL=$(LIVE_URL) \
+	SS_GATEWAY_TIMEOUT_SCALE=$(LIVE_SCALE) SS_GATEWAY_CONTEXT_TOKENS=$(LIVE_CONTEXT)
+eval-live-self-hosted:
+	@sig=; rc=0; trap 'sig=130' INT; trap 'sig=143' TERM; \
+	$(MAKE) --no-print-directory -C "$(CURDIR)" gateway-live-up || rc=$$?; \
+	if [ "$$rc" -eq 0 ] && [ -z "$$sig" ]; then \
+		rm -f reports/eval-latest.md; \
+		($(call EVAL_REPORT,$(LIVE_EVAL_ENV)) --mode live --routes self-hosted) || rc=$$?; \
+		cat reports/eval-latest.md 2>/dev/null; \
+	fi; \
+	trap '' INT TERM; \
+	$(LIVE_DOWN) || { echo "eval-live-self-hosted: removing omniroute-live failed; run make gateway-live-down" >&2; [ "$$rc" -ne 0 ] || rc=1; }; \
+	exit $${sig:-$$rc}
 
 # Validate the evaluation's sets offline (TDD §7.5 step 4): the golden conversations and the
 # scripted S0-S3 conversation, the retrieval golden sets, the labelled slots and intents, the

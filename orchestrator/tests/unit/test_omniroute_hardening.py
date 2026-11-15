@@ -270,8 +270,24 @@ def test_the_live_overlay_adds_one_connection_and_moves_only_the_self_hosted_rou
     assert "globalFallbackModel" not in json.dumps(SEED) + json.dumps(LIVE_SEED)
 
 
-LIVE_TARGETS = ("gateway-live-up", "gateway-live-verify", "gateway-live-down", "check-gateway-live")
-LIVE_VARIABLES = ("LIVE_URL", "LIVE_ENV", "LIVE_SEED", "LIVE_COMPOSE", "LIVE_UP", "LIVE_DOWN")
+LIVE_TARGETS = (
+    "gateway-live-up",
+    "gateway-live-verify",
+    "gateway-live-down",
+    "check-gateway-live",
+    "eval-live-self-hosted",  # C6
+)
+LIVE_VARIABLES = (
+    "LIVE_URL",
+    "LIVE_ENV",
+    "LIVE_SEED",
+    "LIVE_COMPOSE",
+    "LIVE_UP",
+    "LIVE_DOWN",
+    "LIVE_SCALE",
+    "LIVE_CONTEXT",
+    "LIVE_EVAL_ENV",
+)
 SIGNALS = "sig=; rc=0; trap 'sig=130' INT; trap 'sig=143' TERM;"
 
 
@@ -298,12 +314,41 @@ def test_the_live_targets_touch_only_the_live_instance() -> None:
     assert "saving the log failed; removing omniroute-live anyway" in down
     # Starting targets: signals only recorded; cleanup with signals ignored; status preserved.
     up, check = recipe("gateway-live-up"), recipe("check-gateway-live")
-    for body in (up, check):
+    evaluation = recipe("eval-live-self-hosted")
+    for body in (up, check, evaluation):
         assert SIGNALS in body and "trap '' INT TERM;" in body and "exit $${sig:-$$rc}" in body
     assert 'if [ -n "$$sig" ] || [ "$$rc" -ne 0 ]; then' in up
-    assert '[ "$$rc" -ne 0 ] || rc=1; };' in check
+    for body in (check, evaluation):  # the run only after a clean start; cleanup whatever happened
+        assert 'if [ "$$rc" -eq 0 ] && [ -z "$$sig" ]; then' in body
+        assert '[ "$$rc" -ne 0 ] || rc=1; };' in body and "$(LIVE_DOWN) ||" in body
     assert check.count("pytest") == 1 and "tests/stack/test_gateway_live_stack.py)" in check
     assert "--profile gateway-live" in recipe("down")
+
+
+def test_the_self_hosted_evaluation_runs_against_the_live_gateway_only() -> None:
+    # C6 (D-4): seeded by gateway-live-up (it refuses __UNSET__ until C5b), then the report on
+    # :20131 with the context check (D-6) and the chat scale (at most 15, D-2).
+    evaluation = recipe("eval-live-self-hosted")
+    assert '$(MAKE) --no-print-directory -C "$(CURDIR)" gateway-live-up || rc=$$?;' in evaluation
+    assert "$(call EVAL_REPORT,$(LIVE_EVAL_ENV)) --mode live --routes self-hosted)" in evaluation
+    assert variable("LIVE_EVAL_ENV").split() == [
+        "SS_TEI_TIMEOUT_SCALE=1000",
+        "SS_GATEWAY_BASE_URL=$(LIVE_URL)",
+        "\\",
+        "SS_GATEWAY_TIMEOUT_SCALE=$(LIVE_SCALE)",
+        "SS_GATEWAY_CONTEXT_TOKENS=$(LIVE_CONTEXT)",
+    ]
+    assert (variable("LIVE_SCALE").strip(), variable("LIVE_CONTEXT").strip()) == ("15", "8192")
+    # EVAL_REPORT's argument follows GOLDEN_ENV, so the live URL overrides its :20130 (in sh the
+    # last assignment wins), and make eval-live is unchanged.
+    assert re.search(
+        r"^EVAL_REPORT = cd orchestrator && \$\(GOLDEN_ENV\) .*\$\(1\)", MAKEFILE, re.M
+    )
+    assert recipe("eval-live") == (
+        "\t@rm -f reports/eval-latest.md; rc=0; ($(call EVAL_REPORT,SS_TEI_TIMEOUT_SCALE=1000)"
+        " --mode live) \\\n\t\t|| rc=$$?; \\\n"
+        "\t\tcat reports/eval-latest.md 2>/dev/null; exit $$rc\n"
+    )
 
 
 def test_the_live_recipes_parse_under_sh() -> None:

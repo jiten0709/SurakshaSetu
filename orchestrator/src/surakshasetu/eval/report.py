@@ -38,6 +38,7 @@ def gate_row(g: Gate) -> dict[str, Any]:
         "status": g.status,
         "note": g.note,
         "waiver": g.waiver.model_dump(mode="json") if g.waiver else None,
+        "waiting_on": g.waiting_on,
     }
 
 
@@ -143,7 +144,8 @@ def markdown(report: Mapping[str, Any]) -> str:
         "Timeout scales: " + ", ".join(f"{k}={v:g}" for k, v in report["scales"].items()) + ".",
         "",
         "Enforced gates block the release; INFO rows are computed but not gated in this mode"
-        " (against the stub, model-dependent metrics are informational). n/a: nothing measured.",
+        " (against the stub, model-dependent metrics are informational). WAITING rows wait on the"
+        " decision their note names and never block. n/a: nothing measured.",
         "",
         "## Gates",
         "",
@@ -152,10 +154,14 @@ def markdown(report: Mapping[str, Any]) -> str:
     ]
     for g in report["gates"]:
         waiver = g["waiver"]
-        note = g["note"] + (
-            f" Waived ({waiver['owner']}): {waiver['reason']}"
-            if waiver and g["status"] == "WAIVED"
-            else ""
+        note = (
+            g["note"]
+            + (
+                f" Waived ({waiver['owner']}): {waiver['reason']}"
+                if waiver and g["status"] == "WAIVED"
+                else ""
+            )
+            + (f" Waiting on {g['waiting_on']}." if g["status"] == "WAITING" else "")
         )
         lines.append(
             f"| {g['gate']} | {g['definition']} | {g['tdd_gate']} | {_value(g['value'], g['op'])}"

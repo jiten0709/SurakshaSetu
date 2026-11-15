@@ -127,6 +127,17 @@ def test_a_gate_passes_fails_is_informational_or_waived() -> None:
     assert Gate("count", "x", 0.0, "==", 0, True).status == "PASS"
 
 
+def test_a_waiting_gate_is_shown_but_never_blocks() -> None:
+    # C6: the QA gates wait on RD-1 while gen-recommend is a stub.
+    unmeasured = Gate("faithfulness", "faithfulness", None, ">=", 0.97, True)
+    waiting = Gate("faithfulness", "faithfulness", None, ">=", 0.97, True, waiting_on="RD-1")
+    assert (unmeasured.status, waiting.status) == ("FAIL", "WAITING")
+    assert blocking([unmeasured, waiting]) == [unmeasured]
+    gates = qa_gates({"all": None}, {"all": None}, enforced=True, waiting_on="RD-1")
+    assert {g.status for g in gates} == {"WAITING"} and blocking(gates) == []
+    assert {g.status for g in qa_gates({"all": None}, {"all": None}, enforced=True)} == {"FAIL"}
+
+
 def waiver(gate: str) -> Waiver:
     return Waiver(gate=gate, reason="Step 12 X1: the reranker decision", owner="c")
 

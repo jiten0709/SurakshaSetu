@@ -54,7 +54,8 @@ def pins() -> VersionPins:
 
 class Models:
     """guard-input, nlu-extract and verify-claims. `intents`/`side_query`/`slots` shape the
-    analysis; `safety`/`injection` the guard's verdict; `down` names routes that fail."""
+    analysis; `safety`/`injection` the guard's verdict; `down` names routes that fail; `served`
+    names the model a route answers as (default `stub-<route>`; C6's probe tests)."""
 
     def __init__(
         self,
@@ -67,7 +68,9 @@ class Models:
         slots: tuple[dict[str, Any], ...] = (),
         converse: tuple[str, ...] = (),
         recommend: tuple[str, ...] = (),
+        served: dict[str, str] | None = None,
     ) -> None:
+        self.served = served or {}
         self.intents, self.side_query, self.slots = intents, side_query, slots
         self.converse = list(converse)  # gen-converse drafts, in order; then FRIENDLY
         self.recommend = list(recommend)  # Step 21: gen-recommend drafts, in order; then CITED
@@ -94,12 +97,14 @@ class Models:
         elif route == "verify-claims":
             answer = {"verdict": "entailed"}
         elif route == "gen-converse":  # Step 19: S1's one friendly sentence
-            return completion(route, self.converse.pop(0) if self.converse else FRIENDLY)
+            content = self.converse.pop(0) if self.converse else FRIENDLY
+            return completion(route, content, self.served.get(route))
         elif route == "gen-recommend":  # Step 21: S3's narrative and cited answers
-            return completion(route, self.recommend.pop(0) if self.recommend else CITED)
+            content = self.recommend.pop(0) if self.recommend else CITED
+            return completion(route, content, self.served.get(route))
         else:
             raise AssertionError(f"unexpected route {route}")
-        return completion(route, json.dumps(answer))
+        return completion(route, json.dumps(answer), self.served.get(route))
 
 
 FRIENDLY = "Thanks, that helps me understand what you are looking for."
@@ -107,9 +112,10 @@ FRIENDLY = "Thanks, that helps me understand what you are looking for."
 CITED = "This option fits the needs you confirmed [R1]."
 
 
-def completion(route: str, content: str) -> httpx.Response:
+def completion(route: str, content: str, model: str | None = None) -> httpx.Response:
     return httpx.Response(
-        200, json={"model": f"stub-{route}", "choices": [{"message": {"content": content}}]}
+        200,
+        json={"model": model or f"stub-{route}", "choices": [{"message": {"content": content}}]},
     )
 
 

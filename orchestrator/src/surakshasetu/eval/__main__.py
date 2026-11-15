@@ -2,13 +2,16 @@
 
     python -m surakshasetu.eval run --mode stub --records DIR   (make eval, after the suites)
     python -m surakshasetu.eval run --mode live                 (make eval-live, after D2)
+    python -m surakshasetu.eval run --mode live --routes self-hosted   (make eval-live-self-hosted)
 
 stub: the deterministic gates are enforced (the golden and red-team runs' records, retrieval,
 abstention, citation coverage, zero unsupported premiums and disclosures, §5.3, latency, coverage);
 the model-dependent metrics (labels, QA, parity, fallback) are computed against the stub and
 reported as information. live: the routes must be provisioned (no stub model may answer), and every
 §5.2 gate is enforced on the labels, retrieval and QA; the scripted suites cannot run against real
-models, so their gates stay with `make eval`.
+models, so their gates stay with `make eval`. live with --routes self-hosted (C6, D-4): only the
+self-hosted routes must be provisioned; the gen routes stay on the stubs (O4), so the QA gates,
+whose drafts gen-recommend writes, are WAITING on RD-1, and fallback counts the self-hosted calls.
 
 Writes reports/eval-<ts>.json and reports/eval-<ts>.md. Exit 0 when every enforced gate passes
 (or is waived), 1 when one fails, 2 when the run cannot be made (a broken label, record or waiver
@@ -37,6 +40,7 @@ from surakshasetu.config import Settings
 from surakshasetu.domain.client import DomainClient
 from surakshasetu.eval import labels, metrics, qa, report, retrieval_metrics
 from surakshasetu.gateway import DataClass, Gateway, GatewayUnavailable, Route
+from surakshasetu.gateway.adapter import ROUTES
 from surakshasetu.logging import configure_logging
 from surakshasetu.rails.injection import GuardVerdict
 from surakshasetu.rails.output import ClaimCheck, load_pack
@@ -51,6 +55,13 @@ WAIVERS = REPO / "content" / "eval" / "waivers.yaml"
 CONVERSATIONS = labels.GOLDEN / "conversations"
 REDTEAM = REPO / "content" / "redteam"
 UNPROVISIONED = "eval-live requires provisioned model routes (D2)"
+UNPROVISIONED_SELF_HOSTED = "eval-live-self-hosted requires a model on the self-hosted routes (C5b)"
+# The chat routes whose models run inside the boundary (embed and rerank are TEI, not the gateway).
+SELF_HOSTED = frozenset(
+    route
+    for route, spec in ROUTES.items()
+    if spec.self_hosted and route not in (Route.EMBED, Route.RERANK)
+)
 
 
 class Unrunnable(Exception):
@@ -81,8 +92,12 @@ def load_records(directory: Path) -> list[dict[str, Any]]:
     return records
 
 
-async def probe(gateway: Gateway, settings: Settings) -> None:
-    """Live mode: every chat route the evaluation uses answers, from a model that is not a stub."""
+async def probe(
+    gateway: Gateway, settings: Settings, routes: frozenset[Route] | None = None
+) -> None:
+    """Live mode: every chat route the evaluation uses answers, from a model that is not a stub.
+    With routes (C6: SELF_HOSTED), only those are pinged; the others stay on the stubs (O4)."""
+    refused = UNPROVISIONED if routes is None else UNPROVISIONED_SELF_HOSTED
     bundle = load_bundle(settings.prompt_bundle, env=settings.env)
     ping = [{"role": "user", "content": "Reply with OK."}]
 
@@ -120,14 +135,16 @@ async def probe(gateway: Gateway, settings: Settings) -> None:
             )
         )
     for route, kwargs in calls:
+        if routes is not None and route not in routes:
+            continue
         try:
             result = await gateway.call(
                 route, session_id=uuid7(), turn_id=uuid7(), fsm_state="S3", **kwargs
             )
         except GatewayUnavailable as exc:
-            raise Unrunnable(f"{UNPROVISIONED}: {route.value} {exc.reason}") from exc
+            raise Unrunnable(f"{refused}: {route.value} {exc.reason}") from exc
         if "stub" in result.served_model.casefold():
-            raise Unrunnable(f"{UNPROVISIONED}: {route.value} is served by a stub")
+            raise Unrunnable(f"{refused}: {route.value} is served by a stub")
 
 
 class Calls:
@@ -146,7 +163,9 @@ class Calls:
         gateway.call = recorded  # type: ignore[method-assign]
 
 
-async def evaluate(mode: str, records_dir: Path | None, settings: Settings) -> dict[str, Any]:
+async def evaluate(
+    mode: str, records_dir: Path | None, settings: Settings, routes: str = "all"
+) -> dict[str, Any]:
     live = mode == "live"
     try:
         slot_items, intent_items = labels.load_slots(), labels.load_intents()
@@ -164,7 +183,7 @@ async def evaluate(mode: str, records_dir: Path | None, settings: Settings) -> d
         qdrant = AsyncQdrantClient(url=settings.qdrant_url)
         async with Gateway(settings) as gateway, DomainClient.from_settings(settings) as domain:
             if live:
-                await probe(gateway, settings)
+                await probe(gateway, settings, SELF_HOSTED if routes == "self-hosted" else None)
             calls = Calls(gateway)
             asked = await labels.asked_slots(domain)
             guard_prompt = bundle.rails.get(Route.GUARD_INPUT)
@@ -183,6 +202,7 @@ async def evaluate(mode: str, records_dir: Path | None, settings: Settings) -> d
         await qdrant.close()
     return {
         "live": live,
+        "routes": routes,
         "records": records,
         "waivers": waivers,
         "slots": slot_results,
@@ -234,12 +254,22 @@ def gates_of(run: dict[str, Any], settings: Settings) -> list[metrics.Gate]:
         intents_by_language,
         enforced=live,
     )
+    self_hosted = run.get("routes") == "self-hosted"
     gates += metrics.qa_gates(
-        qa.scores(run["drafts"], "claims"), qa.scores(run["drafts"], "pairs"), enforced=live
+        qa.scores(run["drafts"], "claims"),
+        qa.scores(run["drafts"], "pairs"),
+        enforced=live,
+        waiting_on="RD-1 (gen-recommend is a stub, O4)" if self_hosted else "",
     )
     if live:
+        counted = {route.value for route in SELF_HOSTED} if self_hosted else None
         rate = metrics.fallback_rate(
-            [(route, model) for route, model, _ in run["calls"]], settings.eval_primary_models
+            [
+                (route, model)
+                for route, model, _ in run["calls"]
+                if counted is None or route in counted
+            ],
+            settings.eval_primary_models,
         )
         note = "" if settings.eval_primary_models else "unmeasured: SS_EVAL_PRIMARY_MODELS is empty"
         gates.append(
@@ -348,18 +378,18 @@ def write(body: dict[str, Any], stamp: str) -> tuple[Path, Path]:
     return json_path, md_path
 
 
-async def main_async(mode: str, records_dir: Path | None) -> int:
+async def main_async(mode: str, records_dir: Path | None, routes: str = "all") -> int:
     settings = Settings()
     configure_logging(settings.log_level, settings.log_dir, settings.log_format)
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     try:
-        run = await evaluate(mode, records_dir, settings)
+        run = await evaluate(mode, records_dir, settings, routes)
         gates = metrics.apply_waivers(gates_of(run, settings), run["waivers"])
     except Unrunnable as exc:
         logger.error("%s", exc)
         return 2
     body = report.assemble(
-        mode=mode,
+        mode=mode if routes == "all" else f"{mode}:{routes}",
         stamp=stamp,
         gates=gates,
         records=run["records"],
@@ -382,10 +412,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     run = sub.add_parser("run")
     run.add_argument("--mode", choices=["stub", "live"], required=True)
     run.add_argument("--records", type=Path, default=None)
+    run.add_argument("--routes", choices=["all", "self-hosted"], default="all")
     args = parser.parse_args(argv)
     if args.mode == "stub" and args.records is None:
         parser.error("--mode stub needs --records (the golden and red-team runs' records)")
-    return asyncio.run(main_async(args.mode, args.records))
+    if args.routes == "self-hosted" and args.mode != "live":
+        parser.error("--routes self-hosted needs --mode live")
+    return asyncio.run(main_async(args.mode, args.records, args.routes))
 
 
 if __name__ == "__main__":
