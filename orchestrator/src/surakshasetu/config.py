@@ -92,6 +92,11 @@ class Settings(BaseSettings):
     # local hardware. At most 15, so the largest scaled budget (gen-recommend, 90 s) stays below
     # the live gateway's 105 s response-start bound (D-2). Pilot and prod require exactly 1.
     gateway_timeout_scale: float = Field(default=1.0, ge=1, le=15)
+    # Dev and test only (D-6): the local model server's context length in tokens. That server
+    # truncates an oversize prompt silently with a 200 and reports prompt_tokens equal to its limit
+    # (U4), so a chat call whose prompt_tokens reaches this value fails closed. Unset, nothing is
+    # checked. Pilot and prod refuse it.
+    gateway_context_tokens: int | None = Field(default=None, ge=1)
     # Knowledge base (Step 11): the three collections, written by ingestion, read by retrieval.
     qdrant_url: str = "http://127.0.0.1:6333"
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
@@ -180,6 +185,8 @@ class Settings(BaseSettings):
                 raise ValueError(f"env={self.env} requires {ENV_PREFIX}TEI_TIMEOUT_SCALE=1")
             if self.gateway_timeout_scale != 1:
                 raise ValueError(f"env={self.env} requires {ENV_PREFIX}GATEWAY_TIMEOUT_SCALE=1")
+            if self.gateway_context_tokens is not None:
+                raise ValueError(f"env={self.env} refuses {ENV_PREFIX}GATEWAY_CONTEXT_TOKENS")
         if unknown := set(self.inactivity_timeouts) - {"S0", "S1", "QUOTE_ONLY", "S2", "S3"}:
             raise ValueError(f"inactivity_timeouts names states no timer pauses: {sorted(unknown)}")
         if any(seconds < 60 for seconds in self.inactivity_timeouts.values()):

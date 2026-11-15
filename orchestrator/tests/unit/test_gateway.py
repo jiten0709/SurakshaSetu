@@ -320,6 +320,69 @@ async def test_the_sent_schema_is_normalised(respx_mock: respx.MockRouter) -> No
     assert sent["schema"]["$defs"]["SlotCandidate"]["properties"]["value"] == {}
 
 
+# --- the context check (D-6) -----------------------------------------------------------------
+def counted(prompt_tokens: int) -> dict[str, Any]:
+    body = completion()
+    body["usage"]["prompt_tokens"] = prompt_tokens
+    return body
+
+
+async def call_with_context(limit: int | None) -> Any:
+    async with Gateway(settings(gateway_context_tokens=limit)) as gateway:
+        return await gateway.call(
+            Route.GUARD_INPUT,
+            data_class=DataClass.SELF_HOSTED_RAW,
+            messages=MESSAGES,
+            session_id=SESSION,
+            turn_id=TURN,
+            fsm_state="S1",
+        )
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_a_prompt_that_reaches_the_context_length_fails_closed(
+    respx_mock: respx.MockRouter,
+) -> None:
+    # U4: the local model server truncates an oversize prompt with a 200 and prompt_tokens = limit.
+    respx_mock.post(f"{GATEWAY}/chat/completions").respond(200, json=counted(8192))
+
+    with pytest.raises(GatewayUnavailable) as failed:
+        await call_with_context(8192)
+
+    assert (failed.value.reason, failed.value.status) == ("CONTEXT_TRUNCATED", None)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("limit", "prompt_tokens"), [(8192, 8191), (None, 100_000)])
+@respx.mock
+async def test_a_prompt_under_the_context_length_or_unchecked_passes(
+    respx_mock: respx.MockRouter, limit: int | None, prompt_tokens: int
+) -> None:
+    respx_mock.post(f"{GATEWAY}/chat/completions").respond(200, json=counted(prompt_tokens))
+
+    assert (await call_with_context(limit)).tokens_in == prompt_tokens
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("usage", [None, {"completion_tokens": 3}])
+@respx.mock
+async def test_without_prompt_tokens_only_the_context_check_fails_closed(
+    respx_mock: respx.MockRouter, usage: dict[str, int] | None
+) -> None:
+    body = completion()
+    del body["usage"]
+    if usage is not None:
+        body["usage"] = usage
+    respx_mock.post(f"{GATEWAY}/chat/completions").respond(200, json=body)
+
+    with pytest.raises(GatewayUnavailable) as failed:
+        await call_with_context(8192)  # nothing to check against: fail closed
+
+    assert failed.value.reason == "MALFORMED_RESPONSE"
+    assert (await call_with_context(None)).tokens_in == 0  # unset: today's behaviour
+
+
 # --- embed and rerank: TEI, called directly --------------------------------------------------
 def embeddings(*vectors: list[float], order: list[int] | None = None) -> dict[str, Any]:
     indexes = order or list(range(len(vectors)))
@@ -587,26 +650,36 @@ async def test_model_calls_leak_no_text_key_or_url_into_the_logs(
 ) -> None:
     configure_logging("DEBUG", tmp_path)
     said = [{"role": "user", "content": "my PAN is ABCDE1234F"}]
-    respx_mock.post(f"{GATEWAY}/chat/completions").respond(
-        200, json=completion("Your PAN ABCDE1234F is noted.", model="stub-guard")
+    answer = completion("Your PAN ABCDE1234F is noted.", model="stub-guard")
+    truncated = json.loads(json.dumps(answer))
+    truncated["usage"]["prompt_tokens"] = 8192
+    respx_mock.post(f"{GATEWAY}/chat/completions").mock(
+        side_effect=[httpx.Response(200, json=answer), httpx.Response(200, json=truncated)]
     )
     respx_mock.post(f"{EMBED}/v1/embeddings").respond(200, json=embeddings([1.0]))
     respx_mock.post(f"{RERANK}/rerank").mock(side_effect=httpx.ConnectError("rerank.test"))
 
-    async with Gateway(settings(embed_dim=1)) as gateway:
-        await gateway.call(
-            Route.GUARD_INPUT,
-            data_class=DataClass.SELF_HOSTED_RAW,
-            messages=said,
-            session_id=SESSION,
-            turn_id=TURN,
-            fsm_state="S1",
-        )
+    async with Gateway(settings(embed_dim=1, gateway_context_tokens=8192)) as gateway:
+
+        async def guard() -> None:
+            await gateway.call(
+                Route.GUARD_INPUT,
+                data_class=DataClass.SELF_HOSTED_RAW,
+                messages=said,
+                session_id=SESSION,
+                turn_id=TURN,
+                fsm_state="S1",
+            )
+
+        await guard()
+        with pytest.raises(GatewayUnavailable):
+            await guard()  # the same call, its prompt truncated this time (D-6)
         await gateway.embed(["ABCDE1234F"], kind="query")
         with pytest.raises(GatewayUnavailable):
             await gateway.rerank("ABCDE1234F", ["ABCDE1234F"])
 
     logged = capsys.readouterr().out + _files_text(tmp_path)
     assert "guard-input" in logged and "stub-guard" in logged and "UNAVAILABLE" in logged
+    assert "CONTEXT_TRUNCATED" in logged
     for leaked in ("ABCDE1234F", "g4teway-key", "gateway.test", "embed.test", "rerank.test"):
         assert leaked not in logged

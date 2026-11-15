@@ -172,6 +172,8 @@ class Gateway:
         # and self-hosted chat models on local hardware miss the chat budgets.
         self._tei_scale = settings.tei_timeout_scale
         self._chat_scale = settings.gateway_timeout_scale
+        # Dev and test only (D-6): the local model server's context; None checks nothing.
+        self._context_tokens = settings.gateway_context_tokens
         # Backstop only; each call's route timeout is the real limit.
         self._http = httpx.AsyncClient(
             transport=transport,
@@ -251,6 +253,14 @@ class Gateway:
             completion = _Completion.model_validate_json(response.content)
         except ValidationError as exc:
             raise _unavailable(route, "MALFORMED_RESPONSE") from exc
+        if self._context_tokens is not None:
+            # The local model server answers an oversize prompt with a 200 and prompt_tokens equal
+            # to its limit (U4, measured against that server directly; that the gateway passes
+            # usage through unchanged is not yet shown). No prompt_tokens: nothing to check, fail.
+            if "prompt_tokens" not in completion.usage.model_fields_set:
+                raise _unavailable(route, "MALFORMED_RESPONSE")
+            if completion.usage.prompt_tokens >= self._context_tokens:
+                raise _unavailable(route, "CONTEXT_TRUNCATED")
         content = completion.choices[0].message.content
         parsed = None
         if response_format is not None:
