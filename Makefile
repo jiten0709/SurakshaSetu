@@ -40,7 +40,7 @@ TEST_ENV := SS_TEST_PG_DSN_ADMIN="postgresql://postgres:$(POSTGRES_PASSWORD)@127
 	gateway-verify kb-ingest kb-verify kb-chunks check-ingest calibrate-retrieval eval-retrieval \
 	bakeoff-embed bakeoff-rerank test-invariants eval eval-live seed-eval e2e-scripted \
 	timers-once serve local-setup verify-release-gate dossier app-up start ui-deps ui ui-types ui-check \
-	ui-e2e $(PLACEHOLDERS)
+	ui-e2e gateway-live-up gateway-live-verify gateway-live-down check-gateway-live $(PLACEHOLDERS)
 
 # Postgres first, then the migrations, so domain-services finds its domain_rw role on a fresh
 # volume. `up --wait` treats an exited one-shot as a failure, so the one-shots run on their own.
@@ -51,7 +51,7 @@ up:
 	$(COMPOSE) run --rm minio-init
 
 down:
-	$(COMPOSE) --profile gateway --profile app down
+	$(COMPOSE) --profile gateway --profile app --profile gateway-live down
 
 # Step 25: the orchestrator image in compose (profile app): the Conversation API on 127.0.0.1:8000
 # (the port `make serve` uses, so run one of the two) and the `scheduler` running the inactivity
@@ -86,6 +86,73 @@ gateway-up:
 # Exit 1 if any seeded value has drifted (every drift is logged).
 gateway-verify:
 	@$(SEED) verify
+
+# The live configuration's gateway (Step 1.5b, design E, D-1): omniroute-live (profile gateway-live,
+# 127.0.0.1:20131), seeded with seed.json + seed.live.json merged in memory. Isolation from the stub
+# gateway (omniroute, :20130, volume omniroute-data):
+# - every docker command here is `docker compose ... <command> omniroute-live`, and `up` passes
+#   --no-deps, so no other container is started, recreated, stopped or removed;
+# - nothing here passes -v or names a volume: omniroute-live has none, so removing its container
+#   discards the live database and nothing else;
+# - the seed script writes to :20131 only with --live, and refuses :20131 without it.
+# A failed `ps` is never read as "no container". The targets that start omniroute-live remove it
+# again after a failure or an interruption (best effort against repeated signals: see
+# HARDENING.md, "Live instance"). Needs `make up`.
+LIVE_URL := http://127.0.0.1:20131/v1
+LIVE_ENV := SS_GATEWAY_BASE_URL=$(LIVE_URL) OMNIROUTE_INITIAL_PASSWORD="$(OMNIROUTE_INITIAL_PASSWORD)"
+LIVE_SEED := cd orchestrator && $(LIVE_ENV) SS_LOG_FORMAT=text \
+	uv run --locked python scripts/omniroute_seed.py
+LIVE_COMPOSE := $(COMPOSE) --profile gateway-live
+LIVE_UP := $(LIVE_COMPOSE) up -d --no-deps --force-recreate --wait omniroute-live
+LIVE_DOWN := $(MAKE) --no-print-directory -C "$(CURDIR)" gateway-live-down
+
+# Recreate omniroute-live empty and seed it; after a failure (apply --live refuses the overlay's
+# __UNSET__ model until C5 sets one) or an interruption, remove it again.
+gateway-live-up:
+	@sig=; rc=0; trap 'sig=130' INT; trap 'sig=143' TERM; \
+	$(LIVE_UP) || rc=$$?; \
+	if [ "$$rc" -eq 0 ] && [ -z "$$sig" ]; then ($(LIVE_SEED) apply --live) || rc=$$?; fi; \
+	if [ -n "$$sig" ] || [ "$$rc" -ne 0 ]; then \
+		trap '' INT TERM; \
+		$(LIVE_DOWN) || echo "gateway-live-up: removing omniroute-live failed; run make gateway-live-down" >&2; \
+	fi; \
+	exit $${sig:-$$rc}
+
+# Read every seeded value back from omniroute-live (exit 1 on any drift).
+gateway-live-verify:
+	@$(LIVE_SEED) verify --live
+
+# Save omniroute-live's log, then stop and remove its container (no -v). Nothing to do when it
+# doesn't exist; a listing that fails stops the target before anything is removed. Removal is then
+# confirmed by a second, checked listing.
+gateway-live-down:
+	@ids=$$($(LIVE_COMPOSE) ps --all --quiet omniroute-live) \
+		|| { echo "gateway-live-down: listing omniroute-live failed; nothing removed" >&2; exit 1; }; \
+	if [ -n "$$ids" ]; then \
+		mkdir -p orchestrator/.cache; \
+		log="orchestrator/.cache/live-gateway-$$(date -u +%Y%m%dT%H%M%SZ).log"; \
+		$(LIVE_COMPOSE) logs --no-color --timestamps omniroute-live > "$$log" 2>&1 \
+			|| echo "gateway-live-down: saving the log failed; removing omniroute-live anyway" >&2; \
+		$(LIVE_COMPOSE) rm --stop --force omniroute-live \
+			|| echo "gateway-live-down: rm --stop --force omniroute-live failed" >&2; \
+	fi; \
+	left=$$($(LIVE_COMPOSE) ps --all --quiet omniroute-live) \
+		|| { echo "gateway-live-down: listing omniroute-live failed; removal not confirmed" >&2; exit 1; }; \
+	[ -z "$$left" ] || { echo "gateway-live-down: omniroute-live is still there" >&2; exit 1; }
+
+# Start omniroute-live alone, run its stack test (which seeds it with a placeholder model), then
+# remove it whatever happened. The recipe exits with the test's status (130 or 143 if interrupted),
+# or 1 when only the removal failed.
+check-gateway-live:
+	@sig=; rc=0; trap 'sig=130' INT; trap 'sig=143' TERM; \
+	$(LIVE_UP) || rc=$$?; \
+	if [ "$$rc" -eq 0 ] && [ -z "$$sig" ]; then \
+		(cd orchestrator && $(LIVE_ENV) uv run --locked pytest -m stack \
+			tests/stack/test_gateway_live_stack.py) || rc=$$?; \
+	fi; \
+	trap '' INT TERM; \
+	$(LIVE_DOWN) || { echo "check-gateway-live: removing omniroute-live failed; run make gateway-live-down" >&2; [ "$$rc" -ne 0 ] || rc=1; }; \
+	exit $${sig:-$$rc}
 
 logs:
 	$(COMPOSE) logs -f
@@ -205,8 +272,10 @@ contract-test:
 
 # The stack-marked tests: the anchor against MinIO's object lock and the Schemathesis contract
 # tests. Needs `make up`.
+# omniroute-live's stack test runs only under check-gateway-live, which starts the live instance.
 check-stack: db-migrate
-	@cd orchestrator && $(TEST_ENV) uv run --locked pytest -m stack
+	@cd orchestrator && $(TEST_ENV) uv run --locked pytest -m stack \
+		--ignore=tests/stack/test_gateway_live_stack.py
 
 # The evaluation (Steps 17 and 23, TDD §5.2/§5.3). First every golden conversation and the red-team
 # suite (content/redteam) against the running stack: the orchestrator in-process with its real
@@ -225,8 +294,9 @@ APP_ENV := SS_PG_DSN_APP="$(PG_DSN_KB)" \
 	SS_PG_DSN_KEYVAULT="postgresql://keyvault_rw:$(KEYVAULT_RW_PASSWORD)@127.0.0.1:5432/surakshasetu" \
 	SS_PG_DSN_ERASURE="postgresql://erasure_rw:$(ERASURE_RW_PASSWORD)@127.0.0.1:5432/surakshasetu" \
 	SS_REDIS_URL="redis://127.0.0.1:6379/0" $(DOMAIN_ENV)
+# The stub evaluation targets pin the stub gateway (design E's condition 4): never omniroute-live.
 GOLDEN_ENV := SS_EVAL_PG_DSN_ADMIN="postgresql://postgres:$(POSTGRES_PASSWORD)@127.0.0.1:5432/surakshasetu" \
-	$(APP_ENV)
+	SS_GATEWAY_BASE_URL=http://127.0.0.1:20130/v1 $(APP_ENV)
 EVAL_RECORDS := $(CURDIR)/orchestrator/.cache/eval-records
 EVAL_REPORT = cd orchestrator && $(GOLDEN_ENV) SS_LOG_FORMAT=text $(1) \
 	uv run --locked python -m surakshasetu.eval run

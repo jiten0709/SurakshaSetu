@@ -1,0 +1,21 @@
+{
+  "$comment": "The live configuration (Step 1.5b, design E): an overlay on seed.json, merged in memory by `omniroute_seed.py apply|verify --live` for the ephemeral omniroute-live instance (127.0.0.1:20131) only. It adds the host-native Ollama connection and points the self-hosted combos at it; gen-converse and gen-recommend stay on the stubs (O4, RD-1 deferred). One target per combo, no global fallback. __UNSET__ stands for the model C5 chooses: `apply --live` refuses it. HARDENING.md, \"Live instance\".",
+  "providerConnections": [
+    {
+      "id": "0199a900-0000-7000-8000-000000000002",
+      "provider": "ollama-local",
+      "authType": "apikey",
+      "name": "surakshasetu-ollama",
+      "priority": 1,
+      "isActive": true,
+      "providerSpecificData": { "baseUrl": "http://host.docker.internal:11434/v1" }
+    }
+  ],
+  "combos": {
+    "guard-input": ["ollama/__UNSET__"],
+    "nlu-extract": ["ollama/__UNSET__"],
+    "summarise": ["ollama/__UNSET__"],
+    "verify-claims": ["ollama-local/__UNSET__"]
+  },
+  "allowedConnections": ["0199a900-0000-7000-8000-000000000001", "0199a900-0000-7000-8000-000000000002"]
+}

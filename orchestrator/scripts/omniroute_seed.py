@@ -1,13 +1,20 @@
 """Apply and verify infra/omniroute/seed.json on SurakshaSetu's OmniRoute (Step 9).
 
-    uv run python scripts/omniroute_seed.py apply    # make gateway-up
-    uv run python scripts/omniroute_seed.py verify   # make gateway-verify
+    uv run python scripts/omniroute_seed.py apply           # make gateway-up
+    uv run python scripts/omniroute_seed.py verify          # make gateway-verify
+    uv run python scripts/omniroute_seed.py apply --live    # make gateway-live-up (Step 1.5b)
+    uv run python scripts/omniroute_seed.py verify --live   # make gateway-live-verify
 
 OmniRoute keeps its configuration in SQLite behind an admin API, so Git holds the seed and this
 script puts it there. apply logs in, imports the connection, combos and app key (OmniRoute's own
 import format, upserted by id, so a re-run is idempotent), sets each settings section and the app
 key's policy, then verifies. verify reads every seeded value back, since OmniRoute answers 200 to
 keys it drops, and logs each drift; the exit status is 1 on any.
+
+--live merges infra/omniroute/seed.live.json over the seed in memory (neither file is written) for
+the ephemeral omniroute-live instance (design E). Each seed goes only to its own instance: --live
+needs the live port (20131), and without it the live port is refused, so a misdirected run can't
+write the other instance's database. apply --live refuses the overlay's __UNSET__ model (C5).
 
 Reads SS_GATEWAY_BASE_URL (the gateway), SS_GATEWAY_API_KEY (the app key's value) and
 OMNIROUTE_INITIAL_PASSWORD (the admin password; compose's dummy by default).
@@ -32,6 +39,9 @@ from surakshasetu.logging import configure_logging
 logger = logging.getLogger("surakshasetu.gateway.omniroute_seed")
 
 SEED_PATH = Path(__file__).resolve().parents[2] / "infra" / "omniroute" / "seed.json"
+LIVE_PATH = SEED_PATH.with_name("seed.live.json")
+LIVE_PORT = 20131  # omniroute-live; the stub instance is 20130
+UNSET = "__UNSET__"  # seed.live.json's model until C5 chooses one
 # compose's INITIAL_PASSWORD default
 DEV_ADMIN_PASSWORD = SecretStr("surakshasetu-dev-omniroute")
 
@@ -44,9 +54,27 @@ def admin_password() -> str:
     return os.environ.get("OMNIROUTE_INITIAL_PASSWORD") or DEV_ADMIN_PASSWORD.get_secret_value()
 
 
-def load_seed() -> dict[str, Any]:
+def load_seed(live: bool = False) -> dict[str, Any]:
+    """seed.json; with live, seed.live.json merged over it: its connections added, its combos'
+    targets replacing theirs, its allowedConnections replacing the key's."""
     seed: dict[str, Any] = json.loads(SEED_PATH.read_text())
+    if live:
+        overlay = json.loads(LIVE_PATH.read_text())
+        seed["import"]["providerConnections"] += overlay["providerConnections"]
+        for combo in seed["import"]["combos"]:
+            combo["models"] = overlay["combos"].get(combo["name"], combo["models"])
+        seed["appKeyPolicy"]["allowedConnections"] = overlay["allowedConnections"]
     return seed
+
+
+def check_target(gateway_base_url: str, live: bool) -> str | None:
+    """Why this seed must not go to this gateway, or None."""
+    port = httpx.URL(gateway_base_url).port
+    if live and port != LIVE_PORT:
+        return f"--live writes only to omniroute-live on :{LIVE_PORT}, not :{port}"
+    if not live and port == LIVE_PORT:
+        return f"the stub seed never goes to omniroute-live (:{LIVE_PORT}); add --live"
+    return None
 
 
 @contextmanager
@@ -96,12 +124,17 @@ def verify(client: httpx.Client, seed: dict[str, Any]) -> list[str]:
             drift.append(f"featureFlags.{name}: expected {value!r} from env, got {flag or None}")
     key = _ok(client.get(f"/api/keys/{_app_key_id(seed)}"))
     _compare("appKeyPolicy", seed["appKeyPolicy"], key, drift)
-    _compare_set(
-        "connections",
-        {c["id"] for c in seed["import"]["providerConnections"]},
-        {c["id"] for c in _items(_ok(client.get("/api/providers")), "connections")},
-        drift,
-    )
+    connections = {c["id"]: c for c in _items(_ok(client.get("/api/providers")), "connections")}
+    seeded = {c["id"] for c in seed["import"]["providerConnections"]}
+    _compare_set("connections", seeded, set(connections), drift)
+    for want in seed["import"]["providerConnections"]:
+        if (got := connections.get(want["id"])) is not None:
+            _compare(
+                f"connections.{want['id']}.baseUrl",
+                want["providerSpecificData"]["baseUrl"],
+                (got.get("providerSpecificData") or {}).get("baseUrl"),
+                drift,
+            )
     combos = {c["name"]: c for c in _items(_ok(client.get("/api/combos")), "combos")}
     expected = {c["name"]: c for c in seed["import"]["combos"]}
     _compare_set("combos", set(expected), set(combos), drift)
@@ -156,10 +189,24 @@ def _ok(response: httpx.Response) -> Any:
 def main() -> int:
     settings = load_settings()
     configure_logging(settings.log_level, settings.log_dir, settings.log_format)
-    if sys.argv[1:] not in (["apply"], ["verify"]):
-        logger.error("usage: omniroute_seed.py apply|verify")
+    args = sys.argv[1:]
+    live = args[1:] == ["--live"]
+    if args[:1] not in (["apply"], ["verify"]) or args[1:] not in ([], ["--live"]):
+        logger.error("usage: omniroute_seed.py apply|verify [--live]")
         return 2
-    seed = load_seed()
+    if refusal := check_target(settings.gateway_base_url, live):
+        logger.error("omniroute seed refused: %s", refusal)
+        return 2
+    seed = load_seed(live)
+    logger.info(
+        "omniroute %s: %s seed, gateway port %s",
+        args[0],
+        "live" if live else "stub",
+        httpx.URL(settings.gateway_base_url).port,
+    )
+    if args[0] == "apply" and live and UNSET in json.dumps(seed):
+        logger.error("live model unset (C5): seed.live.json still names %s", UNSET)
+        return 2
     try:
         with admin_client(settings.gateway_base_url, admin_password()) as client:
             if sys.argv[1] == "apply":

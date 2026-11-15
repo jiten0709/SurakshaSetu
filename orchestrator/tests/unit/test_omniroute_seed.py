@@ -1,6 +1,7 @@
 """scripts/omniroute_seed.py against a fake admin API: the app key goes into the import only, drift
 is reported by setting path, and no key or password value ever reaches the log."""
 
+import copy
 import importlib.util
 import json
 import logging
@@ -117,3 +118,85 @@ def test_an_admin_error_names_the_call_but_not_its_body() -> None:
         SEED_SCRIPT.apply(client, SEED, SENTINEL_KEY)
 
     assert str(failed.value) == "POST /api/settings/import-json -> 401"
+
+
+# --- the live overlay (Step 1.5b, design E) -------------------------------------------------------
+LIVE: dict[str, Any] = SEED_SCRIPT.load_seed(live=True)
+STUB_ID, LIVE_ID = "0199a900-0000-7000-8000-000000000001", "0199a900-0000-7000-8000-000000000002"
+
+
+def test_the_live_seed_is_the_stub_seed_plus_the_overlay() -> None:
+    connections = {c["id"]: c for c in LIVE["import"]["providerConnections"]}
+    targets = {c["name"]: c["models"] for c in LIVE["import"]["combos"]}
+
+    assert set(connections) == {STUB_ID, LIVE_ID}
+    assert connections[LIVE_ID]["provider"] == "ollama-local"
+    assert targets["gen-converse"] == ["vllm/stub-gen"]  # the gen routes stay on the stubs (O4)
+    assert targets["guard-input"] == ["ollama/__UNSET__"]
+    assert targets["verify-claims"] == ["ollama-local/__UNSET__"]
+    assert LIVE["appKeyPolicy"]["allowedConnections"] == [STUB_ID, LIVE_ID]
+    # Everything else is the stub seed's, and the stub seed itself is untouched by the merge.
+    assert {k: v for k, v in LIVE.items() if k not in ("import", "appKeyPolicy")} == {
+        k: v for k, v in SEED.items() if k not in ("import", "appKeyPolicy")
+    }
+    assert [c["id"] for c in SEED_SCRIPT.load_seed()["import"]["providerConnections"]] == [STUB_ID]
+
+
+@pytest.mark.parametrize(
+    ("url", "live", "refused"),
+    [
+        ("http://127.0.0.1:20130/v1", False, False),
+        ("http://127.0.0.1:20199/v1", False, False),  # a throwaway probe instance
+        ("http://127.0.0.1:20131/v1", False, True),  # the stub seed never reaches omniroute-live
+        ("http://127.0.0.1:20131/v1", True, False),
+        ("http://127.0.0.1:20130/v1", True, True),  # the live seed never reaches the stub database
+        ("http://omniroute:20128/v1", True, True),
+    ],
+)
+def test_each_seed_goes_only_to_its_own_instance(url: str, live: bool, refused: bool) -> None:
+    assert (SEED_SCRIPT.check_target(url, live) is not None) is refused
+
+
+def test_a_changed_connection_base_url_is_drift() -> None:
+    sent: list[httpx.Request] = []
+    moved = copy.deepcopy(SEED)
+    moved["import"]["providerConnections"][0]["providerSpecificData"]["baseUrl"] = "http://x:1/v1"
+
+    with fake_gateway(sent, drifted=False) as client:
+        drift = SEED_SCRIPT.verify(client, moved)
+
+    assert drift == [
+        f"connections.{STUB_ID}.baseUrl: expected 'http://x:1/v1', got 'http://stubs:8090/v1'"
+    ]
+
+
+@pytest.mark.parametrize(
+    ("argv", "url", "said"),
+    [
+        (["apply", "--live"], "http://127.0.0.1:20131/v1", "live model unset (C5)"),
+        (["apply", "--live"], "http://127.0.0.1:20130/v1", "writes only to omniroute-live"),
+        (["verify"], "http://127.0.0.1:20131/v1", "never goes to omniroute-live"),
+        (["apply", "--force"], "http://127.0.0.1:20130/v1", "usage:"),
+    ],
+)
+@pytest.mark.usefixtures("restore_logging")
+def test_main_refuses_before_any_request(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    argv: list[str],
+    url: str,
+    said: str,
+) -> None:
+    def no_network(*args: Any, **kwargs: Any) -> Any:
+        raise AssertionError("no admin call may be made")
+
+    monkeypatch.setattr(SEED_SCRIPT, "admin_client", no_network)
+    monkeypatch.setattr("sys.argv", ["omniroute_seed.py", *argv])
+    monkeypatch.setenv("SS_GATEWAY_BASE_URL", url)
+    monkeypatch.setenv("SS_GATEWAY_API_KEY", SENTINEL_KEY)
+
+    assert SEED_SCRIPT.main() == 2
+    out = capsys.readouterr().out
+    assert said in out and SENTINEL_KEY not in out
+    if argv[0] == "apply" and url.endswith(":20131/v1"):
+        assert "apply: live seed, gateway port 20131" in out  # the line naming seed and port

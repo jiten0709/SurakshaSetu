@@ -313,6 +313,41 @@ services:
       test: ["CMD", "node", "healthcheck.mjs"]
       start_period: 60s
 
+  # The live configuration's gateway (Step 1.5b, design E, D-1): a second, ephemeral OmniRoute on
+  # 127.0.0.1:20131 for self-hosted models, seeded with seed.json + seed.live.json by
+  # `make gateway-live-up` and removed by `make gateway-live-down`. It has no volume, so its SQLite
+  # database lives in the container and every run starts from the seed alone; nothing here touches
+  # `omniroute` or its omniroute-data volume. The env block duplicates omniroute's on purpose (a
+  # shared anchor would change omniroute's definition and recreate it), plus the response-start
+  # bound (O2/D-2: 105 s, above 15x the largest chat budget, below the 120 s combo timeout).
+  # infra/omniroute/HARDENING.md, "Live instance".
+  omniroute-live:
+    image: diegosouzapw/omniroute:3.8.50@sha256:085c57adf499a8aaa9f35ccde95c0df9c11bd9ecd18d6c9edbf3b68b8079ba9d
+    profiles: [gateway-live]
+    depends_on:
+      stubs: { condition: service_healthy }
+    environment:
+      INITIAL_PASSWORD: ${OMNIROUTE_INITIAL_PASSWORD:-surakshasetu-dev-omniroute}
+      JWT_SECRET: ${OMNIROUTE_JWT_SECRET:-surakshasetu-dev-omniroute-jwt-signing}
+      API_KEY_SECRET: ${OMNIROUTE_API_KEY_SECRET:-surakshasetu-dev-omniroute-api-key}
+      STORAGE_ENCRYPTION_KEY: ${OMNIROUTE_STORAGE_ENCRYPTION_KEY:-surakshasetu-dev-omniroute-storage}
+      REQUIRE_API_KEY: "true"
+      INPUT_SANITIZER_ENABLED: "true"
+      INJECTION_GUARD_MODE: warn
+      PII_REDACTION_ENABLED: "true"
+      ENABLE_TLS_FINGERPRINT: "false"
+      ENABLE_SOCKS5_PROXY: "false"
+      OMNIROUTE_MCP_ENFORCE_SCOPES: "true"
+      OMNIROUTE_EMERGENCY_FALLBACK: "false"
+      OMNIROUTE_DIRECT_HEADERS_TIMEOUT_MS: "105000"
+    ports: ["127.0.0.1:20131:20128"]
+    restart: "no"
+    stop_grace_period: 40s
+    healthcheck:
+      <<: *healthcheck
+      test: ["CMD", "node", "healthcheck.mjs"]
+      start_period: 60s
+
   # The Conversation API (TDD §1.4), the same app `make serve` runs: 127.0.0.1:8000, so stop one
   # before starting the other. Healthy = GET /healthz (the image's HEALTHCHECK); GET /readyz names
   # any dependency, bundle or DUMMY-gate check that fails.
