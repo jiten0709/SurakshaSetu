@@ -33,7 +33,7 @@ SurakshaSetu's model gateway is its own OmniRoute container. It is service `omni
 | 12 | *Added:* every request needs an API key | Env `REQUIRE_API_KEY` → true. It defaults to false, and then even an invalid key is let through anonymously. | `test_omniroute_hardening.py::test_every_request_needs_an_api_key`, `test_omniroute_stack.py::test_a_request_without_a_valid_key_is_refused`, `test_gateway_stack.py::test_a_wrong_key_is_refused_by_the_gateway` |
 | 13 | *Added:* no prompt copies in gateway logs (same risk as memory) | The app key's `noLog` → true: without it, request and response bodies are written to `DATA_DIR/call_logs` whatever the log flags say. `database.logs.detailedLogsEnabled` and `callLogPipelineEnabled` → false. | `test_omniroute_hardening.py::test_nothing_copies_prompts_into_gateway_logs`, `test_omniroute_stack.py::test_the_running_gateway_matches_the_seed` |
 | 14 | *Added:* the model sees exactly the envelope the audit log records (TDD §1.5) | The upstream is a built-in `vllm` connection, not an `openai-compatible-*` node, which would rewrite `json_schema` into a system message. `settings.customSystemPromptEnabled` → false. Memory and skills are off (row 4). | `test_omniroute_hardening.py::test_the_only_upstream_is_the_self_hosted_stub_connection`, `test_gateway_stack.py::test_the_model_receives_exactly_what_the_adapter_sent` |
-| 15 | *Added:* no hidden retries, fallbacks, queues or waits | Every combo has `config.maxRetries` → 0; the default is 1 retry after 2 s, past every route's budget. `OMNIROUTE_EMERGENCY_FALLBACK` → false. `resilience.requestQueue.autoEnableApiKeyProviders` → false: by default every API-key connection is queued at 60 requests a minute, at least 350 ms apart, with waits of up to 15 s. That measured ~340 ms per back-to-back call, over guard-input's 200 ms budget. `waitForCooldown.enabled` and `comboCooldownWait.enabled` → false (waits of up to 30 s). Rate limits belong to the orchestrator (TDD §1.4). | `test_omniroute_hardening.py::test_feature_flags_the_verifier_expects_are_the_compose_values`, `test_omniroute_hardening.py::test_the_gateway_adds_no_queue_or_hidden_waits`, `test_omniroute_stack.py::test_a_failing_model_is_a_gateway_error_without_a_retry` |
+| 15 | *Added:* no hidden retries, fallbacks, queues or waits | Every combo has `config.maxRetries` → 0; the default is 1 retry after 2 s, past every route's budget. `OMNIROUTE_EMERGENCY_FALLBACK` → false. `resilience.requestQueue.autoEnableApiKeyProviders` → false: by default every API-key connection is queued at 60 requests a minute, at least 350 ms apart, with waits of up to 15 s. That measured ~340 ms per back-to-back call, over guard-input's 200 ms budget. `waitForCooldown.enabled` and `comboCooldownWait.enabled` → false (waits of up to 30 s). **Not covered by `maxRetries`:** OmniRoute's fetch layer waits 30 s for response headers by default and then re-sends the request once, so a slow upstream is asked twice and the client sees 504 at about 60 s (bug #39, readiness §14.2). The stub instance keeps that default (its upstream answers at once); `omniroute-live` sets the wait to 105 s (see "Live instance"). Rate limits belong to the orchestrator (TDD §1.4). | `test_omniroute_hardening.py::test_feature_flags_the_verifier_expects_are_the_compose_values`, `test_omniroute_hardening.py::test_the_bound_sits_between_the_scaled_budgets_and_the_combo_timeout`, `test_omniroute_hardening.py::test_the_gateway_adds_no_queue_or_hidden_waits`, `test_omniroute_stack.py::test_a_failing_model_is_a_gateway_error_without_a_retry` |
 | 16 | *Added:* one pinned release | `image: diegosouzapw/omniroute:3.8.50@sha256:…`. | `test_omniroute_hardening.py::test_the_image_is_one_release_pinned_by_digest` |
 
 ## Guardrails: why `warn`, and why PII masking is on everywhere
@@ -59,6 +59,35 @@ OmniRoute's built-in guardrails are thin: English regular expressions for inject
 
 `embed` and `rerank` are not combos. OmniRoute hosts no embedding or rerank models, and its `/v1/rerank` speaks the Cohere/Voyage shape. The adapter calls `tei-embed` and `tei-rerank` directly on the self-hosted network (`SS_TEI_EMBED_URL`, `SS_TEI_RERANK_URL`).
 
+## Live instance (`omniroute-live`)
+
+The self-hosted routes' live configuration (Step 1.5b, design E, D-1) runs on a second, ephemeral OmniRoute: service `omniroute-live`, profile `gateway-live`, `127.0.0.1:20131`.
+
+- `make gateway-live-up` creates it empty and seeds it with `seed.json` + `seed.live.json`, merged in memory.
+- `make gateway-live-down` saves its log to `orchestrator/.cache/live-gateway-<ts>.log` and removes it.
+- `make check-gateway-live` does both around `tests/stack/test_gateway_live_stack.py`.
+- It starts with `--no-deps` and never starts the `stubs` service. They must already be running: the stack test fails at setup with a message when they are down, and without them the gateway log shows `ENOTFOUND stubs`.
+
+What holds:
+
+- **Isolation.** A separate container with its own database. `omniroute`, its volume `omniroute-data` and `seed.json` are never started, stopped, recreated, mounted or written by a live target. Every Docker call is `docker compose --profile gateway-live <command> omniroute-live`. No recipe passes `-v` or names a volume. The seed script writes to :20131 only with `--live`, and refuses :20130 with it. `omniroute`'s compose definition is frozen in a test, because any change to it recreates the stub container.
+  Tests: `test_omniroute_hardening.py::test_the_stub_instance_is_unchanged`, `test_omniroute_hardening.py::test_the_live_targets_touch_only_the_live_instance`, `test_gateway_live_stack.py::test_the_protected_infrastructure_is_unchanged`.
+- **No volume.** Its SQLite database and the `server.env` OmniRoute writes at boot live in the container layer and die with it. Every run starts from the seed alone, and nothing is kept at rest.
+  Test: `test_omniroute_hardening.py::test_the_live_instance_is_the_same_gateway_with_no_state_of_its_own`.
+- **Same gateway.** The same digest, healthcheck and hardening env as `omniroute` (a duplicated block, not a shared anchor), plus `OMNIROUTE_DIRECT_HEADERS_TIMEOUT_MS=105000`.
+- **Two connections, one target per combo, no fallback.** `vllm` → the stubs (`gen-converse`, `gen-recommend`; they stay on the stubs, O4). `ollama-local` → the host's Ollama at `host.docker.internal:11434` (`guard-input`, `nlu-extract`, `summarise` as `ollama/<model>`; `verify-claims` as `ollama-local/<model>`, the two target forms U7 tested). Each combo has exactly one target and no `globalFallbackModel` exists, so a failed self-hosted route fails closed and does not fall over to the stubs.
+  Tests: `test_omniroute_hardening.py::test_the_live_overlay_adds_one_connection_and_moves_only_the_self_hosted_routes`, `test_gateway_live_stack.py::test_a_self_hosted_route_fails_closed_without_fallback`. The stack test ran on 2026-11-15 with no Ollama on the host: `guard-input` returned 502 and nothing reached the stubs. It has not run against a running Ollama.
+- **The 105 s response-start bound (O2, D-2).** Without it the fetch layer waits 30 s and re-sends once (row 15). 105 s is above 15× the largest chat budget (gen-recommend 6 s → 90 s; 15× is the cap of `SS_GATEWAY_TIMEOUT_SCALE`) and below OmniRoute's 120 s combo timeout, so the adapter gives up first. An upstream slower than 105 s is still sent twice and fails at 120 s (U7, 2026-11-13). Only the live instance has the bound.
+  Test: `test_omniroute_hardening.py::test_the_bound_sits_between_the_scaled_budgets_and_the_combo_timeout`.
+- **No model chosen yet.** `seed.live.json` holds `__UNSET__`, and `apply --live` refuses it until C5 names a model. The stack test seeds a never-pulled placeholder itself.
+- **Ollama's context (D-6).** Ollama's default context is 4,096 tokens and it truncates silently with HTTP 200 (U4). The host must run it with `OLLAMA_CONTEXT_LENGTH=8192`. Nothing in the gateway sets or checks that, and the adapter's fail-closed check is C5a, not built yet.
+- **Cleanup and interruption.**
+  - The targets that start `omniroute-live` remove it after a failure or an interruption.
+  - `gateway-live-down` never reads a failed `docker compose ps` as "no container": it exits 1 and removes nothing. It saves the log first and confirms removal with a second listing.
+  - Seen (2026-11-15): a failing test left the recipe exiting 1 (make shows `Error 1` and exits 2) with the container removed.
+  - Read from the recipes, not exercised: Ctrl-C and SIGTERM are recorded and cleanup then runs (exit 130/143). A second signal can still abort a `docker compose` call mid-cleanup. SIGKILL, a crashed daemon or power loss can leave the container behind.
+  - Recovery is `make gateway-live-down` (service-scoped, idempotent). A leftover holds only placeholder configuration, and the next `gateway-live-up` recreates it empty.
+
 ## Deployment gates (not provable on a laptop)
 
 - **Egress:** enforce the provider allowlist at the network layer; don't rely on gateway configuration alone (TDD §1.6).
@@ -70,10 +99,12 @@ OmniRoute's built-in guardrails are thin: English regular expressions for inject
 
 ## Upgrading the image
 
-When bumping the pinned release, re-check each of these in the new source, and rerun `make gateway-up`, `make gateway-verify` and both stack tests:
+When bumping the pinned release, re-check each of these in the new source, and rerun `make gateway-up`, `make gateway-verify`, `make check-gateway-live` and the stack tests:
 
 - the keyless provider list (`src/shared/constants/providers/noauth.ts`) against `settings.blockedProviders`;
 - the compression header format;
 - the response `model` rewrite;
 - the flat `semanticCacheEnabled` key;
-- whether `vllm` still passes `json_schema` through.
+- whether `vllm` still passes `json_schema` through;
+- `resolveDirectHeadersTimeoutMs`: that `OMNIROUTE_DIRECT_HEADERS_TIMEOUT_MS` still sets the response-start wait, and that the single re-send is unchanged (U7);
+- the `ollama-local` passthrough: that a connection with `authType: apikey` still imports and reads back with 0 drift, and that both target forms (`ollama/…`, `ollama-local/…`) still resolve to it.
