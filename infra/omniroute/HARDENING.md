@@ -65,6 +65,7 @@ The self-hosted routes' live configuration (Step 1.5b, design E, D-1) runs on a 
 
 - `make gateway-live-up` creates it empty and seeds it with `seed.json` + `seed.live.json`, merged in memory.
 - `make gateway-live-down` saves its log to `orchestrator/.cache/live-gateway-<ts>.log` and removes it.
+  With `LIVE_LOG` set it saves there instead: `make eval-live-self-hosted` sets it to its run's exact path, named by its report's stamp.
 - `make check-gateway-live` does both around `tests/stack/test_gateway_live_stack.py`.
 - It starts with `--no-deps` and never starts the `stubs` service. They must already be running: the stack test fails at setup with a message when they are down, and without them the gateway log shows `ENOTFOUND stubs`.
 
@@ -82,6 +83,14 @@ What holds:
 - **No model chosen yet.** `seed.live.json` holds `__UNSET__`, and `apply --live` refuses it until C5 names a model. The stack test seeds a never-pulled placeholder itself.
 - **Ollama's context (D-6).** Ollama's default context is 4,096 tokens and it truncates silently with HTTP 200 (U4). The host must run it with `OLLAMA_CONTEXT_LENGTH=8192`. Nothing in the gateway sets or checks that. The adapter does, when `SS_GATEWAY_CONTEXT_TOKENS` is set (dev/test only; pilot and prod refuse it): a chat call whose `usage.prompt_tokens` reaches it fails closed with `CONTEXT_TRUNCATED` (U4: a truncated prompt reports exactly the limit), and one with no `prompt_tokens` fails closed with `MALFORMED_RESPONSE`. U4 measured Ollama directly; that OmniRoute passes Ollama's `usage` through unchanged is **not yet shown** (the model protocol's first stage, C5b).
   Tests: `test_gateway.py::test_a_prompt_that_reaches_the_context_length_fails_closed`, `test_gateway.py::test_without_prompt_tokens_only_the_context_check_fails_closed`.
+- **The learned reasoning-effort clamp (bug #43): detected, not prevented.**
+  - **What happens.** After an upstream 400 that lists the allowed values (`expected one of low, medium, high`), OmniRoute 3.8.50 rewrites `reasoning_effort: "none"` (thinking off, decision 7) to `low`. It re-sends at once, a retry that row 15's `maxRetries: 0` doesn't cover, and it rewrites later requests to that model too (payload-rules probe, 2026-11-17).
+  - **Why nothing sees it.** The adapter gets a 200. A code reading (`executors/base.ts:1547–1580`) found that the auto-learn setting doesn't gate the clamp.
+  - **The gate.** `make eval-live-self-hosted` reads its own run's saved log after teardown, never the stub gateway's. It fails on a structured `"tag":"REASONING_SANITIZE"` event.
+  - **Failing closed.** It also fails on a missing, empty or unparseable log, on a log without an HTTP event for each route the run's probe pinged, or when `omniroute-live`'s compose image isn't `VERIFIED_IMAGE`.
+  - **Where the result goes:** the report's `gateway_log:reasoning_sanitize` gate.
+  - **Image changes.** The tag, the event fields and the log format are 3.8.50's. Recheck them with a clamp probe before changing the image.
+  Tests: `test_gateway_log.py::test_the_probes_four_sanitizer_events_are_found_and_nothing_else`, `test_gateway_log.py::test_a_log_that_cannot_vouch_for_the_run_fails_closed`, `test_omniroute_hardening.py::test_the_self_hosted_evaluation_gates_the_log_its_own_teardown_saved`, `test_omniroute_hardening.py::test_gateway_live_down_saves_the_log_exactly_where_live_log_says`, `test_omniroute_hardening.py::test_the_live_image_is_the_one_bug_43s_gate_was_verified_on`.
 - **Cleanup and interruption.**
   - The targets that start `omniroute-live` remove it after a failure or an interruption.
   - `gateway-live-down` never reads a failed `docker compose ps` as "no container": it exits 1 and removes nothing. It saves the log first and confirms removal with a second listing.

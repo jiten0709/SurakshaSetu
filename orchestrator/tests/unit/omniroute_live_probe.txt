@@ -1,0 +1,22 @@
+omniroute-live-1  | 2026-11-17T11:00:37.782269637Z [bootstrap] 📁 Secrets persisted to: /app/data/server.env
+omniroute-live-1  | 2026-11-17T11:00:38.002971720Z ✓ Ready in 0ms
+omniroute-live-1  | 2026-11-17T11:00:41.383250055Z kill deprecated models complete.
+omniroute-live-1  | 2026-11-17T11:00:53.790741255Z {"level":30,"time":"2026-11-17T11:00:53.577Z","service":"omniroute","module":"sse","tag":"HTTP","method":"POST","path":"/v1/chat/completions | guard-input | 1 msgs","msg":"📥 POST /v1/chat/completions | guard-input | 1 msgs"}
+omniroute-live-1  | 2026-11-17T11:00:53.791087422Z {"level":30,"time":"2026-11-17T11:00:53.583Z","service":"omniroute","module":"sse","tag":"CHAT","msg":"Combo \"guard-input\" [priority] with 1 models"}
+omniroute-live-1  | 2026-11-17T11:00:53.833769964Z {"level":30,"time":"2026-11-17T11:00:53.826Z","service":"omniroute","module":"sse","tag":"COMBO","msg":"Model ollama/ss-probe-a succeeded (234ms, 0 fallbacks)"}
+omniroute-live-1  | 2026-11-17T11:00:53.834465547Z {"level":30,"time":"2026-11-17T11:00:53.829Z","service":"omniroute","module":"sse","tag":"COMBO","msg":"combo trace combo-a263b9e6-02ab-4bf9-b2f7-8e02b315f41d terminal={\"status\":200,\"errorClass\":null} decisions=1"}
+omniroute-live-1  | 2026-11-17T11:00:53.857776755Z {"level":30,"time":"2026-11-17T11:00:53.844Z","service":"omniroute","module":"sse","tag":"HTTP","method":"POST","path":"/v1/chat/completions | verify-claims | 1 msgs","msg":"📥 POST /v1/chat/completions | verify-claims | 1 msgs"}
+omniroute-live-1  | 2026-11-17T11:00:53.901475214Z {"level":30,"time":"2026-11-17T11:00:53.879Z","service":"omniroute","module":"sse","tag":"HTTP","method":"POST","path":"/v1/chat/completions | nlu-extract | 1 msgs","msg":"📥 POST /v1/chat/completions | nlu-extract | 1 msgs"}
+omniroute-live-1  | 2026-11-17T11:00:54.432231130Z [31m[ERROR] [400]: Unsupported parameter: temperature[0m
+omniroute-live-1  | 2026-11-17T11:01:06.843443386Z {"level":30,"time":"2026-11-17T11:01:06.842Z","service":"omniroute","module":"sse","tag":"REASONING_SANITIZE","msg":"ollama/ss-probe-h: clamped reasoning_effort none → low (learned)"}
+omniroute-live-1  | 2026-11-17T11:01:06.843542553Z {"level":30,"time":"2026-11-17T11:01:06.842Z","service":"omniroute","module":"sse","tag":"REASONING_SANITIZE","msg":"Upstream 400 rejected reasoning_effort on http://host.docker.internal:11434/v1/chat/completions — clamped to low,medium,high and retrying (learned for ollama/ss-probe-h)"}
+omniroute-live-1  | 2026-11-17T11:01:06.850733470Z {"level":40,"time":"2026-11-17T11:01:06.848Z","service":"omniroute","module":"sse","tag":"COMBO","status":400,"errorBody":"[400]: reasoning_effort: expected one of `low`, `medium`, `high`","msg":"Model ollama/ss-probe-h failed, trying next"}
+omniroute-live-1  | 2026-11-17T11:01:09.417836596Z     at async Timeout._onTimeout (.build/next/server/chunks/src_lib_0ya2t7z._.js:1:11728) {
+omniroute-live-1  | 2026-11-17T11:01:09.417837429Z   code: 'SQLITE_ERROR'
+omniroute-live-1  | 2026-11-17T11:01:09.417838221Z }
+omniroute-live-1  | 2026-11-17T11:01:10.878645680Z {"level":30,"time":"2026-11-17T11:01:10.862Z","service":"omniroute","module":"sse","tag":"HTTP","method":"POST","path":"/v1/chat/completions | summarise | 1 msgs","msg":"📥 POST /v1/chat/completions | summarise | 1 msgs"}
+omniroute-live-1  | 2026-11-17T11:01:10.878677597Z {"level":30,"time":"2026-11-17T11:01:10.875Z","service":"omniroute","module":"sse","tag":"REASONING_SANITIZE","msg":"ollama/ss-probe-h: clamped reasoning_effort none → low (learned)"}
+omniroute-live-1  | 2026-11-17T11:01:10.886846555Z {"level":30,"time":"2026-11-17T11:01:10.885Z","service":"omniroute","module":"sse","tag":"COMBO","msg":"Model ollama/ss-probe-h succeeded (17ms, 0 fallbacks)"}
+omniroute-live-1  | 2026-11-17T11:01:10.886912680Z {"level":30,"time":"2026-11-17T11:01:10.886Z","service":"omniroute","module":"sse","tag":"COMBO","msg":"combo trace combo-1e636276-8430-40a2-80b2-e003b590e30c terminal={\"status\":200,\"errorClass\":null} decisions=1"}
+omniroute-live-1  | 2026-11-17T11:01:10.929008513Z {"level":30,"time":"2026-11-17T11:01:10.893Z","service":"omniroute","module":"sse","tag":"REASONING_SANITIZE","msg":"ollama/ss-probe-h: clamped reasoning_effort none → low (learned)"}
+omniroute-live-1  | 2026-11-17T11:01:10.934556722Z [ProxyEgress] ollama status=success

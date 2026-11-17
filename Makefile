@@ -123,15 +123,16 @@ gateway-live-up:
 gateway-live-verify:
 	@$(LIVE_SEED) verify --live
 
-# Save omniroute-live's log, then stop and remove its container (no -v). Nothing to do when it
-# doesn't exist; a listing that fails stops the target before anything is removed. Removal is then
+# Save omniroute-live's log (to $LIVE_LOG when set: eval-live-self-hosted's exact path; else a
+# timestamped name), then stop and remove its container (no -v). Nothing to do when it doesn't
+# exist; a listing that fails stops the target before anything is removed. Removal is then
 # confirmed by a second, checked listing.
 gateway-live-down:
 	@ids=$$($(LIVE_COMPOSE) ps --all --quiet omniroute-live) \
 		|| { echo "gateway-live-down: listing omniroute-live failed; nothing removed" >&2; exit 1; }; \
 	if [ -n "$$ids" ]; then \
 		mkdir -p orchestrator/.cache; \
-		log="orchestrator/.cache/live-gateway-$$(date -u +%Y%m%dT%H%M%SZ).log"; \
+		log="$${LIVE_LOG:-orchestrator/.cache/live-gateway-$$(date -u +%Y%m%dT%H%M%SZ).log}"; \
 		$(LIVE_COMPOSE) logs --no-color --timestamps omniroute-live > "$$log" 2>&1 \
 			|| echo "gateway-live-down: saving the log failed; removing omniroute-live anyway" >&2; \
 		$(LIVE_COMPOSE) rm --stop --force omniroute-live \
@@ -328,20 +329,33 @@ eval-live:
 # the report against :20131 with the context check (D-6) and the chat scale, then removes
 # omniroute-live whatever happened. Needs what eval-live needs, plus Ollama on the host with
 # OLLAMA_CONTEXT_LENGTH=8192. `make eval-live` is unchanged. LIVE_SCALE=N sets the scale (1-15).
+# Bug #43's gate (decision log §2): after teardown, `eval gateway-log` reads the log this run's own
+# gateway-live-down saved (LIVE_LOG, named by the report's stamp; never the stub gateway's) with
+# the routes the report says the probe pinged. It fails on a REASONING_SANITIZE event, or closed
+# on a log that can't vouch for the run, records the gate in the report, and its failure fails the
+# target. It runs whenever the report step ran, except after an interruption; the summary prints
+# after it.
 LIVE_SCALE := 15
 LIVE_CONTEXT := 8192
 LIVE_EVAL_ENV := SS_TEI_TIMEOUT_SCALE=1000 SS_GATEWAY_BASE_URL=$(LIVE_URL) \
 	SS_GATEWAY_TIMEOUT_SCALE=$(LIVE_SCALE) SS_GATEWAY_CONTEXT_TOKENS=$(LIVE_CONTEXT)
+LIVE_GATE := cd orchestrator && SS_LOG_FORMAT=text uv run --locked python -m surakshasetu.eval gateway-log
 eval-live-self-hosted:
 	@sig=; rc=0; trap 'sig=130' INT; trap 'sig=143' TERM; \
+	ran=; stamp=$$(date -u +%Y%m%dT%H%M%SZ); log="orchestrator/.cache/live-gateway-$$stamp.log"; \
 	$(MAKE) --no-print-directory -C "$(CURDIR)" gateway-live-up || rc=$$?; \
 	if [ "$$rc" -eq 0 ] && [ -z "$$sig" ]; then \
-		rm -f reports/eval-latest.md; \
-		($(call EVAL_REPORT,$(LIVE_EVAL_ENV)) --mode live --routes self-hosted) || rc=$$?; \
-		cat reports/eval-latest.md 2>/dev/null; \
+		rm -f reports/eval-latest.md; ran=1; \
+		($(call EVAL_REPORT,$(LIVE_EVAL_ENV)) --mode live --routes self-hosted --stamp "$$stamp") \
+			|| rc=$$?; \
 	fi; \
 	trap '' INT TERM; \
-	$(LIVE_DOWN) || { echo "eval-live-self-hosted: removing omniroute-live failed; run make gateway-live-down" >&2; [ "$$rc" -ne 0 ] || rc=1; }; \
+	LIVE_LOG="$$log" $(LIVE_DOWN) || { echo "eval-live-self-hosted: removing omniroute-live failed; run make gateway-live-down" >&2; [ "$$rc" -ne 0 ] || rc=1; }; \
+	if [ -n "$$ran" ] && [ -z "$$sig" ]; then \
+		grc=0; ($(LIVE_GATE) --log "$(CURDIR)/$$log" --stamp "$$stamp") || grc=$$?; \
+		[ "$$rc" -ne 0 ] || rc=$$grc; \
+		cat reports/eval-latest.md 2>/dev/null; \
+	fi; \
 	exit $${sig:-$$rc}
 
 # Validate the evaluation's sets offline (TDD §7.5 step 4): the golden conversations and the

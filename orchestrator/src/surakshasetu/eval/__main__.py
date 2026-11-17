@@ -3,6 +3,7 @@
     python -m surakshasetu.eval run --mode stub --records DIR   (make eval, after the suites)
     python -m surakshasetu.eval run --mode live                 (make eval-live, after D2)
     python -m surakshasetu.eval run --mode live --routes self-hosted   (make eval-live-self-hosted)
+    python -m surakshasetu.eval gateway-log --log FILE --stamp TS      (then, after its teardown)
 
 stub: the deterministic gates are enforced (the golden and red-team runs' records, retrieval,
 abstention, citation coverage, zero unsupported premiums and disclosures, §5.3, latency, coverage);
@@ -12,16 +13,19 @@ reported as information. live: the routes must be provisioned (no stub model may
 models, so their gates stay with `make eval`. live with --routes self-hosted (C6, D-4): only the
 self-hosted routes must be provisioned; the gen routes stay on the stubs (O4), so the QA gates,
 whose drafts gen-recommend writes, are WAITING on RD-1, and fallback counts the self-hosted calls.
+gateway-log (bug #43, decision log §2): the gate over the run's own saved omniroute-live log, added
+to the report that run wrote under the same --stamp, which also names the routes its probe pinged.
 
 Writes reports/eval-<ts>.json and reports/eval-<ts>.md. Exit 0 when every enforced gate passes
 (or is waived), 1 when one fails, 2 when the run cannot be made (a broken label, record or waiver
-file; unprovisioned routes in live mode; no thresholds).
+file; unprovisioned routes in live mode; no thresholds; for gateway-log, no report to record in).
 """
 
 import argparse
 import asyncio
 import json
 import logging
+import re
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from functools import partial
@@ -38,7 +42,7 @@ from surakshasetu.compose.bundle import load_bundle
 from surakshasetu.compose.envelope import SessionFacts, build
 from surakshasetu.config import Settings
 from surakshasetu.domain.client import DomainClient
-from surakshasetu.eval import labels, metrics, qa, report, retrieval_metrics
+from surakshasetu.eval import gateway_log, labels, metrics, qa, report, retrieval_metrics
 from surakshasetu.gateway import DataClass, Gateway, GatewayUnavailable, Route
 from surakshasetu.gateway.adapter import ROUTES
 from surakshasetu.logging import configure_logging
@@ -54,6 +58,7 @@ REPORTS = REPO / "reports"
 WAIVERS = REPO / "content" / "eval" / "waivers.yaml"
 CONVERSATIONS = labels.GOLDEN / "conversations"
 REDTEAM = REPO / "content" / "redteam"
+COMPOSE = REPO / "infra" / "compose.yaml"
 UNPROVISIONED = "eval-live requires provisioned model routes (D2)"
 UNPROVISIONED_SELF_HOSTED = "eval-live-self-hosted requires a model on the self-hosted routes (C5b)"
 # The chat routes whose models run inside the boundary (embed and rerank are TEI, not the gateway).
@@ -94,9 +99,11 @@ def load_records(directory: Path) -> list[dict[str, Any]]:
 
 async def probe(
     gateway: Gateway, settings: Settings, routes: frozenset[Route] | None = None
-) -> None:
+) -> list[Route]:
     """Live mode: every chat route the evaluation uses answers, from a model that is not a stub.
-    With routes (C6: SELF_HOSTED), only those are pinged; the others stay on the stubs (O4)."""
+    With routes (C6: SELF_HOSTED), only those are pinged; the others stay on the stubs (O4).
+    Returns the routes pinged, in order: the report names them, and bug #43's gate wants a request
+    on each in the run's own gateway log."""
     refused = UNPROVISIONED if routes is None else UNPROVISIONED_SELF_HOSTED
     bundle = load_bundle(settings.prompt_bundle, env=settings.env)
     ping = [{"role": "user", "content": "Reply with OK."}]
@@ -134,9 +141,11 @@ async def probe(
                 },
             )
         )
+    pinged: list[Route] = []
     for route, kwargs in calls:
         if routes is not None and route not in routes:
             continue
+        pinged.append(route)
         try:
             result = await gateway.call(
                 route, session_id=uuid7(), turn_id=uuid7(), fsm_state="S3", **kwargs
@@ -145,6 +154,7 @@ async def probe(
             raise Unrunnable(f"{refused}: {route.value} {exc.reason}") from exc
         if "stub" in result.served_model.casefold():
             raise Unrunnable(f"{refused}: {route.value} is served by a stub")
+    return pinged
 
 
 class Calls:
@@ -182,8 +192,11 @@ async def evaluate(
         meta = partial(load_snapshot_meta, pool)
         qdrant = AsyncQdrantClient(url=settings.qdrant_url)
         async with Gateway(settings) as gateway, DomainClient.from_settings(settings) as domain:
-            if live:
+            probed = (
                 await probe(gateway, settings, SELF_HOSTED if routes == "self-hosted" else None)
+                if live
+                else []
+            )
             calls = Calls(gateway)
             asked = await labels.asked_slots(domain)
             guard_prompt = bundle.rails.get(Route.GUARD_INPUT)
@@ -211,6 +224,7 @@ async def evaluate(
         "drafts": drafts,
         "calls": calls.seen,
         "rules": asked,
+        "probed": probed,
     }
 
 
@@ -330,6 +344,7 @@ def sections(run: dict[str, Any]) -> dict[str, Any]:
         "retrieval": {"lines": retrieval.lines},
         "qa": report.drafts_summary(drafts),
         "route_latency_p95_ms": {k: metrics.p95(v) for k, v in sorted(routes.items())},
+        "probed_routes": [route.value for route in run.get("probed", [])],
         "counts": {
             "golden conversations per state": ", ".join(
                 f"{s} {per_state.get(s, 0)}" for s in metrics.JOURNEY_STATES
@@ -378,10 +393,12 @@ def write(body: dict[str, Any], stamp: str) -> tuple[Path, Path]:
     return json_path, md_path
 
 
-async def main_async(mode: str, records_dir: Path | None, routes: str = "all") -> int:
+async def main_async(
+    mode: str, records_dir: Path | None, routes: str = "all", stamp: str | None = None
+) -> int:
     settings = Settings()
     configure_logging(settings.log_level, settings.log_dir, settings.log_format)
-    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    stamp = stamp or datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     try:
         run = await evaluate(mode, records_dir, settings, routes)
         gates = metrics.apply_waivers(gates_of(run, settings), run["waivers"])
@@ -406,6 +423,49 @@ async def main_async(mode: str, records_dir: Path | None, routes: str = "all") -
     return 0 if body["result"] == "PASS" else 1
 
 
+def live_image() -> str | None:
+    """omniroute-live's image as infra/compose.yaml names it (what gateway-live-up ran)."""
+    try:
+        image = yaml.safe_load(COMPOSE.read_text("utf-8"))["services"]["omniroute-live"]["image"]
+    except (OSError, ValueError, yaml.YAMLError, KeyError, TypeError):
+        return None
+    return image if isinstance(image, str) else None
+
+
+def record_gateway_log(log: Path, stamp: str) -> int:
+    """Bug #43: the gate over this run's own saved omniroute-live log (only read), with the routes
+    this run's probe pinged, recorded in the report the run wrote under the same stamp (by that
+    exact name) and its markdown. A second call replaces the row. Exit 0 when the gate passes, 1
+    when it fails, 2 when there is no report."""
+    settings = Settings()
+    configure_logging(settings.log_level, settings.log_dir, settings.log_format)
+    path = REPORTS / f"eval-{stamp}.json"
+    try:
+        body = json.loads(path.read_text("utf-8"))
+    except (OSError, ValueError):
+        logger.error("no readable report %s: gate %s not recorded", path.name, gateway_log.NAME)
+        return 2
+    probed = body.get("probed_routes")
+    routes = [r for r in probed if isinstance(r, str)] if isinstance(probed, list) else []
+    found = gateway_log.gate(log, routes, live_image())
+    if found.status == "PASS":
+        logger.info("gate %s passed: %s", found.name, found.note)
+    else:
+        logger.warning("gate %s failed: %s", found.name, found.note)
+    rows = [r for r in body["gates"] if r["gate"] != found.name] + [report.gate_row(found)]
+    blocking = [r["gate"] for r in rows if r["status"] == "FAIL"]
+    body |= {"gates": rows, "blocking": blocking, "result": "FAIL" if blocking else "PASS"}
+    write(body, stamp)
+    return 0 if found.status == "PASS" else 1
+
+
+def _stamp(value: str) -> str:
+    """A report stamp as the run writes it; it names files, so nothing else is accepted."""
+    if not re.fullmatch(r"\d{8}T\d{6}Z", value):
+        raise argparse.ArgumentTypeError("expected YYYYMMDDTHHMMSSZ")
+    return value
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m surakshasetu.eval")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -413,12 +473,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     run.add_argument("--mode", choices=["stub", "live"], required=True)
     run.add_argument("--records", type=Path, default=None)
     run.add_argument("--routes", choices=["all", "self-hosted"], default="all")
+    run.add_argument("--stamp", type=_stamp, default=None)  # the report's name; make supplies it
+    gated = sub.add_parser("gateway-log")
+    gated.add_argument("--log", type=Path, required=True)
+    gated.add_argument("--stamp", type=_stamp, required=True)
     args = parser.parse_args(argv)
+    if args.command == "gateway-log":
+        return record_gateway_log(args.log, args.stamp)
     if args.mode == "stub" and args.records is None:
         parser.error("--mode stub needs --records (the golden and red-team runs' records)")
     if args.routes == "self-hosted" and args.mode != "live":
         parser.error("--routes self-hosted needs --mode live")
-    return asyncio.run(main_async(args.mode, args.records, args.routes))
+    return asyncio.run(main_async(args.mode, args.records, args.routes, args.stamp))
 
 
 if __name__ == "__main__":

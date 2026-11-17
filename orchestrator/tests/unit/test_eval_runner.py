@@ -186,6 +186,15 @@ async def test_live_mode_refuses_a_stub_or_an_unreachable_route() -> None:
 
 
 LOCAL = {route: "local-model" for route in ("guard-input", "nlu-extract", "verify-claims")}
+# The smallest run sections() reads.
+SECTIONS_RUN: dict[str, Any] = {
+    "records": [],
+    "slots": [],
+    "intents": [],
+    "drafts": [],
+    "calls": [],
+    "retrieval": retrieval_metrics.Report(lines=[], recall={}, precision={}, abstention=1.0),
+}
 
 
 @pytest.mark.asyncio
@@ -194,8 +203,11 @@ async def test_the_self_hosted_probe_pings_only_the_self_hosted_routes() -> None
     assert {r.value for r in cli.SELF_HOSTED} == set(LOCAL) | {"summarise"}
     models = Models(served=LOCAL)
     async with gateway(models) as gw:
-        await cli.probe(gw, settings(), cli.SELF_HOSTED)
+        pinged = await cli.probe(gw, settings(), cli.SELF_HOSTED)
         assert set(models.routes) == set(LOCAL)  # no gen route pinged
+        # Bug #43: the report names exactly these, and the gate wants a request on each.
+        assert [r.value for r in pinged] == list(LOCAL)
+        assert cli.sections(SECTIONS_RUN | {"probed": pinged})["probed_routes"] == list(LOCAL)
         with pytest.raises(cli.Unrunnable, match=r"\(D2\): gen-recommend is served by a stub"):
             await cli.probe(gw, settings())  # make eval-live is unchanged
     async with gateway(Models()) as gw:

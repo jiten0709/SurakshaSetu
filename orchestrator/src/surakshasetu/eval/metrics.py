@@ -89,6 +89,12 @@ STEP_DEFINITIONS: dict[str, tuple[str, str]] = {
         "Golden conversations exercising each journey state (own turns, prelude excluded)",
         "≥ 20 per state (TDD production target about 600)",
     ),
+    "gateway_log": (
+        "Structured REASONING_SANITIZE events in the run's own saved omniroute-live log (bug #43);"
+        " unmeasured when the log is missing, empty or unparseable, has no request on a probed"
+        " route, or omniroute-live is not the verified image",
+        "0",
+    ),
 }
 # TDD §1.4: p95 of 2.5 s for S1-S2 turns and 6.5 s for S3; Quote-Only is the S1 express path.
 # A side question in any state does S3-class work (retrieval, gen-recommend, every claim

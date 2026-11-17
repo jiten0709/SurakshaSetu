@@ -7,12 +7,15 @@ infra/omniroute/HARDENING.md maps each row to the tests here and there.
 import json
 import re
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
+import pytest
 import yaml
 
 from surakshasetu.config import Settings
+from surakshasetu.eval import gateway_log
 from surakshasetu.gateway import Route
 from surakshasetu.gateway.adapter import ROUTES
 
@@ -242,6 +245,15 @@ def test_the_live_instance_is_the_same_gateway_with_no_state_of_its_own() -> Non
     assert LIVE_SERVICE["restart"] == "no"
 
 
+def test_the_live_image_is_the_one_bug_43s_gate_was_verified_on() -> None:
+    # The gate reads 3.8.50's REASONING_SANITIZE tag and log format (decision log §2). A renamed or
+    # silent tag on another image would pass it, so an image change stops here first.
+    assert LIVE_SERVICE["image"] == gateway_log.VERIFIED_IMAGE, (
+        "omniroute-live's image changed: re-run a clamp probe on it, recheck the tag, the HTTP"
+        " event and the log format in eval/gateway_log.py, then update VERIFIED_IMAGE"
+    )
+
+
 def test_the_bound_sits_between_the_scaled_budgets_and_the_combo_timeout() -> None:
     bound_s = int(LIVE_SERVICE["environment"]["OMNIROUTE_DIRECT_HEADERS_TIMEOUT_MS"]) / 1000
     largest = max(spec.timeout_s for route, spec in ROUTES.items() if route.value in CHAT_ROUTES)
@@ -287,6 +299,7 @@ LIVE_VARIABLES = (
     "LIVE_SCALE",
     "LIVE_CONTEXT",
     "LIVE_EVAL_ENV",
+    "LIVE_GATE",  # bug #43
 )
 SIGNALS = "sig=; rc=0; trap 'sig=130' INT; trap 'sig=143' TERM;"
 
@@ -312,6 +325,11 @@ def test_the_live_targets_touch_only_the_live_instance() -> None:
     assert down.count("ps --all --quiet omniroute-live) \\\n\t\t|| { echo") == 2
     assert '[ -z "$$left" ] ||' in down
     assert "saving the log failed; removing omniroute-live anyway" in down
+    # The log goes where LIVE_LOG says (eval-live-self-hosted's exact path), else the old name.
+    assert (
+        'log="$${LIVE_LOG:-orchestrator/.cache/live-gateway-$$(date -u +%Y%m%dT%H%M%SZ).log}";'
+        in down
+    )
     # Starting targets: signals only recorded; cleanup with signals ignored; status preserved.
     up, check = recipe("gateway-live-up"), recipe("check-gateway-live")
     evaluation = recipe("eval-live-self-hosted")
@@ -330,7 +348,10 @@ def test_the_self_hosted_evaluation_runs_against_the_live_gateway_only() -> None
     # :20131 with the context check (D-6) and the chat scale (at most 15, D-2).
     evaluation = recipe("eval-live-self-hosted")
     assert '$(MAKE) --no-print-directory -C "$(CURDIR)" gateway-live-up || rc=$$?;' in evaluation
-    assert "$(call EVAL_REPORT,$(LIVE_EVAL_ENV)) --mode live --routes self-hosted)" in evaluation
+    assert (
+        '$(call EVAL_REPORT,$(LIVE_EVAL_ENV)) --mode live --routes self-hosted --stamp "$$stamp")'
+        in evaluation
+    )
     assert variable("LIVE_EVAL_ENV").split() == [
         "SS_TEI_TIMEOUT_SCALE=1000",
         "SS_GATEWAY_BASE_URL=$(LIVE_URL)",
@@ -339,6 +360,11 @@ def test_the_self_hosted_evaluation_runs_against_the_live_gateway_only() -> None
         "SS_GATEWAY_CONTEXT_TOKENS=$(LIVE_CONTEXT)",
     ]
     assert (variable("LIVE_SCALE").strip(), variable("LIVE_CONTEXT").strip()) == ("15", "8192")
+    # Bug #43's gate: the eval CLI's gateway-log step, nothing else (the wiring is run below).
+    assert variable("LIVE_GATE").strip() == (
+        "cd orchestrator && SS_LOG_FORMAT=text uv run --locked python -m surakshasetu.eval"
+        " gateway-log"
+    )
     # EVAL_REPORT's argument follows GOLDEN_ENV, so the live URL overrides its :20130 (in sh the
     # last assignment wins), and make eval-live is unchanged.
     assert re.search(
@@ -351,29 +377,163 @@ def test_the_self_hosted_evaluation_runs_against_the_live_gateway_only() -> None
     )
 
 
-def test_the_live_recipes_parse_under_sh() -> None:
-    """Each recipe through `/bin/sh -n` (parse only: nothing runs). make's variables are replaced
-    by inert placeholders, so no infra/.env value is expanded."""
-    defs = dict(re.findall(r"^(\w+) :=((?:.*\\\n)*.*)$", MAKEFILE, re.MULTILINE))
-    inert = {"COMPOSE": "docker compose", "MAKE": "make", "CURDIR": "/repo"}
-    inert["OMNIROUTE_INITIAL_PASSWORD"] = "placeholder"  # noqa: S105 (inert, never a secret)
+DEFS = dict(re.findall(r"^(\w+) :=((?:.*\\\n)*.*)$", MAKEFILE, re.MULTILINE))
+INERT = {"COMPOSE": "docker compose", "MAKE": "make", "CURDIR": "/repo"}
+INERT["OMNIROUTE_INITIAL_PASSWORD"] = "placeholder"  # noqa: S105 (inert, never a secret)
+
+
+def script(body: str, **inert: str) -> str:
+    """A recipe as one sh script. LIVE_* variables expand from the Makefile unless given; every
+    other make variable must be given, so no infra/.env value is ever expanded."""
 
     def expand(text: str) -> str:
         def one(match: re.Match[str]) -> str:
             name = match[1]
-            if name.startswith("LIVE_"):
-                return expand(defs[name].replace("\\\n", " "))
-            return inert[name]
+            if name in inert:
+                return inert[name]
+            assert name.startswith("LIVE_"), name
+            return expand(DEFS[name].replace("\\\n", " "))
 
         return re.sub(r"\$\((\w+)\)", one, text)
 
+    assert all(line.startswith("\t") for line in body.splitlines())  # recipe lines: tabs
+    lines = "\n".join(line[1:] for line in body.splitlines())
+    return expand(lines).lstrip("@").replace("$$", "$")
+
+
+def test_the_live_recipes_parse_under_sh() -> None:
+    """Each recipe through `/bin/sh -n` (parse only: nothing runs), with inert placeholders."""
     for target in LIVE_TARGETS:
-        body = recipe(target)
-        assert all(line.startswith("\t") for line in body.splitlines())  # recipe lines: tabs
-        script = expand("\n".join(line[1:] for line in body.splitlines()))
-        script = script.lstrip("@").replace("$$", "$")
-        parsed = subprocess.run(["/bin/sh", "-n", "-c", script], capture_output=True)  # noqa: S603
+        parsed = subprocess.run(  # noqa: S603
+            ["/bin/sh", "-n", "-c", script(recipe(target), **INERT)], capture_output=True
+        )
         assert parsed.returncode == 0, f"{target}: {parsed.stderr.decode()}"
+
+
+# Stand-ins for the run's three steps, so the recipe runs under sh with no Docker, uv or network:
+# make (gateway-live-up exits $UP_RC; gateway-live-down "saves" $FIXTURE at $LIVE_LOG), the report
+# step and the gate, each recording its arguments.
+FAKES = {
+    "fake_make": 'case "$*" in *-up) exit "$UP_RC";; *-down) mkdir -p "${LIVE_LOG%/*}"'
+    ' && cp "$FIXTURE" "$LIVE_LOG" && echo "$LIVE_LOG" > down.args;; esac',
+    "fake_report": 'echo "$@" > report.args; exit "$REPORT_RC"',
+    "fake_gate": 'echo "$@" > gate.args; exit "$GATE_RC"',
+}
+
+
+@pytest.mark.parametrize(
+    ("up", "evaluated", "gated", "status"),
+    [(0, 0, 0, 0), (0, 0, 1, 1), (0, 1, 0, 1), (0, 2, 2, 2), (1, 0, 0, 1)],
+)
+def test_the_self_hosted_evaluation_gates_the_log_its_own_teardown_saved(
+    tmp_path: Path, up: int, evaluated: int, gated: int, status: int
+) -> None:
+    """Bug #43: after teardown the gate reads exactly the log this run's gateway-live-down saved,
+    with the report's stamp; its failure fails the target even when the report step passed; it
+    doesn't run when gateway-live-up failed (no report step ran)."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    for name, body in FAKES.items():
+        (bin_dir / name).write_text(f"#!/bin/sh\n{body}\n")
+        (bin_dir / name).chmod(0o755)
+    fixture = tmp_path / "container.log"
+    fixture.write_text("omniroute-live-1  | the container's log\n")
+    body = recipe("eval-live-self-hosted").replace(
+        "$(call EVAL_REPORT,$(LIVE_EVAL_ENV))", "fake_report"
+    )
+    sh = script(body, MAKE="fake_make", CURDIR=str(tmp_path), LIVE_GATE="fake_gate")
+    assert "fake_report --mode live --routes self-hosted" in sh  # the stand-in took its place
+    env = {"PATH": f"{bin_dir}:/usr/bin:/bin", "FIXTURE": str(fixture), "UP_RC": str(up),
+           "REPORT_RC": str(evaluated), "GATE_RC": str(gated)}  # fmt: skip
+    ran = subprocess.run(  # noqa: S603
+        ["/bin/sh", "-c", sh], cwd=tmp_path, env=env, capture_output=True
+    )
+    assert ran.returncode == status, ran.stderr.decode()
+    if up:
+        assert not (tmp_path / "report.args").exists() and not (tmp_path / "gate.args").exists()
+        return
+    saved = (tmp_path / "down.args").read_text().strip()
+    reported = (tmp_path / "report.args").read_text().split()
+    stamp = reported[reported.index("--stamp") + 1]
+    assert saved == f"orchestrator/.cache/live-gateway-{stamp}.log"
+    assert (tmp_path / "gate.args").read_text().split() == [
+        "--log", f"{tmp_path}/{saved}", "--stamp", stamp,
+    ]  # fmt: skip
+    assert (tmp_path / saved).read_bytes() == fixture.read_bytes()  # read in place, unchanged
+
+
+# A stand-in for `docker compose`: ps lists one id until rm, logs writes one line to stdout and one
+# to stderr, rm marks the container removed; anything else exits 2. It records every call, and for
+# logs the files its stdout and stderr are (device and inode), since the recipe names the log only
+# through its redirection.
+FAKE_COMPOSE = r"""
+import os
+import sys
+from pathlib import Path
+
+state = Path(os.environ["FAKE_STATE"])
+args = sys.argv[1:]
+with (state / "calls").open("a") as calls:
+    calls.write(" ".join(args) + "\n")
+command = args[2] if args[:2] == ["--profile", "gateway-live"] and len(args) > 2 else ""
+if command == "ps":
+    print("" if (state / "removed").exists() else "0123456789ab")
+elif command == "logs":
+    fds = [os.fstat(fd) for fd in (1, 2)]
+    (state / "logs.fds").write_text(" ".join(f"{s.st_dev}:{s.st_ino}" for s in fds))
+    print("omniroute-live-1  | 2026-11-17T00:00:00.000000000Z the container's line", flush=True)
+    print("compose's own stderr line", file=sys.stderr, flush=True)
+elif command == "rm":
+    (state / "removed").touch()
+else:
+    sys.exit(2)
+"""
+
+
+@pytest.mark.parametrize("live_log", [True, False])
+def test_gateway_live_down_saves_the_log_exactly_where_live_log_says(
+    tmp_path: Path, live_log: bool
+) -> None:
+    """Bug #43: the real gateway-live-down recipe under /bin/sh with a fake `docker compose` on a
+    restricted PATH (no Docker, nothing real touched). With LIVE_LOG set, the log is exactly that
+    file (the fake's stdout and stderr, 2>&1) and nothing is written under the default name;
+    unset, the old timestamped name in orchestrator/.cache."""
+    bin_dir, state = tmp_path / "bin", tmp_path / "state"
+    bin_dir.mkdir()
+    state.mkdir()
+    fake = bin_dir / "fake_compose"
+    fake.write_text(f"#!{sys.executable} -I\n{FAKE_COMPOSE}")
+    fake.chmod(0o755)
+    sh = script(recipe("gateway-live-down"), COMPOSE="fake_compose")
+    assert "docker" not in sh and "fake_compose --profile gateway-live" in sh
+    env = {"PATH": f"{bin_dir}:/usr/bin:/bin", "FAKE_STATE": str(state)}
+    chosen = tmp_path / "chosen.log"
+    if live_log:
+        env["LIVE_LOG"] = str(chosen)
+    ran = subprocess.run(  # noqa: S603
+        ["/bin/sh", "-c", sh], cwd=tmp_path, env=env, capture_output=True
+    )
+    assert ran.returncode == 0, ran.stderr.decode()
+    assert (state / "calls").read_text().splitlines() == [
+        "--profile gateway-live ps --all --quiet omniroute-live",
+        "--profile gateway-live logs --no-color --timestamps omniroute-live",
+        "--profile gateway-live rm --stop --force omniroute-live",
+        "--profile gateway-live ps --all --quiet omniroute-live",
+    ]
+    cache = sorted((tmp_path / "orchestrator" / ".cache").iterdir())
+    if live_log:
+        saved = chosen
+        assert cache == []  # nothing under the default name
+    else:
+        assert not chosen.exists()
+        (saved,) = cache
+        assert re.fullmatch(r"live-gateway-\d{8}T\d{6}Z\.log", saved.name)
+    found = saved.stat()
+    assert (state / "logs.fds").read_text() == " ".join([f"{found.st_dev}:{found.st_ino}"] * 2)
+    assert saved.read_text().splitlines() == [
+        "omniroute-live-1  | 2026-11-17T00:00:00.000000000Z the container's line",
+        "compose's own stderr line",
+    ]
 
 
 def test_the_stub_targets_are_unchanged_and_pinned_to_the_stub_gateway() -> None:
