@@ -14,7 +14,9 @@ keys it drops, and logs each drift; the exit status is 1 on any.
 --live merges infra/omniroute/seed.live.json over the seed in memory (neither file is written) for
 the ephemeral omniroute-live instance (design E). Each seed goes only to its own instance: --live
 needs the live port (20131), and without it the live port is refused, so a misdirected run can't
-write the other instance's database. apply --live refuses the overlay's __UNSET__ model (C5).
+write the other instance's database. The overlay's payload rules (C5b: thinking off) go through
+their own endpoint and are read back exactly; the stub seed has none, so it sends no such request.
+apply --live refuses a model left as __UNSET__.
 
 Reads SS_GATEWAY_BASE_URL (the gateway), SS_GATEWAY_API_KEY (the app key's value) and
 OMNIROUTE_INITIAL_PASSWORD (the admin password; compose's dummy by default).
@@ -41,7 +43,7 @@ logger = logging.getLogger("surakshasetu.gateway.omniroute_seed")
 SEED_PATH = Path(__file__).resolve().parents[2] / "infra" / "omniroute" / "seed.json"
 LIVE_PATH = SEED_PATH.with_name("seed.live.json")
 LIVE_PORT = 20131  # omniroute-live; the stub instance is 20130
-UNSET = "__UNSET__"  # seed.live.json's model until C5 chooses one
+UNSET = "__UNSET__"  # seed.live.json's model before C5b named one; apply --live refuses it
 # compose's INITIAL_PASSWORD default
 DEV_ADMIN_PASSWORD = SecretStr("surakshasetu-dev-omniroute")
 
@@ -56,7 +58,7 @@ def admin_password() -> str:
 
 def load_seed(live: bool = False) -> dict[str, Any]:
     """seed.json; with live, seed.live.json merged over it: its connections added, its combos'
-    targets replacing theirs, its allowedConnections replacing the key's."""
+    targets replacing theirs, its allowedConnections replacing the key's, its payload rules."""
     seed: dict[str, Any] = json.loads(SEED_PATH.read_text())
     if live:
         overlay = json.loads(LIVE_PATH.read_text())
@@ -64,6 +66,7 @@ def load_seed(live: bool = False) -> dict[str, Any]:
         for combo in seed["import"]["combos"]:
             combo["models"] = overlay["combos"].get(combo["name"], combo["models"])
         seed["appKeyPolicy"]["allowedConnections"] = overlay["allowedConnections"]
+        seed["payloadRules"] = overlay["payloadRules"]
     return seed
 
 
@@ -99,6 +102,8 @@ def apply(client: httpx.Client, seed: dict[str, Any], app_key: str) -> None:
     _ok(client.patch("/api/resilience", json=seed["resilience"]))
     _ok(client.put("/api/settings/memory", json=seed["memory"]))
     _ok(client.put("/api/settings/compression", json=seed["compression"]))
+    if "payloadRules" in seed:  # the live seed only; PATCH /api/settings drops them with a 200
+        _ok(client.put("/api/settings/payload-rules", json=seed["payloadRules"]))
     # The import resets the key's restrictions, so the policy always goes on afterwards.
     _ok(client.patch(f"/api/keys/{_app_key_id(seed)}", json=seed["appKeyPolicy"]))
     logger.info("omniroute seed applied")
@@ -117,6 +122,10 @@ def verify(client: httpx.Client, seed: dict[str, Any]) -> list[str]:
     _compare(
         "compression", seed["compression"], _ok(client.get("/api/settings/compression")), drift
     )
+    if "payloadRules" in seed:  # the GET lists every section; the empty ones aren't seeded
+        rules = {k: v for k, v in _ok(client.get("/api/settings/payload-rules")).items() if v}
+        if rules != seed["payloadRules"]:
+            drift.append(f"payloadRules: expected {seed['payloadRules']!r}, got {rules!r}")
     flags = {f["key"]: f for f in _ok(client.get("/api/settings/feature-flags"))["flags"]}
     for name, value in seed["featureFlags"].items():
         flag = flags.get(name, {})

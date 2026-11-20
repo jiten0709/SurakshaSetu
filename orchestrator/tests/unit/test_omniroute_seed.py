@@ -28,12 +28,22 @@ SEED_SCRIPT = _load()
 SEED: dict[str, Any] = SEED_SCRIPT.load_seed()
 
 
-def fake_gateway(sent: list[httpx.Request], *, drifted: bool) -> httpx.Client:
+def fake_gateway(
+    sent: list[httpx.Request],
+    *,
+    drifted: bool,
+    seed: dict[str, Any] = SEED,
+    rules: dict[str, Any] | None = None,
+) -> httpx.Client:
     def handler(request: httpx.Request) -> httpx.Response:
         sent.append(request)
         path = request.url.path
         if request.method != "GET":
             return httpx.Response(200, json={})
+        if path == "/api/settings/payload-rules":
+            # 3.8.50 lists every section, the unused ones empty (payload-rules probe read-back).
+            empty: dict[str, Any] = {"default": [], "override": [], "filter": [], "defaultRaw": []}
+            return httpx.Response(200, json=empty | (rules or {}))
         if path == "/api/settings/database":
             logs = SEED["database"]["logs"] | {"ringBufferSize": 1000}
             return httpx.Response(200, json={"logs": logs, "cache": SEED["database"]["cache"]})
@@ -42,7 +52,7 @@ def fake_gateway(sent: list[httpx.Request], *, drifted: bool) -> httpx.Client:
             return httpx.Response(200, json=settings | ({"mcpEnabled": True} if drifted else {}))
         if path.startswith("/api/keys/"):
             # The whole key record, value included: verify must only ever report policy fields.
-            key = SEED["appKeyPolicy"] | {"key": SENTINEL_KEY}
+            key = seed["appKeyPolicy"] | {"key": SENTINEL_KEY}
             return httpx.Response(200, json=key | ({"noLog": False} if drifted else {}))
         if path == "/api/settings/feature-flags":
             flags = [
@@ -51,9 +61,9 @@ def fake_gateway(sent: list[httpx.Request], *, drifted: bool) -> httpx.Client:
             ]
             return httpx.Response(200, json={"flags": flags})
         if path == "/api/providers":
-            return httpx.Response(200, json={"connections": SEED["import"]["providerConnections"]})
+            return httpx.Response(200, json={"connections": seed["import"]["providerConnections"]})
         if path == "/api/combos":
-            return httpx.Response(200, json={"combos": SEED["import"]["combos"]})
+            return httpx.Response(200, json={"combos": seed["import"]["combos"]})
         section = {
             "/api/resilience": "resilience",
             "/api/settings/memory": "memory",
@@ -123,6 +133,8 @@ def test_an_admin_error_names_the_call_but_not_its_body() -> None:
 # --- the live overlay (Step 1.5b, design E) -------------------------------------------------------
 LIVE: dict[str, Any] = SEED_SCRIPT.load_seed(live=True)
 STUB_ID, LIVE_ID = "0199a900-0000-7000-8000-000000000001", "0199a900-0000-7000-8000-000000000002"
+MODEL = "qwen3.5:4b-q4_K_M"  # C5b
+RULES_PATH = "/api/settings/payload-rules"
 
 
 def test_the_live_seed_is_the_stub_seed_plus_the_overlay() -> None:
@@ -132,14 +144,58 @@ def test_the_live_seed_is_the_stub_seed_plus_the_overlay() -> None:
     assert set(connections) == {STUB_ID, LIVE_ID}
     assert connections[LIVE_ID]["provider"] == "ollama-local"
     assert targets["gen-converse"] == ["vllm/stub-gen"]  # the gen routes stay on the stubs (O4)
-    assert targets["guard-input"] == ["ollama/__UNSET__"]
-    assert targets["verify-claims"] == ["ollama-local/__UNSET__"]
+    assert targets["guard-input"] == [f"ollama/{MODEL}"]
+    assert targets["verify-claims"] == [f"ollama-local/{MODEL}"]
     assert LIVE["appKeyPolicy"]["allowedConnections"] == [STUB_ID, LIVE_ID]
+    assert LIVE["payloadRules"]["default"][0]["models"] == [{"name": MODEL}]
     # Everything else is the stub seed's, and the stub seed itself is untouched by the merge.
-    assert {k: v for k, v in LIVE.items() if k not in ("import", "appKeyPolicy")} == {
-        k: v for k, v in SEED.items() if k not in ("import", "appKeyPolicy")
+    merged = ("import", "appKeyPolicy", "payloadRules")
+    assert {k: v for k, v in LIVE.items() if k not in merged} == {
+        k: v for k, v in SEED.items() if k not in merged
     }
     assert [c["id"] for c in SEED_SCRIPT.load_seed()["import"]["providerConnections"]] == [STUB_ID]
+    assert "payloadRules" not in SEED_SCRIPT.load_seed()
+
+
+def test_the_live_apply_puts_the_payload_rules_and_the_stub_apply_never_does() -> None:
+    live: list[httpx.Request] = []
+    stub: list[httpx.Request] = []
+
+    with fake_gateway(live, drifted=False, seed=LIVE) as client:
+        SEED_SCRIPT.apply(client, LIVE, SENTINEL_KEY)
+    with fake_gateway(stub, drifted=False) as client:
+        SEED_SCRIPT.apply(client, SEED, SENTINEL_KEY)
+
+    (put,) = [r for r in live if r.url.path == RULES_PATH]
+    assert put.method == "PUT"  # the only call that persists them (payload-rules probe, P1)
+    assert json.loads(put.content) == LIVE["payloadRules"]
+    assert not [r for r in live if r.method == "PATCH" and b"payloadRules" in r.content]
+    assert not [r for r in stub if r.url.path == RULES_PATH]
+
+
+@pytest.mark.parametrize(
+    ("rules", "drifted"),
+    [
+        (LIVE["payloadRules"], False),
+        (None, True),  # what a PATCH leaves: nothing stored
+        (LIVE["payloadRules"] | {"override": [{"models": [{"name": "x"}], "params": {}}]}, True),
+        ({"default": [{"models": [{"name": MODEL}], "params": {"reasoning_effort": "low"}}]}, True),
+    ],
+)
+def test_payload_rules_are_read_back_exactly(rules: dict[str, Any] | None, drifted: bool) -> None:
+    with fake_gateway([], drifted=False, seed=LIVE, rules=rules) as client:
+        drift = SEED_SCRIPT.verify(client, LIVE)
+
+    assert [line.split(":")[0] for line in drift] == (["payloadRules"] if drifted else [])
+
+
+def test_the_stub_verify_never_reads_payload_rules() -> None:
+    sent: list[httpx.Request] = []
+
+    with fake_gateway(sent, drifted=False) as client:
+        assert SEED_SCRIPT.verify(client, SEED) == []
+
+    assert not [r for r in sent if r.url.path == RULES_PATH]
 
 
 @pytest.mark.parametrize(
@@ -191,6 +247,9 @@ def test_main_refuses_before_any_request(
         raise AssertionError("no admin call may be made")
 
     monkeypatch.setattr(SEED_SCRIPT, "admin_client", no_network)
+    # C5b named the model; an overlay that loses it again must still be refused before any call.
+    unset = json.loads(json.dumps(LIVE).replace(MODEL, SEED_SCRIPT.UNSET))
+    monkeypatch.setattr(SEED_SCRIPT, "load_seed", lambda live=False: unset)
     monkeypatch.setattr("sys.argv", ["omniroute_seed.py", *argv])
     monkeypatch.setenv("SS_GATEWAY_BASE_URL", url)
     monkeypatch.setenv("SS_GATEWAY_API_KEY", SENTINEL_KEY)

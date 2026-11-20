@@ -1,8 +1,9 @@
 """Design E (Step 1.5b, D-1) against the running omniroute-live. Only `make check-gateway-live` runs
 it: it starts omniroute-live alone (--no-deps) before this module and removes it afterwards.
 
-The module seeds omniroute-live itself with seed.json + seed.live.json, the overlay's __UNSET__
-replaced by a model no host has pulled (the owner's decision, 2026-11-14), so no Ollama is needed.
+The module seeds omniroute-live itself with seed.json + seed.live.json, the overlay's model (C5b)
+replaced by one no host has pulled (the owner's decision, 2026-11-14), so no Ollama is needed. The
+payload rule then names the placeholder too, so the read-back proves it round-trips on 3.8.50.
 
 The stub gateway (`omniroute`, :20130) and its volume (`omniroute-data`) are protected: this module
 sends them no request, and never starts, stops, restarts, recreates or mounts anything. It reads
@@ -159,9 +160,10 @@ def live() -> dict[str, Any]:
 def seeded() -> dict[str, Any]:
     """The merged live seed with the placeholder model, applied to :20131 and read back."""
     assert SEED_SCRIPT.check_target(LIVE_URL, live=True) is None
-    seed: dict[str, Any] = json.loads(
-        json.dumps(SEED_SCRIPT.load_seed(live=True)).replace(SEED_SCRIPT.UNSET, PLACEHOLDER)
-    )
+    live = SEED_SCRIPT.load_seed(live=True)
+    model = live["payloadRules"]["default"][0]["models"][0]["name"]
+    seed: dict[str, Any] = json.loads(json.dumps(live).replace(model, PLACEHOLDER))
+    assert model not in json.dumps(seed) and SEED_SCRIPT.UNSET not in json.dumps(seed)
     with SEED_SCRIPT.admin_client(LIVE_URL, SEED_SCRIPT.admin_password()) as admin:
         SEED_SCRIPT.apply(admin, seed, SETTINGS.gateway_api_key.get_secret_value())
         assert SEED_SCRIPT.verify(admin, seed) == []

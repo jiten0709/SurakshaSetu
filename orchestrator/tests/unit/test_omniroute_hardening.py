@@ -278,8 +278,48 @@ def test_the_live_overlay_adds_one_connection_and_moves_only_the_self_hosted_rou
     assert LIVE_SEED["allowedConnections"] == [STUB_ID, LIVE_ID]
     # No other section: everything else (hardening included) is seed.json's, and there is no
     # global fallback model anywhere.
-    assert set(LIVE_SEED) == {"$comment", "providerConnections", "combos", "allowedConnections"}
+    assert set(LIVE_SEED) == {
+        "$comment",
+        "providerConnections",
+        "combos",
+        "allowedConnections",
+        "payloadRules",
+    }
     assert "globalFallbackModel" not in json.dumps(SEED) + json.dumps(LIVE_SEED)
+
+
+LIVE_MODEL = "qwen3.5:4b-q4_K_M"  # C5b; Ollama manifest sha256:d8b0f5e9… (decision log §2)
+# The only routes that write MODEL_CALL (graph/nodes.py converse, graph/states/s3.py generate).
+MODEL_CALL_ROUTES = {"gen-converse", "gen-recommend"}
+
+
+def test_the_live_payload_rule_adds_only_thinking_off_for_the_one_self_hosted_model() -> None:
+    # Row 14 on omniroute-live: the only change to what the adapter sent is these two params
+    # (payload-rules probe P4: messages, response_format and user arrive unchanged).
+    assert LIVE_SEED["payloadRules"] == {
+        "default": [
+            {
+                "models": [{"name": LIVE_MODEL}],
+                "params": {"reasoning_effort": "none", "temperature": 0},
+            }
+        ]
+    }
+    # A rule matches only the bare model name (a prefixed one never applies, silently: bug #43's
+    # blind spot), so its name must be the model behind every self-hosted target.
+    targets = [t for ts in LIVE_SEED["combos"].values() for t in ts]
+    assert {t.split("/", 1)[1] for t in targets} == {LIVE_MODEL}
+    assert "payloadRules" not in SEED  # the stub instance has no rule
+    # The routes that write MODEL_CALL are never ruled, so no audited call carries the params
+    # (TDD §4.3 lists none). OmniRoute matches rule names case-insensitively.
+    gen = {
+        t.split("/", 1)[1].casefold()
+        for c in SEED["import"]["combos"]
+        if c["name"] in MODEL_CALL_ROUTES
+        for t in c["models"]
+    }
+    rules = LIVE_SEED["payloadRules"]["default"]
+    ruled = {m["name"].casefold() for rule in rules for m in rule["models"]}
+    assert len(gen) == len(MODEL_CALL_ROUTES) and not gen & ruled
 
 
 LIVE_TARGETS = (

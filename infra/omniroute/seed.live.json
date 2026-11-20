@@ -1,5 +1,5 @@
 {
-  "$comment": "The live configuration (Step 1.5b, design E): an overlay on seed.json, merged in memory by `omniroute_seed.py apply|verify --live` for the ephemeral omniroute-live instance (127.0.0.1:20131) only. It adds the host-native Ollama connection and points the self-hosted combos at it; gen-converse and gen-recommend stay on the stubs (O4, RD-1 deferred). One target per combo, no global fallback. __UNSET__ stands for the model C5 chooses: `apply --live` refuses it. HARDENING.md, \"Live instance\".",
+  "$comment": "The live configuration (Step 1.5b, design E): an overlay on seed.json, merged in memory by `omniroute_seed.py apply|verify --live` for the ephemeral omniroute-live instance (127.0.0.1:20131) only. It adds the host-native Ollama connection and points the self-hosted combos at it; gen-converse and gen-recommend stay on the stubs (O4, RD-1 deferred). One target per combo, no global fallback. The model (C5b, 2026-11-19) is Ollama's qwen3.5:4b-q4_K_M, manifest sha256:d8b0f5e9760cd1682034f292d7ef72ec46f432149be0df7574bf2d6e92e38c04, on Ollama 0.40.16 (decision log §2, Qwen3.5 4B decisions), one model on all four routes. payloadRules turns thinking off (decision 7) and sets temperature 0 (decision 4) for that bare model name only: a prefixed name doesn't match (§3.13). It goes to PUT /api/settings/payload-rules; PATCH /api/settings drops it. HARDENING.md, \"Live instance\".",
   "providerConnections": [
     {
       "id": "0199a900-0000-7000-8000-000000000002",
@@ -12,10 +12,18 @@
     }
   ],
   "combos": {
-    "guard-input": ["ollama/__UNSET__"],
-    "nlu-extract": ["ollama/__UNSET__"],
-    "summarise": ["ollama/__UNSET__"],
-    "verify-claims": ["ollama-local/__UNSET__"]
+    "guard-input": ["ollama/qwen3.5:4b-q4_K_M"],
+    "nlu-extract": ["ollama/qwen3.5:4b-q4_K_M"],
+    "summarise": ["ollama/qwen3.5:4b-q4_K_M"],
+    "verify-claims": ["ollama-local/qwen3.5:4b-q4_K_M"]
   },
-  "allowedConnections": ["0199a900-0000-7000-8000-000000000001", "0199a900-0000-7000-8000-000000000002"]
+  "allowedConnections": ["0199a900-0000-7000-8000-000000000001", "0199a900-0000-7000-8000-000000000002"],
+  "payloadRules": {
+    "default": [
+      {
+        "models": [{ "name": "qwen3.5:4b-q4_K_M" }],
+        "params": { "reasoning_effort": "none", "temperature": 0 }
+      }
+    ]
+  }
 }
