@@ -13,6 +13,7 @@ from zoneinfo import ZoneInfo
 import httpx
 import pytest
 from runtime_support import FRIENDLY, Models, domain, domain_handler
+from test_output_guard_limit import EMAILS, WORDS, CountedModels
 from test_runtime_nodes import BUNDLE, Recorder, rt, run, session, turn
 from test_s0 import ids, transition, valid_record
 
@@ -20,7 +21,7 @@ from surakshasetu.compose.bundle import ScreeningLexicon
 from surakshasetu.fsm.states import FsmState
 from surakshasetu.graph import handlers, nodes, states
 from surakshasetu.graph.nodes import Turn
-from surakshasetu.graph.state import EligibilityPayload, GraphState, SlotRow
+from surakshasetu.graph.state import EligibilityPayload, Frame, GraphState, SlotRow
 from surakshasetu.graph.states import s1
 from surakshasetu.store import conv as store
 
@@ -770,3 +771,111 @@ async def test_the_re_ask_opening_changes_each_time() -> None:
     await run(second)
     assert second.released is not None
     assert second.released.text == f"Sorry, I didn't catch that. {hint}"
+
+
+# --- D-6: a turn over guard-input's output-mode size limit (bug #44) ------------------------------
+class ResumingDomain:
+    """S1's domain stand-in, plus the consent record a resume reads again (pause.resume)."""
+
+    def __init__(self, inner: Any) -> None:
+        self._inner = inner
+
+    async def get_consent_record(self, consent_id: Any, as_of: Any = None) -> Any:
+        return valid_record()
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._inner, name)
+
+
+def resuming(text: str, models: Models) -> Turn:
+    """A session paused in S1 with D-6 on (8,192), resumed by this customer turn: s1.enter asks
+    the next question, so compose would lead it with one gen-converse sentence."""
+    t = turn(models, text=text, gateway_context_tokens=8192)
+    t.domain = ResumingDomain(domain(Tier()))  # type: ignore[assignment]
+    t.next = session(
+        fsm_state=FsmState.PAUSE, consent=valid_record(), stack=[Frame(state=FsmState.S1)]
+    )
+    t.row = t.row.__class__(**{**t.row.__dict__, "fsm_state": "PAUSE"})
+    return t
+
+
+@pytest.mark.asyncio
+async def test_a_resume_leads_the_next_question_with_a_sentence() -> None:
+    # The control: this resume does reach gen-converse, and its text the output guard.
+    models = CountedModels()
+    t = resuming("hello", models)
+
+    await run(t)
+
+    assert transition(t) == ("PAUSE.R", FsmState.S1)
+    assert ids(t) == ["generated:narrative", "template:RL-S1-AGE"]
+    assert "gen-converse" in models.routes and models.routes.count("guard-input") == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "text",
+    [
+        WORDS,  # 4,180 bytes
+        EMAILS,  # 3,047 bytes: the '@' allowance decides (and only stored_raw keeps the '@')
+        "\ufdfa" * 123,  # 369 bytes typed, 4,059 after NFKC
+    ],
+    ids=["words", "emails", "fdfa"],
+)
+async def test_an_over_limit_turn_that_resumes_gets_the_question_alone(text: str) -> None:
+    models = CountedModels()
+    t = resuming(text, models)
+
+    await run(t)
+
+    assert t.pipeline is not None and not (t.pipeline.overlong or t.pipeline.blocked)
+    assert transition(t) == ("PAUSE.R", FsmState.S1)
+    assert ids(t) == ["template:RL-S1-AGE"]  # no generated lead, and nothing taken
+    assert t.slot_rows == [] and t.size_limited
+    assert "gen-converse" not in models.routes
+    assert models.routes.count("guard-input") == 1  # input mode only: no output-mode call
+    assert t.released is not None and t.released.verdicts["release:RC-GUARD-SIZE"] == "skipped"
+
+
+@pytest.mark.asyncio
+async def test_a_resume_over_the_token_cap_is_unchanged() -> None:
+    # USER_TURN_TOO_LONG keeps it from gen-converse, as before; it is under the size limit.
+    models = CountedModels()
+    t = resuming("word " * 600, models)
+
+    await run(t)
+
+    assert t.pipeline is not None and t.pipeline.overlong
+    assert ids(t) == ["template:RL-S1-AGE"] and t.slot_rows == []
+    assert "gen-converse" not in models.routes and models.routes.count("guard-input") == 1
+    assert t.released is not None and "release:RC-GUARD-SIZE" not in t.released.verdicts
+
+
+def answering(text: str, models: Models, context_tokens: int | None) -> Turn:
+    t = turn(models, text=text, gateway_context_tokens=context_tokens)
+    t.domain = domain(Tier())
+    t.next = session(
+        fsm_state=FsmState.S1, consent=valid_record(), last_prompt_id="s1.ask:age_years"
+    )
+    t.row = t.row.__class__(**{**t.row.__dict__, "fsm_state": "S1"})
+    return t
+
+
+@pytest.mark.asyncio
+async def test_an_over_limit_answer_is_taken_as_usual_and_the_next_question_has_no_lead() -> None:
+    said = "I am 34 years old. " + WORDS  # M = 4,200: over the limit, under the token cap
+    age = (candidate("age_years", 34, "34 years old"),)
+    on, off = CountedModels(slots=age), CountedModels(slots=age)
+    limited, unlimited = answering(said, on, 8192), answering(said, off, None)
+
+    await run(limited)
+    await run(unlimited)
+
+    assert rows(limited) == rows(unlimited) == {"age_years": (34, "proposed")}
+    assert ids(unlimited) == ["generated:narrative", "template:RL-S1-RESIDENCY"]
+    assert ids(limited) == ["template:RL-S1-RESIDENCY"]  # the question without its lead
+    assert limited.next is not None and unlimited.next is not None
+    assert limited.next.last_prompt_id == unlimited.next.last_prompt_id == "s1.ask:residency"
+    assert "gen-converse" not in on.routes and on.routes.count("guard-input") == 1
+    assert limited.released is not None
+    assert limited.released.verdicts["release:RC-GUARD-SIZE"] == "skipped"

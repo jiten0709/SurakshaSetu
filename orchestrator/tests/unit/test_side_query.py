@@ -12,6 +12,7 @@ import pytest
 from compose_support import retrieved
 from pydantic import ValidationError
 from runtime_support import Models
+from test_output_guard_limit import WORDS
 from test_runtime_nodes import BUNDLE, Recorder, StoreCalls, rt, run, session
 from test_s0 import s0_turn
 from test_s1 import TDD, s1_turn
@@ -214,6 +215,32 @@ async def test_an_under_18_age_in_a_compound_turn_drops_the_answer_for_the_erasu
     assert t.transition is not None and t.transition.to is FsmState.DATA_ERASURE
     assert (t.render, t.draft, t.handles) == (None, None, None)  # the erasure speaks alone
     assert t.slot_rows == []
+
+
+@pytest.mark.asyncio
+async def test_a_compound_turn_over_the_d6_size_limit_takes_the_slot_and_abstains() -> None:
+    # Bug #44: the answer would go to guard-input's output mode with this turn, which is over that
+    # call's size limit; the draft is dropped (RC-GUARD-SIZE fallback). Its control is the test
+    # above: the same turn, under the limit, is answered.
+    said = "I'm 34, and how does 80C work here? " + WORDS  # M = 4,108
+    models = Models(
+        side_query="how does 80C work here?",
+        slots=({"slot": "age_years", "value": 34, "confidence": 0.95, "evidence_span": "34"},),
+        recommend=(CITED_TAX,),
+    )
+    t = asked_s1(said, models=models)
+    t.settings = t.settings.model_copy(update={"gateway_context_tokens": 8192})
+
+    await run(t)
+
+    assert t.pipeline is not None and not (t.pipeline.overlong or t.pipeline.blocked)
+    assert [(r.slot, r.status) for r in t.slot_rows] == [("age_years", "proposed")]
+    parts = ids(t)
+    assert parts[0] == "template:abstain" and "generated:answer" not in parts
+    assert parts[-2:] == ["template:side_query_bridge", "template:RL-S1-RESIDENCY"]
+    assert "gen-recommend" in models.routes  # generated, then dropped before any rail
+    assert models.routes.count("guard-input") == 1 and "verify-claims" not in models.routes
+    assert t.released is not None and t.released.verdicts["release:RC-GUARD-SIZE"] == "fallback"
 
 
 # --- limits and failures --------------------------------------------------------------------------

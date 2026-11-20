@@ -92,10 +92,14 @@ class Settings(BaseSettings):
     # local hardware. At most 15, so the largest scaled budget (gen-recommend, 90 s) stays below
     # the live gateway's 105 s response-start bound (D-2). Pilot and prod require exactly 1.
     gateway_timeout_scale: float = Field(default=1.0, ge=1, le=15)
-    # Dev and test only (D-6): the local model server's context length in tokens. That server
-    # truncates an oversize prompt silently with a 200 and reports prompt_tokens equal to its limit
-    # (U4), so a chat call whose prompt_tokens reaches this value fails closed. Unset, nothing is
-    # checked. Pilot and prod refuse it.
+    # Dev and test only (D-6): the local model server's context length N in tokens. That server
+    # truncates an oversize prompt silently with a 200 and reports the cut prompt_tokens, so a
+    # call fails closed when prompt_tokens reaches N // 2 on the four self-hosted chat routes
+    # (bug #44: that server's version 0.40.16 cuts to about N / 2) and N on the others (adapter's
+    # context_threshold). With it set, guard-input's output mode never carries a customer turn
+    # whose masked size exceeds N // 2 - 64: its draft is dropped and the lead sentence withheld
+    # (rails.output.release, nodes.compose; adapter's output_guard_overlong).
+    # Unset, nothing is checked. Pilot and prod refuse it.
     gateway_context_tokens: int | None = Field(default=None, ge=1)
     # Knowledge base (Step 11): the three collections, written by ingestion, read by retrieval.
     qdrant_url: str = "http://127.0.0.1:6333"

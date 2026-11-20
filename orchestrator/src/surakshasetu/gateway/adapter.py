@@ -61,6 +61,62 @@ ROUTES: dict[Route, RouteSpec] = {
     Route.RERANK: RouteSpec(0.300, self_hosted=True),
 }
 
+# D-6 as revised 2026-11-20 (bug #44): the self-hosted chat routes, named one by one. The
+# local model server (0.40.16) cuts a prompt longer than its context N - 1 to
+# N - max((N - keep) // 2, 1) tokens and reports that count (its source is cited in the
+# decision log, bug #44), which is never below N // 2 for any keep, so on these routes a reply
+# whose prompt_tokens reaches N // 2 fails closed. Genuine prompts of N // 2 to N - 1 tokens
+# are refused too: the owner chose safety over capacity. Every other chat route keeps the
+# whole-context check (0.20.2 reported N itself, U4).
+CONTEXT_FLOOR_ROUTES = frozenset(
+    {Route.GUARD_INPUT, Route.NLU_EXTRACT, Route.VERIFY_CLAIMS, Route.SUMMARISE}
+)
+
+
+def context_threshold(route: Route, context_tokens: int) -> int:
+    """The prompt_tokens at which a reply on this route fails closed as CONTEXT_TRUNCATED (D-6)."""
+    return context_tokens // 2 if route in CONTEXT_FLOOR_ROUTES else context_tokens
+
+
+# D-6, guard-input's output mode (bug #44, approved 2026-11-20). That call sends
+# [system, customer turn, assistant reply]. When the whole prompt exceeds N, the local model
+# server drops the customer turn and reports what remains; the floor above still catches that
+# while the turn costs at most ceil(N / 2) + 1 tokens. With the turn's wrapper (8 tokens) and at
+# most one token per byte, the turn's bytes after the gateway's PII masking must stay at or under
+# N // 2 - 64. The proof holds for one model, one server version and one gateway image only
+# (HARDENING.md's D-6 entry; decision log, bug #44).
+OUTPUT_GUARD_SLACK_TOKENS = 64
+# The gateway image whose PII masking masked_size bounds (its six patterns, read at 3.8.50). A
+# unit test ties it to the eval gate's VERIFIED_IMAGE and to the live service in compose, so an
+# image change fails until the patterns are read again.
+OUTPUT_GUARD_MASKING_IMAGE = (
+    "diegosouzapw/omniroute:3.8.50"
+    "@sha256:085c57adf499a8aaa9f35ccde95c0df9c11bd9ecd18d6c9edbf3b68b8079ba9d"
+)
+
+
+def ascii_digit_count(text: str) -> int:
+    """The digits 0-9 only, as the gateway's patterns count them (\\d without the Unicode flag)."""
+    return sum(map(text.count, "0123456789"))
+
+
+def masked_size(text: str) -> int:
+    """M(c), an upper bound on the UTF-8 bytes of `text` after the gateway's PII masking: an email
+    (exactly one '@', at least 6 bytes) becomes 16 bytes, a phone number (at least 10 digits)
+    16, an SSN (9 digits) 14; card, CPF and CNPJ replacements are no longer than their match."""
+    return len(text.encode("utf-8")) + 10 * text.count("@") + (3 * ascii_digit_count(text)) // 5
+
+
+def output_guard_limit(context_tokens: int) -> int:
+    """The largest masked_size guard-input's output mode may carry under D-6 (4,032 at 8,192)."""
+    return context_tokens // 2 - OUTPUT_GUARD_SLACK_TOKENS
+
+
+def output_guard_overlong(text: str, context_tokens: int | None) -> bool:
+    """Whether this customer turn is too long for guard-input's output mode (D-6 unset: never)."""
+    return context_tokens is not None and masked_size(text) > output_guard_limit(context_tokens)
+
+
 # OmniRoute sets this on every chat response: "<mode>; source=<source>", plus "; tokens=a->b;
 # rules: …" segments when rules rewrote the prompt (3.8.50; "off; source=off" when disabled).
 # Compression must never fire (TDD §1.6): anything but an off mode with no rewrite counts as fired.
@@ -254,12 +310,14 @@ class Gateway:
         except ValidationError as exc:
             raise _unavailable(route, "MALFORMED_RESPONSE") from exc
         if self._context_tokens is not None:
-            # The local model server answers an oversize prompt with a 200 and prompt_tokens equal
-            # to its limit (U4, measured against that server directly; that the gateway passes
-            # usage through unchanged is not yet shown). No prompt_tokens: nothing to check, fail.
+            # The local model server answers an oversize prompt with a 200 and a cut prompt_tokens:
+            # its limit on 0.20.2 (U4), about half of it on 0.40.16 (bug #44), so the threshold
+            # depends on the route (context_threshold). That the gateway passes usage through
+            # unchanged was shown on 0.40.16 (S0 Part 2 run 2). No prompt_tokens: nothing to check,
+            # fail.
             if "prompt_tokens" not in completion.usage.model_fields_set:
                 raise _unavailable(route, "MALFORMED_RESPONSE")
-            if completion.usage.prompt_tokens >= self._context_tokens:
+            if completion.usage.prompt_tokens >= context_threshold(route, self._context_tokens):
                 raise _unavailable(route, "CONTEXT_TRUNCATED")
         content = completion.choices[0].message.content
         parsed = None

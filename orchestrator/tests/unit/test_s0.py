@@ -16,6 +16,7 @@ import pytest
 import yaml
 from pydantic import ValidationError
 from runtime_support import Models, domain, domain_handler, notice_json
+from test_output_guard_limit import WORDS
 from test_runtime_nodes import (
     BUNDLE,
     KEY,
@@ -692,3 +693,19 @@ def test_the_red_team_identity_phrasings_are_identity_questions() -> None:
     ):
         assert asks(text), text
     assert not asks("can I talk to an agent please")  # a request for a person, not an I6 question
+
+
+@pytest.mark.asyncio
+async def test_a_turn_over_the_d6_size_limit_is_released_as_without_the_setting() -> None:
+    # Bug #44: S0 generates nothing, so guard-input's output mode never runs and the size limit
+    # changes nothing: the same reply, the same verdicts, no RC-GUARD-SIZE.
+    seen = []
+    for context_tokens in (None, 8192):
+        t = s0_turn(text=WORDS)
+        t.settings = t.settings.model_copy(update={"gateway_context_tokens": context_tokens})
+        await run(t)
+        assert t.released is not None
+        seen.append((ids(t), t.released.text, t.released.verdicts))
+
+    assert seen[0] == seen[1] and ids(t) == ["template:consent_reprompt"]
+    assert "release:RC-GUARD-SIZE" not in seen[1][2]

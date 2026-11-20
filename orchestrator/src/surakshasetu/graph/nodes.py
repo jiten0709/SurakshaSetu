@@ -61,6 +61,7 @@ from surakshasetu.fsm.facts import Facts
 from surakshasetu.fsm.states import TERMINAL, FsmState
 from surakshasetu.fsm.transition import Transition, transition
 from surakshasetu.gateway import Gateway, GatewayUnavailable, Route
+from surakshasetu.gateway.adapter import output_guard_overlong
 from surakshasetu.graph import handlers as handler_tools
 from surakshasetu.graph import side_query as side_query_subgraph
 from surakshasetu.graph import states
@@ -191,6 +192,7 @@ class Turn:
     side_outcome: str | None = None
     answered: bool = False
     verify_all: bool = False
+    size_limited: bool = False  # compose withheld the lead sentence for the D-6 size limit
     objection: str | None = None
     objection_response: str | None = None
     timer: bool = False
@@ -658,6 +660,12 @@ async def compose(state: GraphState, runtime: Runtime[Turn]) -> None:
         and turn.parts
         and not (turn.identity or turn.safety or turn.degraded)
     ):
+        if output_guard_overlong(_customer_text(turn), turn.settings.gateway_context_tokens):
+            # D-6 (bug #44): the sentence's output-mode guard call would carry this turn; it is
+            # over that call's size limit, so the question goes out alone (RC-GUARD-SIZE skipped)
+            logger.info("lead sentence withheld: the turn is over the output-guard size limit")
+            turn.size_limited = True
+            return
         turn.products = turn.products or await product_names(turn)
         turn.draft = await converse(turn, phrase)
         turn.regenerate = lambda errors: converse(turn, phrase, errors)
@@ -729,7 +737,7 @@ async def validate(state: GraphState, runtime: Runtime[Turn]) -> None:
             else Route.GEN_CONVERSE
         ),
         handles=turn.handles or issue([], []),
-        customer_text=turn.pipeline.stored_raw if turn.pipeline else "",
+        customer_text=_customer_text(turn),
         products=turn.products,
         customer_uins=frozenset(session.focus_uins),
         approved_text=tuple(turn.shown),
@@ -747,7 +755,14 @@ async def validate(state: GraphState, runtime: Runtime[Turn]) -> None:
         render=cast(Callable[[str | None], Rendered], turn.render),
         numbers=turn.numbers,
         disclosure_sets=turn.disclosure_sets,
+        size_limited=turn.size_limited,
     )
+
+
+def _customer_text(turn: Turn) -> str:
+    """The customer turn as guard-input's output mode sends it (stored_raw), and as the D-6 size
+    limit measures it."""
+    return turn.pipeline.stored_raw if turn.pipeline else ""
 
 
 # --- commit and release ---------------------------------------------------------------------------

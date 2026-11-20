@@ -7,6 +7,9 @@ from uuid import UUID
 import httpx
 import pytest
 import respx
+from hypothesis import example, given
+from hypothesis import settings as hypothesis_settings
+from hypothesis import strategies as st
 from pydantic import BaseModel, SecretStr
 
 from surakshasetu.analysis.models import TurnAnalysis
@@ -20,7 +23,12 @@ from surakshasetu.gateway import (
     RedactionAttestation,
     Route,
 )
-from surakshasetu.gateway.adapter import ROUTES, TeiModel
+from surakshasetu.gateway.adapter import (
+    CONTEXT_FLOOR_ROUTES,
+    ROUTES,
+    TeiModel,
+    context_threshold,
+)
 from surakshasetu.logging import configure_logging
 from surakshasetu.rails.injection import GuardVerdict as RailGuardVerdict
 
@@ -320,18 +328,24 @@ async def test_the_sent_schema_is_normalised(respx_mock: respx.MockRouter) -> No
     assert sent["schema"]["$defs"]["SlotCandidate"]["properties"]["value"] == {}
 
 
-# --- the context check (D-6) -----------------------------------------------------------------
+# --- the context check (D-6; revised 2026-11-20 for Ollama 0.40.16, bug #44) -----------------
+FLOOR_ROUTES = (Route.GUARD_INPUT, Route.NLU_EXTRACT, Route.VERIFY_CLAIMS, Route.SUMMARISE)
+WHOLE_CONTEXT_ROUTES = (Route.GEN_CONVERSE, Route.GEN_RECOMMEND)
+
+
 def counted(prompt_tokens: int) -> dict[str, Any]:
     body = completion()
     body["usage"]["prompt_tokens"] = prompt_tokens
     return body
 
 
-async def call_with_context(limit: int | None) -> Any:
+async def call_with_context(limit: int | None, route: Route = Route.GUARD_INPUT) -> Any:
+    raw = ROUTES[route].self_hosted  # a gen route takes a REDACTED, attested envelope
     async with Gateway(settings(gateway_context_tokens=limit)) as gateway:
         return await gateway.call(
-            Route.GUARD_INPUT,
-            data_class=DataClass.SELF_HOSTED_RAW,
+            route,
+            data_class=DataClass.SELF_HOSTED_RAW if raw else DataClass.REDACTED,
+            attestation=None if raw else RedactionAttestation(sha256_hex(MESSAGES)),
             messages=MESSAGES,
             session_id=SESSION,
             turn_id=TURN,
@@ -339,36 +353,125 @@ async def call_with_context(limit: int | None) -> Any:
         )
 
 
-@pytest.mark.asyncio
-@respx.mock
-async def test_a_prompt_that_reaches_the_context_length_fails_closed(
-    respx_mock: respx.MockRouter,
+def ollama_cut(n_ctx: int, num_keep: int, adds_bos: bool) -> int:
+    """Ollama 0.40.16's prompt_tokens after it cuts a prompt longer than n_ctx - 1 tokens
+    (llm/llama_server.go:320-357 at d63b702): a negative num_keep keeps the whole prompt, a BOS
+    tokenizer keeps one more, the keep is clamped to 0..n_ctx - 1, and
+    contextShiftPromptLimit returns n_ctx - max((n_ctx - keep) // 2, 1)."""
+    keep = n_ctx - 1 if num_keep < 0 else min(num_keep + adds_bos, n_ctx - 1)
+    keep = max(0, min(keep, n_ctx - 1))
+    return n_ctx - max((n_ctx - keep) // 2, 1)
+
+
+def test_the_floor_covers_exactly_the_four_self_hosted_chat_routes() -> None:
+    # Named one by one, and exactly the self-hosted routes that carry a chat completion (embed
+    # and rerank go to TEI directly and never reach the check).
+    chat = set(ROUTES) - {Route.EMBED, Route.RERANK}
+    assert frozenset(FLOOR_ROUTES) == CONTEXT_FLOOR_ROUTES
+    assert {r for r in chat if ROUTES[r].self_hosted} == CONTEXT_FLOOR_ROUTES
+    assert chat - CONTEXT_FLOOR_ROUTES == set(WHOLE_CONTEXT_ROUTES)
+
+
+@pytest.mark.parametrize(
+    ("limit", "floor"), [(8192, 4096), (8193, 4096), (16384, 8192), (2, 1), (1, 0)]
+)
+def test_the_threshold_is_half_the_context_on_the_self_hosted_routes_only(
+    limit: int, floor: int
 ) -> None:
-    # U4: the local model server truncates an oversize prompt with a 200 and prompt_tokens = limit.
-    respx_mock.post(f"{GATEWAY}/chat/completions").respond(200, json=counted(8192))
+    assert {context_threshold(r, limit) for r in FLOOR_ROUTES} == {floor}
+    assert {context_threshold(r, limit) for r in WHOLE_CONTEXT_ROUTES} == {limit}
 
-    with pytest.raises(GatewayUnavailable) as failed:
-        await call_with_context(8192)
 
-    assert (failed.value.reason, failed.value.status) == ("CONTEXT_TRUNCATED", None)
+def test_run_2s_cut_is_the_ollama_formula() -> None:
+    # S0 Part 2 run 2: "truncating input prompt limit=4098 prompt=18727 keep=4 new=4098"
+    # (qwen3.5:4b-q4_K_M: num_keep 4, add_bos_token false).
+    assert ollama_cut(8192, 4, adds_bos=False) == 4098
+
+
+@hypothesis_settings(max_examples=2000, deadline=None)
+@given(
+    n_ctx=st.integers(min_value=2, max_value=1 << 20),
+    num_keep=st.integers(min_value=-1, max_value=1 << 21),
+    adds_bos=st.booleans(),
+)
+@example(n_ctx=8192, num_keep=4, adds_bos=False)  # run 2: 4,098
+@example(n_ctx=8192, num_keep=0, adds_bos=False)  # the lowest cut: 4,096
+@example(n_ctx=8193, num_keep=0, adds_bos=False)  # odd N: 4,097 against a floor of 4,096
+@example(n_ctx=8192, num_keep=-1, adds_bos=True)  # the whole prompt kept: N - 1
+@example(n_ctx=2, num_keep=0, adds_bos=False)
+def test_every_ollama_cut_reaches_the_floor(n_ctx: int, num_keep: int, adds_bos: bool) -> None:
+    """Proof: the keep k is clamped to 0..N - 1, so (N - k) // 2 <= N // 2, and
+    N - (N - k) // 2 >= N - N // 2 = ceil(N / 2) >= N // 2; the max(., 1) branch gives N - 1,
+    which is >= N // 2 for every N >= 2. A cut is also at most N - 1, so it never reaches the
+    whole-context threshold N. This bounded sample checks the same inequality."""
+    cut = ollama_cut(n_ctx, num_keep, adds_bos)
+    assert context_threshold(Route.VERIFY_CLAIMS, n_ctx) <= cut <= n_ctx - 1
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(("limit", "prompt_tokens"), [(8192, 8191), (None, 100_000)])
+@pytest.mark.parametrize("route", FLOOR_ROUTES)
+@pytest.mark.parametrize(
+    ("prompt_tokens", "truncated"),
+    [
+        (343, False),  # run 2's guard-input probe
+        (4095, False),  # the last count under the floor
+        (4096, True),  # the floor, N // 2 (and Ollama's lowest cut, keep 0)
+        (4098, True),  # run 2: Ollama 0.40.16 cut 18,727 tokens to 4,098
+        (8191, True),  # a genuine prompt one under the context: refused by design
+        (8192, True),  # 0.20.2: prompt_tokens equal to the context (U4)
+    ],
+)
 @respx.mock
-async def test_a_prompt_under_the_context_length_or_unchecked_passes(
-    respx_mock: respx.MockRouter, limit: int | None, prompt_tokens: int
+async def test_a_self_hosted_route_fails_closed_from_half_the_context(
+    respx_mock: respx.MockRouter, route: Route, prompt_tokens: int, truncated: bool
 ) -> None:
     respx_mock.post(f"{GATEWAY}/chat/completions").respond(200, json=counted(prompt_tokens))
 
-    assert (await call_with_context(limit)).tokens_in == prompt_tokens
+    if truncated:
+        with pytest.raises(GatewayUnavailable) as failed:
+            await call_with_context(8192, route)
+        assert (failed.value.reason, failed.value.status) == ("CONTEXT_TRUNCATED", None)
+    else:
+        assert (await call_with_context(8192, route)).tokens_in == prompt_tokens
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("route", WHOLE_CONTEXT_ROUTES)
+@pytest.mark.parametrize(
+    ("prompt_tokens", "truncated"), [(4096, False), (4098, False), (8191, False), (8192, True)]
+)
+@respx.mock
+async def test_the_other_routes_keep_the_whole_context_check(
+    respx_mock: respx.MockRouter, route: Route, prompt_tokens: int, truncated: bool
+) -> None:
+    # The behaviour before the revision: only prompt_tokens >= N fails (the stubs' word count).
+    respx_mock.post(f"{GATEWAY}/chat/completions").respond(200, json=counted(prompt_tokens))
+
+    if truncated:
+        with pytest.raises(GatewayUnavailable) as failed:
+            await call_with_context(8192, route)
+        assert failed.value.reason == "CONTEXT_TRUNCATED"
+    else:
+        assert (await call_with_context(8192, route)).tokens_in == prompt_tokens
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("route", FLOOR_ROUTES + WHOLE_CONTEXT_ROUTES)
+@respx.mock
+async def test_unset_checks_nothing_on_any_route(
+    respx_mock: respx.MockRouter, route: Route
+) -> None:
+    respx_mock.post(f"{GATEWAY}/chat/completions").respond(200, json=counted(100_000))
+
+    assert (await call_with_context(None, route)).tokens_in == 100_000
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("route", FLOOR_ROUTES + WHOLE_CONTEXT_ROUTES)
 @pytest.mark.parametrize("usage", [None, {"completion_tokens": 3}])
 @respx.mock
 async def test_without_prompt_tokens_only_the_context_check_fails_closed(
-    respx_mock: respx.MockRouter, usage: dict[str, int] | None
+    respx_mock: respx.MockRouter, route: Route, usage: dict[str, int] | None
 ) -> None:
     body = completion()
     del body["usage"]
@@ -377,10 +480,10 @@ async def test_without_prompt_tokens_only_the_context_check_fails_closed(
     respx_mock.post(f"{GATEWAY}/chat/completions").respond(200, json=body)
 
     with pytest.raises(GatewayUnavailable) as failed:
-        await call_with_context(8192)  # nothing to check against: fail closed
+        await call_with_context(8192, route)  # nothing to check against: fail closed
 
     assert failed.value.reason == "MALFORMED_RESPONSE"
-    assert (await call_with_context(None)).tokens_in == 0  # unset: today's behaviour
+    assert (await call_with_context(None, route)).tokens_in == 0  # unset: today's behaviour
 
 
 # --- embed and rerank: TEI, called directly --------------------------------------------------
@@ -682,4 +785,37 @@ async def test_model_calls_leak_no_text_key_or_url_into_the_logs(
     assert "guard-input" in logged and "stub-guard" in logged and "UNAVAILABLE" in logged
     assert "CONTEXT_TRUNCATED" in logged
     for leaked in ("ABCDE1234F", "g4teway-key", "gateway.test", "embed.test", "rerank.test"):
+        assert leaked not in logged
+
+
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("restore_logging")
+@respx.mock
+async def test_a_refusal_at_the_floor_leaks_no_prompt_text_into_the_logs(
+    respx_mock: respx.MockRouter, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # D-6's floor (bug #44) on run 2's count: the route and the reason are logged, nothing sent.
+    configure_logging("DEBUG", tmp_path)
+    said = [
+        {"role": "system", "content": "SYSTEM-SENTINEL"},
+        {"role": "user", "content": "ABCDE1234F"},
+    ]
+    respx_mock.post(f"{GATEWAY}/chat/completions").respond(
+        200, json=counted(4098) | {"model": "stub-nlu"}
+    )
+
+    async with Gateway(settings(gateway_context_tokens=8192)) as gateway:
+        with pytest.raises(GatewayUnavailable):
+            await gateway.call(
+                Route.NLU_EXTRACT,
+                data_class=DataClass.SELF_HOSTED_RAW,
+                messages=said,
+                session_id=SESSION,
+                turn_id=TURN,
+                fsm_state="S1",
+            )
+
+    logged = capsys.readouterr().out + _files_text(tmp_path)
+    assert "nlu-extract" in logged and "CONTEXT_TRUNCATED" in logged
+    for leaked in ("SYSTEM-SENTINEL", "ABCDE1234F", "Hello there", "g4teway-key", "gateway.test"):
         assert leaked not in logged

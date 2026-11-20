@@ -45,6 +45,7 @@ from surakshasetu.crypto.jcs import sha256_hex
 from surakshasetu.crypto.keys import KeyService
 from surakshasetu.domain.models import DisclosureSet, RankingResult, SuitabilityResult
 from surakshasetu.gateway import DataClass, Gateway, GatewayUnavailable, Route
+from surakshasetu.gateway.adapter import masked_size, output_guard_limit, output_guard_overlong
 from surakshasetu.kb.payload import Collection, content_sha256
 from surakshasetu.rails import redact
 from surakshasetu.rails.injection import call_guard
@@ -213,7 +214,7 @@ class OutputContext:
     locale: str
     route: Route  # the generation route: gen-recommend verifies every claim, gen-converse samples
     handles: TurnHandles  # Envelope.handles: the handles the model saw, the only citable ones
-    customer_text: str  # the turn's redacted text, for the guard's output mode
+    customer_text: str  # the turn's stored_raw, for the guard's output mode (and D-6's limit)
     products: Mapping[str, str] = field(default_factory=dict)  # base product UIN -> catalog name
     customer_uins: frozenset[str] = frozenset()  # products the customer named (I3)
     own_pii: frozenset[str] = frozenset()  # this session's own values, which a release may show
@@ -679,11 +680,25 @@ async def release(
     render: Callable[[str | None], Rendered],  # the composer; None: the card or the template
     numbers: Numbers | None = None,
     disclosure_sets: Mapping[str, DisclosureSet] | None = None,
+    size_limited: bool = False,  # the caller withheld a generation for the D-6 size limit
 ) -> Released:
     """Rails 6-7 on the draft, one regeneration on failure, the fallback after a second failure
     or when the verifier cannot run; then rail 8 on what was rendered. CompositionError from
-    render propagates (an input defect, not a model one), after rails 6-7 are audited."""
+    render propagates (an input defect, not a model one), after rails 6-7 are audited.
+
+    D-6 (bug #44): a customer turn over guard-input's output-mode size limit never goes to that
+    call. Its draft is dropped here, before any rail, so nothing is verified or regenerated and the
+    fallback renders (RC-GUARD-SIZE fallback); a generation the caller withheld is RC-GUARD-SIZE
+    skipped."""
     sets = disclosure_sets or {}
+    size: list[Verdict] = []
+    limit = settings.gateway_context_tokens
+    if draft is not None and limit is not None and output_guard_overlong(ctx.customer_text, limit):
+        measured = f"masked size {masked_size(ctx.customer_text)} > {output_guard_limit(limit)}"
+        logger.info("draft dropped: the turn is over the output-guard size limit (%s)", measured)
+        draft, size = None, [Verdict("release", "RC-GUARD-SIZE", "fallback", detail=(measured,))]
+    elif size_limited:
+        size = [Verdict("release", "RC-GUARD-SIZE", "skipped")]
     audited: list[Verdict] = []
     chosen: str | None = None
     passed_on = 0  # the attempt whose text passed
@@ -724,6 +739,7 @@ async def release(
     rendered = render(chosen)
     checks = [
         disclosures(rendered, numbers, sets),
+        *size,
         await guard(gateway, chosen, ctx, bundle.rails.get(Route.GUARD_INPUT)),
         leaks(rendered.text, ctx, sets, model_text=chosen, instructions=instructions(bundle)),
         dummy(rendered.text, settings.env),
