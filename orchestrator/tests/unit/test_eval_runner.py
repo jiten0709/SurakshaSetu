@@ -246,6 +246,31 @@ def test_self_hosted_qa_gates_wait_and_fallback_counts_self_hosted_calls() -> No
     assert every["latency_fallback:fallback"].value == 0.5
 
 
+def test_a_candidate_evaluation_allows_no_served_model_mismatch() -> None:
+    # S1 (owner, 2026-11-22): every successful self-hosted call is served by its route's model.
+    # make eval-live keeps TDD §5.2's 2%.
+    def fallback(
+        calls: list[tuple[str, str, float]], primaries: dict[str, str], routes: str = "self-hosted"
+    ) -> Any:
+        run = SECTIONS_RUN | {"live": True, "routes": routes, "calls": calls}
+        gates = cli.gates_of(run, settings(eval_primary_models=primaries))
+        return next(g for g in gates if g.name == "latency_fallback:fallback")
+
+    ok = [("guard-input", "local-model", 9.0)] * 100
+    one_off = [*ok[:99], ("nlu-extract", "other-model", 9.0)]
+
+    zero = fallback(ok, LOCAL)
+    assert (zero.value, zero.threshold, zero.status) == (0.0, 0.0, "PASS")
+    one = fallback(one_off, LOCAL)
+    assert (one.value, one.status) == (0.01, "FAIL")  # 1 in 100 passed under the old 2%
+    assert fallback(one_off, LOCAL, routes="all").status == "PASS"  # eval-live unchanged
+    no_primaries = fallback(ok, {})
+    no_self_hosted_call = fallback([("gen-recommend", "stub-gen-recommend", 9.0)], LOCAL)
+    for missing in (no_primaries, no_self_hosted_call):
+        assert missing.value is None and missing.status == "FAIL"  # no evidence never passes
+    assert "unmeasured" in no_primaries.note
+
+
 def test_self_hosted_routes_need_live_mode(tmp_path: Path) -> None:
     with pytest.raises(SystemExit) as exited:
         cli.main(["run", "--mode", "stub", "--records", str(tmp_path), "--routes", "self-hosted"])

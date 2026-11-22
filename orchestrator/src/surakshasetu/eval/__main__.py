@@ -286,9 +286,14 @@ def gates_of(run: dict[str, Any], settings: Settings) -> list[metrics.Gate]:
             settings.eval_primary_models,
         )
         note = "" if settings.eval_primary_models else "unmeasured: SS_EVAL_PRIMARY_MODELS is empty"
+        # A candidate evaluation allows no served-model mismatch (S1, owner 2026-11-22); make
+        # eval-live keeps TDD §5.2's 2%. Calls records successful calls only.
+        limit = 0.0 if self_hosted else 0.02
+        if self_hosted:
+            note = "; ".join(filter(None, ("no mismatch allowed (S1)", note)))
         gates.append(
             metrics.Gate(
-                "latency_fallback:fallback", "latency_fallback", rate, "<=", 0.02, True, note
+                "latency_fallback:fallback", "latency_fallback", rate, "<=", limit, True, note
             )
         )
     return gates
